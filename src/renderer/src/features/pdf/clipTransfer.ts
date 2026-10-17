@@ -38,6 +38,9 @@ export function isDrawingClipSource(value: unknown): value is DrawingClipSource 
   if (typeof value !== 'object' || value === null) return false
   const source = value as Record<string, unknown>
   return (
+    (source['documentRevision']===undefined||typeof source['documentRevision']==='string'&&/^[a-f0-9]{64}$/.test(source['documentRevision'])) &&
+    (source['documentByteCount']===undefined||Number.isSafeInteger(source['documentByteCount'])&&(source['documentByteCount'] as number)>0) &&
+    (source['materialID']===undefined||typeof source['materialID']==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(source['materialID'])) &&
     typeof source['relPath'] === 'string' &&
     source['relPath'].length > 0 &&
     Number.isInteger(source['page']) &&
@@ -59,6 +62,9 @@ export function writeBandalClipDragData(
   dataTransfer.effectAllowed = 'copy'
   dataTransfer.setData(BANDAL_CLIP_MIME, JSON.stringify({
     relPath: source.relPath,
+    ...(source.documentRevision===undefined?{}:{documentRevision:source.documentRevision}),
+    ...(source.documentByteCount===undefined?{}:{documentByteCount:source.documentByteCount}),
+    ...(source.materialID===undefined?{}:{materialID:source.materialID}),
     page: source.page,
     ...(source.crop === undefined ? {} : { crop: source.crop }),
     ...(source.pageAspect === undefined
@@ -78,6 +84,9 @@ export function readBandalClipDragData(
     if (!isDrawingClipSource(parsed)) return null
     return {
       relPath: parsed.relPath,
+      ...(parsed.documentRevision===undefined?{}:{documentRevision:parsed.documentRevision}),
+      ...(parsed.documentByteCount===undefined?{}:{documentByteCount:parsed.documentByteCount}),
+      ...(parsed.materialID===undefined?{}:{materialID:parsed.materialID}),
       page: parsed.page,
       ...(parsed.crop === undefined ? {} : {
         crop: {

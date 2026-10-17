@@ -1,3 +1,5 @@
+import { strokePathV5 } from '../../../shared/inkV5'
+import type { DrawingClipSource } from '../../../shared/types/drawing'
 import { strokePathV4 } from '../../../shared/inkV4'
 import { strokePathV2 } from '../../../shared/inkV2'
 import { strokePathV3 } from '../../../shared/inkV3'
@@ -187,8 +189,8 @@ function drawInk(
   const blendMode = shape.kind === 'highlighter'
     ? surface === 'dark' ? BlendMode.Screen : BlendMode.Multiply
     : BlendMode.Normal
-  if (shape.data.inkVersion === 2 || shape.data.inkVersion === 3 || shape.data.inkVersion === 4) {
-    const renderPath = shape.data.inkVersion === 4 ? strokePathV4 : shape.data.inkVersion === 3 ? strokePathV3 : strokePathV2
+  if (shape.data.inkVersion === 2 || shape.data.inkVersion === 3 || shape.data.inkVersion === 4 || shape.data.inkVersion === 5) {
+    const renderPath = shape.data.inkVersion === 5 ? strokePathV5 : shape.data.inkVersion === 4 ? strokePathV4 : shape.data.inkVersion === 3 ? strokePathV3 : strokePathV2
     const path = renderPath(points, shape.style.width, height / width, shape.kind === 'highlighter', width, height)
     if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode })
     return
@@ -438,6 +440,7 @@ function isOccupiedTargetError(error: unknown): boolean {
 }
 
 export interface BoardPdfExporterDeps {
+  resolveClipSource?: (courseId:string,source:DrawingClipSource)=>string
   openBoard: (boardId: string) => OpenPersonalBoardResult
   getCourseFolder: (courseId: string) => string
   /** Absolute path of a bundled face. Called at most once per face per exporter. */
@@ -528,7 +531,7 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
       const textboxes = shapes.filter((shape) => shape.kind === 'textbox')
       const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null
 
-      const renderMedia = createBoardMediaRenderer(pdf, courseFolder)
+      const renderMedia = createBoardMediaRenderer(pdf, courseFolder,deps.resolveClipSource?source=>deps.resolveClipSource!(board.courseId,source):undefined)
       for (let pageNumber = 1; pageNumber <= board.pageCount; pageNumber += 1) {
         const page = pdf.addPage(PageSizes.A4)
         const { width, height } = page.getSize()

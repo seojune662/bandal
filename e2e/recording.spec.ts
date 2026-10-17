@@ -327,7 +327,7 @@ test('real native STT through AudioWorklet: pause, tab switch, stop, playback, e
     }))
     expect(panels.note).toBeGreaterThanOrEqual(panels.recording)
     await page.locator('.workspace-add-tab').last().click()
-    await page.getByRole('option', { name: /새 마크다운/ }).click()
+    await page.getByRole('option', { name: /마크다운/ }).click()
     await expect(page.locator('.recording-indicator')).toBeVisible()
     await page.locator('.recording-indicator').getByRole('button', { name: '강의 녹음 중' }).click()
     await expect(page.getByRole('heading', { name: '테스트 한국어 강의' })).toBeVisible()

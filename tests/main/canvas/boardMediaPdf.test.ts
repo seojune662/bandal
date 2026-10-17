@@ -1,4 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { resolvePdfClipSource } from '../../../src/main/features/pdf/pdfClipSource'
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PDFDocument, degrees, rgb } from 'pdf-lib'
@@ -66,4 +68,16 @@ test('embeds uploaded PNG images and fails explicitly when a referenced file dis
   const second = await PDFDocument.create()
   await expect(createBoardMediaRenderer(second, folder)(second.addPage(), shape('image'))).rejects.toThrow('원본 파일')
   await expect(createBoardMediaRenderer(second, folder)(second.addPage(), shape('clip'))).rejects.toThrow('원본 PDF')
+})
+
+test('pinned PDF clipping exports archived pixels after the source file changes',async()=>{
+  const original=await PDFDocument.create();original.addPage([100,100]).drawRectangle({x:0,y:0,width:100,height:100,color:rgb(1,0,0)})
+  const bytes=await original.save(),revision=createHash('sha256').update(bytes).digest('hex')
+  mkdirSync(join(folder,'PDFOriginals'));writeFileSync(join(folder,'PDFOriginals',revision+'.pdf'),bytes)
+  const replacement=await PDFDocument.create();replacement.addPage([100,100]).drawRectangle({x:0,y:0,width:100,height:100,color:rgb(0,0,1)})
+  writeFileSync(join(folder,'source.pdf'),await replacement.save())
+  const clip=shape('clip');clip.data.clip!.documentRevision=revision;clip.data.clip!.documentByteCount=bytes.length
+  const output=await PDFDocument.create()
+  await createBoardMediaRenderer(output,folder,source=>resolvePdfClipSource(folder,folder,source))(output.addPage([100,100]),clip)
+  expect(await pixels(output)).toEqual([255,0,0])
 })

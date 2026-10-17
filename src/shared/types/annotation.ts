@@ -40,6 +40,7 @@ export interface Annotation {
 }
 
 export interface CreateAnnotationInput {
+  documentRevision?: string
   courseId: string
   relPath: string
   page: number
@@ -50,6 +51,7 @@ export interface CreateAnnotationInput {
 }
 
 export interface UpdateAnnotationInput {
+  documentRevision?: string
   id: string
   color?: HighlightColor
   comment?: string | null

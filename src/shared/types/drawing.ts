@@ -112,6 +112,10 @@ export interface DrawingBox {
 /** Kind-specific geometry. `points` for strokes, `box` for shapes/text. */
 /** `clip` only — where the pinned material came from. */
 export interface DrawingClipSource {
+  /** Stable source identity and immutable PDF bytes for placed clippings. */
+  materialID?: string
+  documentRevision?: string
+  documentByteCount?: number
   /** Course-relative path of the source file. */
   relPath: string
   /** 1-based page for PDFs. */
@@ -129,7 +133,7 @@ export interface DrawingClipSource {
 
 export interface DrawingData {
   /** Absent preserves historical ink; each explicit version keeps its own geometry. */
-  inkVersion?: 2 | 3 | 4
+  inkVersion?: 2 | 3 | 4 | 5
   points?: DrawingPoint[]
   box?: DrawingBox
   /** textbox only. */
@@ -234,6 +238,7 @@ export interface CreateDrawingInput {
 }
 
 export interface UpdateDrawingInput {
+  documentRevision?: string
   id: string
   data?: DrawingData
   style?: DrawingStyle

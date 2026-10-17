@@ -59,7 +59,7 @@ import {
 } from './materialMoveDrag'
 import { canAcceptUrlDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
-import { WhiteboardsGroup } from './WhiteboardsGroup'
+import { NotesGroup, noteNodes, withoutNotesFolder } from './NotesGroup'
 import { MaterialAffordancesProvider } from './MaterialAffordances'
 import { WidgetDock } from '../widgets/WidgetDock'
 import './materials.css'
@@ -1036,7 +1036,41 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           </div>
         ) : (
           <>
-            <WhiteboardsGroup courseId={course.id} />
+            <NotesGroup courseId={course.id} nodes={noteNodes(tree)}>{nodes => (
+                <MaterialTree
+                  courseId={course.id}
+                  nodes={nodes}
+                  expandedPaths={expandedPaths}
+                  editingRelPath={editing?.relPath ?? null}
+                  selectedRelPath={selectedRelPath}
+                  pasteTargetDirRelPath={
+                    pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
+                  }
+                  dropTargetDirRelPath={dropTargetDirRelPath}
+                  urlDropTargetDirRelPath={urlDropTargetDirRelPath}
+                  downloadingDirRelPath={downloadingDirRelPath}
+                  onToggleFolder={toggleFolder}
+                  onSelect={(node) => setSelectedRelPath(node.relPath)}
+                  onContextMenu={handleContextMenu}
+                  onCancelRename={() => setEditing(null)}
+                  onRename={rename}
+                  onDropTargetChange={setDropTargetDirRelPath}
+                  onUrlDropTargetChange={setUrlDropTargetDirRelPath}
+                  onMove={(payload, toDirRelPath) => {
+                    void moveMaterial(payload, toDirRelPath)
+                  }}
+                  onImportFiles={(files, dirRelPath) => {
+                    importFiles(files, dirRelPath)
+                  }}
+                  onDownloadUrl={(url, dirRelPath, fileName) => {
+                    void downloadFromUrl(url, dirRelPath, fileName)
+                  }}
+                  onUnsupportedDrop={(types) => {
+                    setDropActive(false)
+                    reportUnsupportedDrop(types)
+                  }}
+                />
+            )}</NotesGroup>
             <section
               className="materials-files-group"
               aria-label="자료 파일"
@@ -1101,7 +1135,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               ) : (
                 <MaterialTree
                   courseId={course.id}
-                  nodes={tree}
+                  nodes={withoutNotesFolder(tree)}
                   expandedPaths={expandedPaths}
                   editingRelPath={editing?.relPath ?? null}
                   selectedRelPath={selectedRelPath}

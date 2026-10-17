@@ -1,3 +1,7 @@
+import { registerDocumentSave } from '../documents/saveRegistry'
+import PdfTab from '../pdf/PdfTab'
+import { migrateCourseNotes } from '../pdfNotes/legacyMigration'
+import { descriptorFor } from '../workspace/tabIdentity'
 import type { IDockviewPanelProps } from 'dockview'
 import {
   useCallback,
@@ -150,6 +154,7 @@ function CanvasSession({
   const [shapes, setShapes] = useState<PersonalBoardShape[]>(() => [...initialShapes])
   const [saveState, setSaveState] = useState<CanvasSaveState>({ pending: 0, error: null })
   const saveQueue = useMemo(() => createCanvasSaveQueue(setSaveState), [])
+  useEffect(() => registerDocumentSave(() => saveQueue.flush()), [saveQueue])
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(initialBoard.title)
@@ -195,7 +200,7 @@ function CanvasSession({
   }, [])
 
   const showSaveError = useCallback((error: unknown): void => {
-    setStatusMessage(errorMessage(error, '화이트보드 내용을 저장하지 못했어요.'))
+    setStatusMessage(errorMessage(error, '기존 노트 원본 내용을 저장하지 못했어요.'))
   }, [])
 
   const persistShape = useCallback((
@@ -377,7 +382,7 @@ function CanvasSession({
     }
     const title = titleDraft.trim()
     if (title.length === 0) {
-      setStatusMessage('화이트보드 이름을 입력해 주세요.')
+      setStatusMessage('기존 노트 원본 이름을 입력해 주세요.')
       titleInputRef.current?.focus()
       return
     }
@@ -393,7 +398,7 @@ function CanvasSession({
       setEditingTitle(false)
       setStatusMessage(null)
     } catch (error: unknown) {
-      setStatusMessage(errorMessage(error, '화이트보드 이름을 바꾸지 못했어요.'))
+      setStatusMessage(errorMessage(error, '기존 노트 원본 이름을 바꾸지 못했어요.'))
     } finally {
       setRenaming(false)
     }
@@ -412,7 +417,7 @@ function CanvasSession({
       setStatusMessage(null)
     } catch (error: unknown) {
       showToast(
-        errorMessage(error, '화이트보드 배경을 저장하지 못했어요.'),
+        errorMessage(error, '기존 노트 원본 배경을 저장하지 못했어요.'),
         'danger'
       )
     } finally {
@@ -554,8 +559,8 @@ function CanvasSession({
       setStatusMessage(null)
       showToast(
         files.length === 1
-          ? '사진을 화이트보드에 추가했어요.'
-          : `${files.length}개 사진을 화이트보드에 추가했어요.`
+          ? '사진을 기존 노트 원본에 추가했어요.'
+          : `${files.length}개 사진을 기존 노트 원본에 추가했어요.`
       )
     } catch (error: unknown) {
       const message = errorMessage(error, '사진을 추가하지 못했어요.')
@@ -658,7 +663,7 @@ function CanvasSession({
             ref={titleInputRef}
             className="canvas-tab__title-input"
             value={titleDraft}
-            aria-label="화이트보드 이름"
+            aria-label="기존 노트 원본 이름"
             disabled={renaming}
             onChange={(event) => setTitleDraft(event.target.value)}
             onBlur={() => void renameBoard()}
@@ -804,7 +809,7 @@ function CanvasLoader({
       if (result.board.courseId !== descriptor.courseId) {
         setLoadState({
           phase: 'error',
-          message: '이 화이트보드는 현재 과목에 속하지 않아요.'
+          message: '이 기존 노트 원본는 현재 과목에 속하지 않아요.'
         })
         return
       }
@@ -813,7 +818,7 @@ function CanvasLoader({
       if (!cancelled) {
         setLoadState({
           phase: 'error',
-          message: errorMessage(error, '화이트보드를 불러오지 못했어요.')
+          message: errorMessage(error, '기존 노트 원본를 불러오지 못했어요.')
         })
       }
     })
@@ -825,14 +830,14 @@ function CanvasLoader({
   if (loadState.phase === 'loading') {
     return (
       <div className="canvas-state" data-state="loading">
-        <p>화이트보드를 불러오는 중…</p>
+        <p>기존 노트 원본를 불러오는 중…</p>
       </div>
     )
   }
   if (loadState.phase === 'error') {
     return (
       <div className="canvas-state" data-state="error">
-        <h2>화이트보드를 열지 못했어요</h2>
+        <h2>기존 노트 원본를 열지 못했어요</h2>
         <p>{loadState.message}</p>
       </div>
     )
@@ -851,6 +856,22 @@ function CanvasLoader({
 export default function CanvasTab(props: IDockviewPanelProps): JSX.Element {
   const hasBeenShown = useHasBeenShown(props.api)
   const descriptor = descriptorFromParams(props.params)
+  const [migratedPath, setMigratedPath] = useState<string | null>(null)
+  const [migrationDone, setMigrationDone] = useState(false)
+  const [migrationError, setMigrationError] = useState('')
+  const courseId = descriptor?.courseId, boardId = descriptor?.boardId
+  useEffect(() => {
+    if (!hasBeenShown || !courseId || !boardId) return
+    let live = true; setMigrationDone(false)
+    void migrateCourseNotes(courseId).then(async result => {
+      const mappings = await invoke('pdfNotes:migrationStatus', { courseId })
+      if (!live) return
+      const mapping = mappings.find(item => item.boardId === boardId)
+      if (mapping) { setMigratedPath(mapping.relPath); props.api.setTitle(mapping.relPath.split('/').pop()?.replace(/\.pdf$/i, '') ?? '노트') }
+      else setMigrationError(result.failed.find(item => item.boardId === boardId)?.message ?? '이전할 수 없어 보존된 원본을 엽니다.')
+    }).catch(error => { if (live) setMigrationError(error instanceof Error ? error.message : '노트 이전을 완료하지 못했습니다.') }).finally(() => { if (live) setMigrationDone(true) })
+    return () => { live = false }
+  }, [hasBeenShown, courseId, boardId, props.api])
 
   if (descriptor === null) {
     return <div className="canvas-state" data-state="invalid" />
@@ -858,10 +879,12 @@ export default function CanvasTab(props: IDockviewPanelProps): JSX.Element {
   if (!hasBeenShown) {
     return (
       <div className="canvas-state" data-state="loading" role="status">
-        <p>화이트보드를 불러오는 중…</p>
+        <p>기존 노트 원본를 불러오는 중…</p>
       </div>
     )
   }
 
-  return <CanvasLoader descriptor={descriptor} panelApi={props.api} />
+  if (!migrationDone) return <div className="canvas-state" role="status">기존 노트를 확인하고 있습니다. 원본은 보존됩니다.</div>
+  if (migratedPath) return <PdfTab {...props} params={{ ...props.params, descriptor: descriptorFor('pdf', { courseId: descriptor.courseId, relPath: migratedPath }) }} />
+  return <><p role="alert">{migrationError}</p><CanvasLoader descriptor={descriptor} panelApi={props.api} /></>
 }

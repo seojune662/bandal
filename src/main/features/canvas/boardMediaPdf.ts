@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { degrees, PDFDocument, type PDFEmbeddedPage, type PDFImage, type PDFPage } from 'pdf-lib'
-import type { DrawingBox, DrawingShape } from '../../../shared/types/drawing'
+import type { DrawingBox, DrawingShape, DrawingClipSource } from '../../../shared/types/drawing'
 import { resolveInsideReal } from '../../db/validate'
 
 /** PDF clip crops are measured in the displayed page, including its rotation. */
@@ -24,14 +24,14 @@ export function clipPdfBounds(page: PDFPage, crop: DrawingBox) {
   }
 }
 
-export function createBoardMediaRenderer(pdf: PDFDocument, folder: string) {
+export function createBoardMediaRenderer(pdf: PDFDocument, folder: string, resolveClip?: (source: DrawingClipSource) => string) {
   const documents = new Map<string, Promise<PDFDocument>>()
   const images = new Map<string, Promise<PDFImage>>()
   const clips = new Map<string, Promise<{ page: PDFEmbeddedPage; rotation: number }>>()
-  return async (page: PDFPage, shape: DrawingShape): Promise<void> => {
+  return async (page: PDFPage, shape: DrawingShape, size = page.getSize()): Promise<void> => {
     const box = shape.data.box
     if (box === undefined) throw new Error('사진 또는 클립의 위치를 읽지 못했어요.')
-    const { width: pageWidth, height: pageHeight } = page.getSize()
+    const { width: pageWidth, height: pageHeight } = size
     const x = box.x * pageWidth, y = (1 - box.y - box.height) * pageHeight
     const width = box.width * pageWidth, height = box.height * pageHeight
     const opacity = shape.style.opacity
@@ -57,14 +57,16 @@ export function createBoardMediaRenderer(pdf: PDFDocument, folder: string) {
     }
     const source = shape.data.clip
     if (source === undefined) throw new Error('클립의 원본 경로를 찾지 못했어요.')
-    const key = JSON.stringify([source.relPath, source.page, source.crop])
+    const documentKey=JSON.stringify([source.relPath,source.documentRevision])
+    const key = JSON.stringify([documentKey, source.page, source.crop])
     let clip = clips.get(key)
     if (clip === undefined) {
       clip = (async () => {
-        let document = documents.get(source.relPath)
+        let document = documents.get(documentKey)
         if (document === undefined) {
-          document = readFile(resolveInsideReal(folder, source.relPath)).then(bytes => PDFDocument.load(bytes))
-          documents.set(source.relPath, document)
+          if(source.documentRevision&&!resolveClip)throw new Error('Pinned PDF clip resolver is unavailable')
+          document = readFile(resolveClip?resolveClip(source):resolveInsideReal(folder, source.relPath)).then(bytes => PDFDocument.load(bytes))
+          documents.set(documentKey, document)
         }
         const sourcePage = (await document).getPages()[source.page - 1]
         if (sourcePage === undefined) throw new Error('클립의 원본 페이지를 찾지 못했어요.')

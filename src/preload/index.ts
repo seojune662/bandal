@@ -50,6 +50,8 @@ export interface BandalBridge {
  * blank. The assignment below stops compiling when a channel is missing.
  */
 const PUSH_CHANNELS = [
+  'workspace:prepareTransition',
+  'workspace:releaseTransition',
   'learning:changed',
   'recordings:event',
   'recordings:modelsChanged',

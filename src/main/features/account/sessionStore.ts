@@ -41,6 +41,7 @@ export interface SupabaseStorageAdapter {
   getItem(key: string): Promise<string | null>
   setItem(key: string, value: string): Promise<void>
   removeItem(key: string): Promise<void>
+  clear(): void
 }
 
 export interface SessionStoreDeps {
@@ -138,6 +139,7 @@ export function createSessionStore(deps: SessionStoreDeps): SupabaseStorageAdapt
   }
 
   return {
+    clear: () => { cache = {}; destroySessionFile(deps.filePath) },
     getItem: (key) => Promise.resolve(load()[key] ?? null),
     setItem: (key, value) => {
       const next = { ...load(), [key]: value }

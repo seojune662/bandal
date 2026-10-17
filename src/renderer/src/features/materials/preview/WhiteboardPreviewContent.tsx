@@ -21,7 +21,7 @@ function ReferencePreview({ courseId, shape, load }: { courseId: string; shape: 
     if (!load || relPath === undefined) return
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 10000)
-    void loadReferencedThumbnail(courseId, relPath, controller.signal, source?.page, source?.crop)
+    void loadReferencedThumbnail(courseId, relPath, controller.signal, source?.page, source?.crop, source?.documentRevision)
       .then((thumbnail) => { if (!controller.signal.aborted) setImage(thumbnail.dataUrl) })
       .catch(() => undefined).finally(() => clearTimeout(timeout))
     return () => { clearTimeout(timeout); controller.abort() }
@@ -36,11 +36,11 @@ function ReferencePreview({ courseId, shape, load }: { courseId: string; shape: 
   </g>
 }
 
-function BoardShape({ courseId, shape, loadReference }: { courseId: string; shape: DrawingShape; loadReference: boolean }): JSX.Element | null {
+export function BoardShape({ courseId, shape, loadReference, aspect = PAGE_ASPECT }: { courseId: string; shape: DrawingShape; loadReference: boolean; aspect?: number }): JSX.Element | null {
   const color = drawingColorVariable(shape.style.color)
   if (shape.kind === 'ink' || shape.kind === 'highlighter') {
-    const path = strokePath(shape.data.points ?? [], shape.style, PAGE_ASPECT, shape.kind === 'highlighter', shape.data.inkVersion)
-    return path.length === 0 ? null : <path d={path} fill={color} opacity={shape.style.opacity} />
+    const path = strokePath(shape.data.points ?? [], shape.style, aspect, shape.kind === 'highlighter', shape.data.inkVersion)
+    return path.length === 0 ? null : <path className={shape.kind === 'highlighter' ? 'is-highlighter' : undefined} d={path} fill={color} opacity={shape.style.opacity} />
   }
   if (shape.kind === 'line' || shape.kind === 'arrow') {
     const endpoints = lineEndpoints(shape)
@@ -101,7 +101,7 @@ export function WhiteboardPreviewContent({ courseId, board }: { courseId: string
       : shapes === 'error' ? <p className="material-preview-content__message">미리보기를 불러올 수 없어요</p>
         : shapes.length === 0 ? <p className="material-preview-content__message">첫 페이지에 아직 내용이 없어요</p>
           : <div className="material-preview-content__board" data-surface={metadata.surface} data-background={metadata.background}>
-            <svg viewBox="0 0 1 1" preserveAspectRatio="none" role="img" aria-label="화이트보드 첫 페이지">
+            <svg viewBox="0 0 1 1" preserveAspectRatio="none" role="img" aria-label="노트 첫 페이지">
               {shapes.map((shape) => {
                 if (shape.kind === 'image' || shape.kind === 'clip') references += 1
                 return <BoardShape key={shape.id} courseId={courseId} shape={shape} loadReference={references <= PREVIEW_REFERENCE_LIMIT} />

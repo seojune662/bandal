@@ -94,7 +94,7 @@ export const SHORTCUT_SPECS = [
   { id: 'new-browser-tab', labelKo: '새 브라우저 탭', labelEn: 'New browser tab', defaultChord: 'mod+shift+b', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'new-ai-tab', labelKo: '새 AI 탭', labelEn: 'New AI tab', defaultChord: 'mod+shift+a', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'new-recording-tab', labelKo: '녹음 탭 열기', labelEn: 'Open recording tab', defaultChord: 'mod+alt+r', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
-  { id: 'new-whiteboard', labelKo: '새 화이트보드', labelEn: 'New whiteboard', defaultChord: 'mod+alt+w', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
+  { id: 'new-whiteboard', labelKo: '새 노트', labelEn: 'New note', defaultChord: 'mod+alt+w', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'open-study-board', labelKo: '학업 보드 탭 열기', labelEn: 'Open study board tab', defaultChord: 'mod+alt+d', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'close-tab', labelKo: '탭 닫기', labelEn: 'Close tab', defaultChord: 'mod+w', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'quick-search', labelKo: '빠른 파일 검색', labelEn: 'Quick file search', defaultChord: 'mod+p', scope: 'global', customizable: CUSTOM, guestAllowed: HOST_ONLY },

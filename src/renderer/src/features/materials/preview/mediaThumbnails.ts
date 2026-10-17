@@ -5,6 +5,7 @@ import { runThumbnailTask } from './thumbnailQueue'
 
 export interface MediaThumbnail {
   dataUrl: string
+  aspect?: number
   pageCount?: number
   durationSeconds?: number
 }
@@ -44,9 +45,11 @@ export function loadReferencedThumbnail(
   relPath: string,
   signal: AbortSignal,
   pageNumber = 1,
-  crop?: DrawingBox
+  crop?: DrawingBox,
+  documentRevision?: string
 ): Promise<MediaThumbnail> {
   return runThumbnailTask(signal, async () => {
+    if (documentRevision) return renderPdfThumbnail(JSON.stringify(['pdf', courseId, relPath, documentRevision, pageNumber, crop]), courseId, relPath, signal, pageNumber, crop, documentRevision)
     const metadata = await invoke('materials:hoverPreview', { courseId, relPath })
     signal.throwIfAborted()
     const version = `${metadata.mtime}:${metadata.size}`
@@ -142,10 +145,11 @@ export async function loadPdfThumbnail(
   version: string,
   signal: AbortSignal,
   pageNumber = 1,
-  crop?: DrawingBox
+  crop?: DrawingBox,
+  documentRevision?: string
 ): Promise<MediaThumbnail> {
-  const key = JSON.stringify(['pdf', courseId, relPath, version, pageNumber, crop])
-  return runThumbnailTask(signal, () => renderPdfThumbnail(key, courseId, relPath, signal, pageNumber, crop))
+  const key = JSON.stringify(['pdf', courseId, relPath, documentRevision ?? version, pageNumber, crop])
+  return runThumbnailTask(signal, () => renderPdfThumbnail(key, courseId, relPath, signal, pageNumber, crop, documentRevision))
 }
 
 async function renderPdfThumbnail(
@@ -154,7 +158,8 @@ async function renderPdfThumbnail(
   relPath: string,
   signal: AbortSignal,
   pageNumber: number,
-  crop?: DrawingBox
+  crop?: DrawingBox,
+  documentRevision?: string
 ): Promise<MediaThumbnail> {
   // Recheck after queueing: another independent request may have just cached it.
   const previous = cached(key)
@@ -167,7 +172,7 @@ async function renderPdfThumbnail(
   signal.throwIfAborted()
   configurePdfWorker()
   const loading = pdfjs.getDocument({
-    url: mediaUrlFor(courseId, relPath),
+    url: mediaUrlFor(courseId, relPath) + (documentRevision ? `?revision=${encodeURIComponent(documentRevision)}` : ''),
     disableStream: true,
     disableAutoFetch: true,
     rangeChunkSize: 65536,
@@ -200,7 +205,7 @@ async function renderPdfThumbnail(
       output.height = Math.max(1, Math.round(Math.min(1 - crop.y, crop.height) * canvas.height))
       output.getContext('2d')?.drawImage(canvas, x, y, output.width, output.height, 0, 0, output.width, output.height)
     }
-    return remember(key, { dataUrl: output.toDataURL('image/png'), pageCount: pdf.numPages })
+    return remember(key, { dataUrl: output.toDataURL('image/png'), pageCount: pdf.numPages, aspect: output.height / output.width })
   } finally {
     signal.removeEventListener('abort', abort)
     await loading.destroy().catch(() => undefined)

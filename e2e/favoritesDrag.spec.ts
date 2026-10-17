@@ -81,11 +81,9 @@ test('drags a real dockview tab into course favorites', async () => {
   try {
     await createCourse(page, '드래그 과목')
 
-    await page
-      .locator('.workspace-watermark')
-      .getByRole('button', { name: '새 탭 열기' })
-      .click()
-    await page.getByRole('option', { name: '학업 보드' }).click()
+    // Existing board descriptors remain real dockview tabs even though the
+    // five creation actions no longer include them. The rail is an overlay.
+    await page.keyboard.press('ControlOrMeta+Alt+KeyD')
 
     const tab = page.locator('.dv-tab', {
       has: page.locator('.workspace-tab__title', { hasText: '학업 보드' })

@@ -1,3 +1,5 @@
+import { BillingSyncPanel } from './BillingSyncPanel'
+import { prepareUpdateInstall } from '../updates/prepareUpdateInstall'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   isValidNickname,
@@ -9,7 +11,7 @@ import { useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
 import './account-panel.css'
 
-type PendingAction = 'nickname' | 'sign-out' | 'sign-in'
+type PendingAction = 'nickname' | 'sign-out' | 'sign-in' | 'link' | 'delete' | 'profile'
 
 interface Feedback {
   tone: 'success' | 'error'
@@ -86,14 +88,18 @@ export function AccountPanel(): JSX.Element {
     setPending(action)
     setFeedback(null)
     try {
-      await mutate()
+      const result = await mutate()
+      if (result && typeof result === 'object' && 'cancelled' in result && result.cancelled === true) {
+        if (mountedRef.current) setFeedback({ tone: 'success', message: '백업을 취소했습니다.' })
+        return
+      }
       await readAuth()
       if (mountedRef.current) {
         setFeedback({ tone: 'success', message: successMessage })
       }
-    } catch {
+    } catch (error) {
       if (mountedRef.current) {
-        setFeedback({ tone: 'error', message: failureMessage })
+        setFeedback({ tone: 'error', message: action === 'delete' && error instanceof Error ? error.message : failureMessage })
       }
     } finally {
       if (mountedRef.current) setPending(null)
@@ -121,13 +127,16 @@ export function AccountPanel(): JSX.Element {
 
   if (profile === null) {
     return (
+      <>
       <div className="account-panel-state">
         <strong>{t('settings.account.signedOut')}</strong>
         {auth?.phase !== 'unconfigured' && <div className="account-sign-in-actions">
-          {(['google', 'kakao'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('sign-in', async () => { const result = await invoke('auth:signIn', { provider }); if (!result.ok) throw new Error('로그인 실패') }, '브라우저에서 로그인을 완료해 주세요.', '로그인을 시작하지 못했어요.')}>{provider === 'google' ? 'Google' : 'Kakao'}로 로그인</button>)}
+          {(['apple', 'google', 'kakao'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('sign-in', async () => { const result = await invoke('auth:signIn', { provider }); if (!result.ok) throw new Error('로그인 실패') }, '브라우저에서 로그인을 완료해 주세요.', '로그인을 시작하지 못했어요.')}>{provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : 'Kakao'}로 로그인</button>)}
         </div>}
         {feedback && <p role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.message}</p>}
       </div>
+      {auth?.localAccess?.allowed && <BillingSyncPanel />}
+      </>
     )
   }
 
@@ -254,6 +263,32 @@ export function AccountPanel(): JSX.Element {
         </form>
       </section>
 
+      <BillingSyncPanel />
+      <section className="settings-card">
+        <h2>로그인 수단 연결</h2><p>현재 반달 계정에 로그인 수단을 추가합니다. 다른 계정의 자료는 합치지 않습니다.</p>
+        <div className="account-sign-in-actions">{(['apple', 'google', 'kakao'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('link', async () => { const result = await invoke('auth:linkProvider', { provider }); if (!result.ok) throw new Error('identity-link-failed') }, '로그인 화면에서 연결을 완료해 주세요.', '연결하지 못했습니다. 이미 다른 반달 계정에 연결된 수단인지 확인해 주세요.')}>{provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : 'Kakao'} 연결</button>)}</div>
+      </section>
+      <section className="settings-card">
+        <h2>자료 백업과 계정 변경</h2><p>다른 계정은 전체 자료를 백업하고 검증한 뒤 빈 프로필로 시작합니다. 기존 프로필과 원본 자료는 보존됩니다.</p>
+        <div className="account-sign-in-actions">
+          <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:backup', {}) }, '백업 절차를 마쳤습니다.', '백업을 완료하지 못했습니다.')}>전체 자료 백업</button>
+          <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => { if (window.confirm('전체 자료 백업 후 빈 프로필에서 다시 시작할까요?')) void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:new', {}) }, '새 프로필을 준비했습니다.', '자료를 보존했으며 프로필 전환을 완료하지 못했습니다.') }}>백업 후 새 프로필</button>
+        </div>
+      </section>
+      <section className="settings-card">
+        <h2>계정 삭제</h2><p>삭제 전 자료를 백업하고 구독을 확인해 주세요. 계정 삭제는 Apple·Paddle 구독 해지가 아닙니다. 각 구매처에서 별도로 해지해야 합니다.</p>
+        <p>서버의 계정 자료는 삭제되며 이 기기의 원본은 보존됩니다. 최근 로그인이 필요하며, 진행 중 거래·정산을 정리한 뒤 삭제할 수 있습니다. 완료된 거래는 개인정보를 제거해 보관합니다.</p>
+        <button type="button" className="account-sign-out-button" disabled={pending !== null} onClick={() => {
+          if (!window.confirm('계정과 서버 자료를 삭제할까요? 되돌릴 수 없습니다. 구독 해지는 구매처에서 별도로 진행해야 합니다.')) return
+          void runMutation('delete', async () => {
+            await prepareUpdateInstall()
+            const result = await invoke('auth:deleteAccount', { confirm: true })
+            if (!result.ok) throw new Error('deletion-incomplete')
+            if (result.appleRevocation === 'manual_required') window.alert('계정 자료를 삭제했습니다. Apple ID 설정 → Apple로 로그인 → 반달에서 연결 사용도 중단해 주세요.')
+          }, '계정을 삭제했습니다.', '삭제를 완료하지 못했습니다. 로그아웃 후 다시 로그인하고 시도해 주세요. 진행 중 거래가 있으면 먼저 정리해야 합니다.')
+        }}>계정 및 서버 자료 삭제</button>
+      </section>
+
       {feedback !== null && (
         <p
           className="account-panel__feedback"
@@ -276,7 +311,7 @@ export function AccountPanel(): JSX.Element {
           onClick={() => {
             void runMutation(
               'sign-out',
-              () => invoke('auth:signOut', {}),
+              async () => { await prepareUpdateInstall(); return invoke('auth:signOut', {}) },
               t('settings.account.signOut.done'),
               t('settings.account.signOut.failed')
             )

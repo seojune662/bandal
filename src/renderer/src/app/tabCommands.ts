@@ -7,6 +7,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
+import { openNewNoteSheet } from '../features/pdfNotes/NewNoteSheet'
 import type { TabDescriptor } from '../../../shared/tabs'
 import { invoke } from '../lib/ipc'
 import { useCoursesStore } from '../stores/coursesStore'
@@ -79,8 +80,6 @@ export async function createStudyTab(
   } else if (kind === 'recording') {
     open(descriptorFor('recording', { courseId }))
   } else {
-    const board = await invoke('canvas:create', { courseId })
-    if (target || activeCourseId() === courseId) open(descriptorFor('whiteboard', { courseId, boardId: board.id }))
-    else showToast('원래 과목에 새 화이트보드를 만들었어요.')
+    openNewNoteSheet(courseId, target)
   }
 }

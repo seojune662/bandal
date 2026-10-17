@@ -17,10 +17,10 @@ import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireInt, requireNonEmptyString } from '../../db/validate'
 
 export interface AnnotationsRepo {
-  listForFile(input: { courseId: string; relPath: string }): Annotation[]
+  listForFile(input: { courseId: string; relPath: string; documentRevision?: string }): Annotation[]
   create(input: CreateAnnotationInput): Annotation
   update(input: UpdateAnnotationInput): Annotation
-  softDelete(input: { id: string }): { ok: true }
+  softDelete(input: { id: string; documentRevision?: string }): { ok: true }
 }
 
 interface AnnotationRow {

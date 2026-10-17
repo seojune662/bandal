@@ -1,3 +1,4 @@
+import type { BillingState, RuntimeSyncState, RuntimeSyncConflict } from '../types/subscription'
 import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'
 import { LEARNING_CHANNELS, type LearningIpcContract } from './learningContract'
 import type { MaterialHoverPreview } from '../types/materialHoverPreview'
@@ -531,7 +532,7 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
 
   // -- annotations ----------------------------------------------------------
   'annotations:listForFile': {
-    req: { courseId: string; relPath: string }
+    req: { courseId: string; relPath: string; documentRevision?: string }
     res: Annotation[]
   }
   'annotations:create': {
@@ -543,7 +544,7 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
     res: Annotation
   }
   'annotations:delete': {
-    req: { id: string }
+    req: { id: string; documentRevision?: string }
     res: { ok: true }
   }
 
@@ -760,7 +761,7 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
 
   // -- pdf drawings (free-form markup: pen, shapes, text boxes) --------------
   'drawings:listForFile': {
-    req: { courseId: string; relPath: string }
+    req: { courseId: string; relPath: string; documentRevision?: string }
     res: Drawing[]
   }
   'drawings:create': {
@@ -772,7 +773,7 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
     res: Drawing
   }
   'drawings:delete': {
-    req: { ids: string[] }
+    req: { ids: string[]; documentRevision?: string }
     res: { ok: true }
   }
   /** Burns highlights + drawings into a NEW pdf; the original is never touched. */
@@ -1089,6 +1090,23 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
   // Prefixed `canvas:` rather than `board:` because `board:` already means the
   // study TASK board (board:listTasks / createTask). Two unrelated features
   // under one prefix is how a handler ends up wired to the wrong repo.
+  'pdfNotes:create': {
+    req: { courseId: string; title: string; paper: 'blank' | 'lines' | 'grid' | 'dots'; orientation: 'portrait' | 'landscape' }
+    res: { relPath: string }
+  }
+  'pdfNotes:info': {
+    req: { courseId: string; relPath: string }
+    res: { documentRevision: string; paper: 'blank' | 'lines' | 'grid' | 'dots' | null; surface: 'dark' | 'light'; orientation: 'portrait' | 'landscape' }
+  }
+  'pdf:restructure': {
+    req: { courseId: string; relPath: string; expectedRevision: string; pages: Array<{ source: number | null; rotate?: 0 | 90 | 180 | 270 }> }
+    res: { documentRevision: string; fingerprint: string; pageCount: number; pageMap: number[][] }
+  }
+  'pdfNotes:migrateLegacy': {
+    req: { courseId?: string }
+    res: { migrated: Array<{ boardId: string; materialId: string; relPath: string }>; failed: Array<{ boardId: string; message: string }> }
+  }
+  'pdfNotes:migrationStatus': { req: { courseId?: string }; res: Array<{ boardId: string; materialId: string; relPath: string; sourceRevision: string }> }
   'canvas:list': {
     req: { courseId: string }
     res: PersonalBoard[]
@@ -1292,6 +1310,7 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
       courseId: string
       id: string
       metadata: import('../types/link').PdfPageNoteLinkMetadata
+      pageNoteSource?: WriteNoteInput['pageNoteSource']
     }
     res: MaterialLinkRecord
   }
@@ -1544,6 +1563,23 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
     res: { ok: true }
   }
 
+  'auth:confirmProfile': { req: { userID: string }; res: AuthState }
+  'auth:linkProvider': { req: { provider: AuthProvider }; res: AuthSignInResult }
+  'auth:deleteAccount': { req: { confirm: true }; res: { ok: boolean; appleRevocation?: string } }
+  'profile:backup': { req: Record<string, never>; res: { ok: boolean; cancelled: boolean; path?: string } }
+  'profile:new': { req: Record<string, never>; res: { ok: boolean; cancelled: boolean; path?: string } }
+  'billing:getState': { req: Record<string, never>; res: BillingState }
+  'billing:prepareApple': { req: Record<string, never>; res: BillingState }
+  'billing:purchase': { req: { plan: 'monthly' | 'annual' }; res: BillingState }
+  'billing:restore': { req: Record<string, never>; res: BillingState }
+  'billing:refresh': { req: Record<string, never>; res: BillingState }
+  'billing:manageApple': { req: Record<string, never>; res: { ok: boolean } }
+  'runtime:syncState': { req: Record<string, never>; res: RuntimeSyncState }
+  'runtime:syncSetEnabled': { req: { enabled: boolean }; res: RuntimeSyncState }
+  'runtime:syncNow': { req: Record<string, never>; res: RuntimeSyncState }
+  'runtime:syncResolveConflict': { req: { id: string; choice: 'local' | 'remote' }; res: RuntimeSyncState }
+  'runtime:syncConflicts': { req: Record<string, never>; res: RuntimeSyncConflict[] }
+
   // -- auth -----------------------------------------------------------------
   /** Projected auth state. Never contains a token or an e-mail address. */
   'auth:getState': {
@@ -1564,6 +1600,7 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
     req: Record<string, never>
     res: { ok: true }
   }
+  'workspace:transitionReady': { req: { requestId: string; ok: boolean }; res: { ok: boolean } }
   /** Globally unique, 2–16 chars of `[가-힣a-zA-Z0-9_]` (§2.1). */
   'auth:setNickname': {
     req: { nickname: string }
@@ -1628,6 +1665,7 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
  * here actually got a handler.
  */
 export const IPC_CHANNELS = [
+  'pdfNotes:create', 'pdfNotes:info', 'pdf:restructure', 'pdfNotes:migrateLegacy', 'pdfNotes:migrationStatus',
   ...STUDY_MARKET_CHANNELS,
   ...LEARNING_CHANNELS,
   ...RECORDING_CHANNELS,
@@ -1829,9 +1867,26 @@ export const IPC_CHANNELS = [
   'layout:get',
   'layout:save',
   'layout:saveMany',
+  'auth:confirmProfile',
+  'auth:linkProvider',
+  'auth:deleteAccount',
+  'profile:backup',
+  'profile:new',
+  'billing:getState',
+  'billing:prepareApple',
+  'billing:purchase',
+  'billing:restore',
+  'billing:refresh',
+  'billing:manageApple',
+  'runtime:syncState',
+  'runtime:syncSetEnabled',
+  'runtime:syncNow',
+  'runtime:syncResolveConflict',
+  'runtime:syncConflicts',
   'auth:getState',
   'auth:signIn',
   'auth:signOut',
+  'workspace:transitionReady',
   'auth:setNickname',
   'update:status',
   'update:check',

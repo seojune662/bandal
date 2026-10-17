@@ -154,7 +154,7 @@ describe('tabTitle', () => {
       tabTitle(
         descriptorFor('whiteboard', { courseId: 'c', boardId: 'b1' })
       )
-    ).toBe('화이트보드')
+    ).toBe('노트')
   })
 })
 

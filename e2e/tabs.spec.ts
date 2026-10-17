@@ -83,10 +83,14 @@ test.describe('workspace tabs', () => {
       .toContain('autosave-e2e-marker')
   })
 
-  test('opens the study board from the + menu', async () => {
+  test('keeps the existing study board tab available through its dedicated shortcut', async () => {
     const { page } = bandal
     await openNewTabMenu(page)
-    await page.getByRole('option', { name: '학업 보드' }).click()
+    await expect(page.locator('.new-tab-menu__label')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    await page.keyboard.press('Escape')
+    // The global rail board is an overlay. This existing shortcut opens the
+    // compatible course tab, which must still participate in saved layouts.
+    await page.keyboard.press('ControlOrMeta+Alt+KeyD')
     await expect(
       page.locator('.workspace-tab__title', { hasText: '학업 보드' })
     ).toBeVisible()
@@ -99,7 +103,7 @@ test.describe('workspace tabs', () => {
     // RFC 2606 .invalid never resolves — the tab opens, no content loads.
     await page.getByLabel('새 탭 검색').fill('example.invalid')
     await page
-      .getByRole('option', { name: 'https://example.invalid 열기' })
+      .getByRole('option', { name: '브라우저 https://example.invalid', exact: true })
       .click()
 
     await expect(

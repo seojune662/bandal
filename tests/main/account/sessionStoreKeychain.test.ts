@@ -46,6 +46,15 @@ function tempFile(): string {
 }
 
 describe('group auth session store — keychain access', () => {
+  test('forced local logout clears the memory cache and encrypted file even after a remote failure', async () => {
+    const filePath = tempFile(), store = createSessionStore({ filePath, encryptor: countingEncryptor() })
+    await store.setItem('token', 'old-session')
+    await store.setItem('pkce', 'old-verifier')
+    store.clear()
+    expect(await store.getItem('token')).toBeNull()
+    expect(await store.getItem('pkce')).toBeNull()
+    expect(existsSync(filePath)).toBe(false)
+  })
   test('constructing it touches the keychain zero times', () => {
     const encryptor = countingEncryptor()
     createSessionStore({ filePath: tempFile(), encryptor })

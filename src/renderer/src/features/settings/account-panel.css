@@ -174,3 +174,23 @@
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+.account-sign-in-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sync-conflict-versions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+}
+
+.sync-conflict-versions > div {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}

@@ -1,0 +1,90 @@
+import { afterEach, expect, test, vi } from 'vitest'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { createTestDb } from '../helpers/testDb'
+import { createProfileManager, resolveActiveProfile } from '../../../src/main/features/account/profileManager'
+const cleanup: Array<() => void> = []
+afterEach(() => cleanup.splice(0).reverse().forEach(fn => fn()))
+function fixture() {
+  const testDb = createTestDb(); cleanup.push(testDb.cleanup)
+  const destination = mkdtempSync(join(tmpdir(), 'bandal-backup-test-')); cleanup.push(() => rmSync(destination, { recursive: true, force: true }))
+  const source = join(testDb.dir, 'external-course'); mkdirSync(source)
+  writeFileSync(join(source, 'local.md'), '# 보존할 자료')
+  testDb.db.prepare("INSERT INTO courses (id,name,slug,folder_path,color,created_at,updated_at,sort_order) VALUES ('course','학습','course',?,'blue','now','now',0)").run(source)
+  mkdirSync(join(testDb.dir, 'auth')); writeFileSync(join(testDb.dir, 'auth/session.enc'), 'not-portable')
+  const relaunch = vi.fn(), pause = vi.fn(), resume = vi.fn()
+  const manager = createProfileManager({ db: testDb.db, baseRoot: testDb.dir, root: testDb.dir, chooseDestination: async () => join(destination, 'export.bandalbackup'), pause, resume, relaunch })
+  return { ...testDb, source, destination, manager, relaunch, pause, resume }
+}
+test('verified full content backup precedes isolated profile switch', async () => {
+  const f = fixture()
+  const result = await f.manager.newProfile()
+  expect(result.ok).toBe(true)
+  expect(readFileSync(join(result.path!, 'courses/course/local.md'), 'utf8')).toBe('# 보존할 자료')
+  expect(existsSync(join(result.path!, 'profile/auth/session.enc'))).toBe(false)
+  expect(JSON.parse(readFileSync(join(result.path!, 'manifest.json'), 'utf8')).databaseSha256).toMatch(/^[a-f0-9]{64}$/)
+  const active = resolveActiveProfile(f.dir)
+  expect(active).not.toBe(f.dir)
+  expect(JSON.parse(readFileSync(join(active, 'settings.json'), 'utf8')).dataRoot).toBe(join(active, 'Courses'))
+  expect(existsSync(join(active, 'auth/session.enc'))).toBe(false)
+  expect(readFileSync(join(f.source, 'local.md'), 'utf8')).toBe('# 보존할 자료')
+  expect(f.relaunch).toHaveBeenCalledOnce()
+  expect(f.manager.busy()).toBe(true)
+  expect(f.resume).not.toHaveBeenCalled()
+})
+test('failed profile relaunch restores the old pointer and releases the verified backup pause', async () => {
+  const f = fixture()
+  f.relaunch.mockImplementation(() => { throw new Error('relaunch-failed') })
+  await expect(f.manager.newProfile()).rejects.toThrow('relaunch-failed')
+  expect(resolveActiveProfile(f.dir)).toBe(f.dir)
+  expect(f.manager.busy()).toBe(false)
+  expect(f.resume).toHaveBeenCalledOnce()
+  expect(existsSync(join(f.destination, 'export.bandalbackup', 'manifest.json'))).toBe(true)
+  expect(readFileSync(join(f.source, 'local.md'), 'utf8')).toBe('# 보존할 자료')
+})
+test('cancelled application quit restores the selected profile before editing resumes', async () => {
+  const f = fixture()
+  await f.manager.newProfile()
+  expect(resolveActiveProfile(f.dir)).not.toBe(f.dir)
+  expect(f.manager.busy()).toBe(true)
+  f.manager.cancelSwitch()
+  expect(resolveActiveProfile(f.dir)).toBe(f.dir)
+  expect(f.manager.busy()).toBe(false)
+  expect(f.resume).toHaveBeenCalledOnce()
+})
+test('cancelled backup never changes the active profile', async () => {
+  const f = fixture()
+  const manager = createProfileManager({ db: f.db, baseRoot: f.dir, root: f.dir, chooseDestination: async () => null, pause: vi.fn(), resume: vi.fn(), relaunch: f.relaunch })
+  expect(await manager.newProfile()).toMatchObject({ ok: false, cancelled: true })
+  expect(resolveActiveProfile(f.dir)).toBe(f.dir)
+  expect(f.relaunch).not.toHaveBeenCalled()
+})
+
+test('a second backup cannot enter while the first destination chooser is open', async () => {
+  const f = fixture()
+  let choose!: (value: string | null) => void
+  const resume = vi.fn()
+  const manager = createProfileManager({ db: f.db, baseRoot: f.dir, root: f.dir,
+    chooseDestination: () => new Promise(resolve => { choose = resolve }), pause: vi.fn(), resume, relaunch: f.relaunch })
+  const first = manager.backup()
+  expect(manager.busy()).toBe(true)
+  await expect(manager.backup()).rejects.toThrow('백업이 진행 중')
+  choose(null)
+  expect(await first).toMatchObject({ cancelled: true })
+  expect(manager.busy()).toBe(false)
+  expect(resume).not.toHaveBeenCalled()
+})
+
+test('a destination through a symlink into source content is rejected before creating files', async () => {
+  const f = fixture(), alias = join(f.destination, 'alias')
+  symlinkSync(f.source, alias, process.platform === 'win32' ? 'junction' : 'dir')
+  const pause = vi.fn(), resume = vi.fn()
+  const manager = createProfileManager({ db: f.db, baseRoot: f.dir, root: f.dir,
+    chooseDestination: async () => join(alias, 'recursive.bandalbackup'), pause, resume, relaunch: f.relaunch })
+  await expect(manager.backup()).rejects.toThrow('자료 폴더 밖')
+  expect(existsSync(join(f.source, 'recursive.bandalbackup'))).toBe(false)
+  expect(pause).not.toHaveBeenCalled()
+  expect(resume).not.toHaveBeenCalled()
+  expect(manager.busy()).toBe(false)
+})

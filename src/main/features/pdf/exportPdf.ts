@@ -1,3 +1,5 @@
+import { strokePathV5 } from '../../../shared/inkV5'
+import type { DrawingClipSource } from '../../../shared/types/drawing'
 import { strokePathV4 } from '../../../shared/inkV4'
 import { strokePathV2 } from '../../../shared/inkV2'
 import { strokePathV3 } from '../../../shared/inkV3'
@@ -37,6 +39,8 @@ import type {
   TextAlign
 } from '../../../shared/types/drawing'
 import { drawPdfText, type TextboxFont } from '../pdfText'
+import { createBoardMediaRenderer } from '../canvas/boardMediaPdf'
+import { readSurface } from './notePaper'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString, resolveInsideReal } from '../../db/validate'
 import {
@@ -91,6 +95,8 @@ const DRAWING_COLORS: Record<DrawingColor, Color> = {
   violet: rgb(0.49, 0.21, 0.82)
 }
 
+const DARK_DRAWING_COLORS: Record<DrawingColor, Color> = { ink: rgb(.94,.96,.99), red: rgb(1,.48,.5), orange: rgb(1,.68,.32), yellow: rgb(1,.88,.34), green: rgb(.46,.88,.6), blue: rgb(.46,.72,1), violet: rgb(.78,.62,1) }
+
 const HIGHLIGHT_COLORS: Record<HighlightColor, Color> = {
   yellow: rgb(0.98, 0.83, 0.18),
   green: rgb(0.3, 0.78, 0.4),
@@ -132,17 +138,17 @@ function annotationPageSpace(page: PDFPage): { width: number; height: number; ma
   }
 }
 
-function drawInk(page: PDFPage, drawing: Drawing, width: number, height: number): void {
+function drawInk(page: PDFPage, drawing: Drawing, width: number, height: number, palette: Record<DrawingColor, Color> = DRAWING_COLORS): void {
   const points = drawing.data.points ?? []
   if (points.length === 0) return
-  const color = DRAWING_COLORS[drawing.style.color]
+  const color = palette[drawing.style.color]
   const baseThickness = drawing.style.width * width
   const opacity = drawing.kind === 'highlighter'
     ? Math.min(drawing.style.opacity, 0.38)
     : drawing.style.opacity
-  const blendMode = drawing.kind === 'highlighter' ? BlendMode.Multiply : BlendMode.Normal
-  if (drawing.data.inkVersion === 2 || drawing.data.inkVersion === 3 || drawing.data.inkVersion === 4) {
-    const renderPath = drawing.data.inkVersion === 4 ? strokePathV4 : drawing.data.inkVersion === 3 ? strokePathV3 : strokePathV2
+  const blendMode = drawing.kind === 'highlighter' ? (palette === DARK_DRAWING_COLORS ? BlendMode.Screen : BlendMode.Multiply) : BlendMode.Normal
+  if (drawing.data.inkVersion === 2 || drawing.data.inkVersion === 3 || drawing.data.inkVersion === 4 || drawing.data.inkVersion === 5) {
+    const renderPath = drawing.data.inkVersion === 5 ? strokePathV5 : drawing.data.inkVersion === 4 ? strokePathV4 : drawing.data.inkVersion === 3 ? strokePathV3 : strokePathV2
     const path = renderPath(points, drawing.style.width, height / width, drawing.kind === 'highlighter', width, height)
     if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode })
     return
@@ -178,8 +184,8 @@ function drawInk(page: PDFPage, drawing: Drawing, width: number, height: number)
   }
 }
 
-function drawBoxShape(page: PDFPage, drawing: Drawing, box: DrawingBox, width: number, height: number): void {
-  const color = DRAWING_COLORS[drawing.style.color]
+function drawBoxShape(page: PDFPage, drawing: Drawing, box: DrawingBox, width: number, height: number, palette: Record<DrawingColor, Color> = DRAWING_COLORS): void {
+  const color = palette[drawing.style.color]
   const borderWidth = Math.max(drawing.style.width * width, 0.25)
   const x = box.x * width
   const boxWidth = box.width * width
@@ -208,7 +214,7 @@ function drawBoxShape(page: PDFPage, drawing: Drawing, box: DrawingBox, width: n
   }
 }
 
-function drawStraightLine(page: PDFPage, drawing: Drawing, width: number, height: number): void {
+function drawStraightLine(page: PDFPage, drawing: Drawing, width: number, height: number, palette: Record<DrawingColor, Color> = DRAWING_COLORS): void {
   const points = linePoints(drawing)
   if (points === null) return
   const start = pdfPoint(points[0], width, height)
@@ -216,7 +222,7 @@ function drawStraightLine(page: PDFPage, drawing: Drawing, width: number, height
   const thickness = Math.max(drawing.style.width * width, 0.25)
   const options = {
     thickness,
-    color: DRAWING_COLORS[drawing.style.color],
+    color: palette[drawing.style.color],
     opacity: drawing.style.opacity,
     lineCap: LineCapStyle.Round
   }
@@ -260,7 +266,8 @@ function drawTextbox(
   box: DrawingBox,
   fonts: TextboxFonts,
   width: number,
-  height: number
+  height: number,
+  palette: Record<DrawingColor, Color> = DRAWING_COLORS
 ): void {
   const style = drawing.style
   // Same metrics module as the on-screen layer, so the export wraps and
@@ -285,7 +292,7 @@ function drawTextbox(
       y: bottom,
       width: boxWidth,
       height: boxHeight,
-      color: DRAWING_COLORS[style.fill],
+      color: palette[style.fill],
       opacity: TEXT_FILL_OPACITY
     })
   }
@@ -311,7 +318,7 @@ function drawTextbox(
     if (y < bottom) break
     let x = left + inset + Math.max(0, maxWidth - line.width) * alignFactor
     for (const run of line.runs) {
-      const runColor = DRAWING_COLORS[run.style.color]
+      const runColor = palette[run.style.color]
       drawPdfText(page, run.text, run.font, {
         x, y, fontSize: run.fontSize, color: runColor, opacity,
         italic: run.style.italic === true
@@ -364,6 +371,7 @@ export function resolveDefaultFontPath(file: TextboxFontFile): string {
 }
 
 export interface PdfExporterDeps {
+  resolveClipSource?: (courseId:string,source:DrawingClipSource)=>string
   getCourseFolder: (courseId: string) => string
   listDrawings: (courseId: string, relPath: string) => Drawing[]
   listAnnotations: (courseId: string, relPath: string) => Annotation[]
@@ -433,6 +441,8 @@ export function createPdfExporter(deps: PdfExporterDeps): {
   async function annotateDocument(pdf: PDFDocument, input: ExportAnnotatedPdfInput): Promise<void> {
     const { courseId, relPath } = input
     const pages = pdf.getPages()
+    const palette = readSurface(pdf) === 'dark' ? DARK_DRAWING_COLORS : DRAWING_COLORS
+    const renderMedia = createBoardMediaRenderer(pdf, deps.getCourseFolder(courseId),deps.resolveClipSource?source=>deps.resolveClipSource!(courseId,source):undefined)
     const annotations = deps.listAnnotations(courseId, relPath)
     const drawings = deps.listDrawings(courseId, relPath)
     const textboxes = drawings.filter((drawing) => drawing.kind === 'textbox')
@@ -453,22 +463,17 @@ export function createPdfExporter(deps: PdfExporterDeps): {
       page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...matrix))
       try {
         if (drawing.kind === 'ink' || drawing.kind === 'highlighter') {
-          drawInk(page, drawing, width, height)
+          drawInk(page, drawing, width, height, palette)
         } else if (drawing.kind === 'rect' || drawing.kind === 'ellipse') {
           if (drawing.data.box !== undefined) {
-            drawBoxShape(page, drawing, drawing.data.box, width, height)
+            drawBoxShape(page, drawing, drawing.data.box, width, height, palette)
           }
         } else if (drawing.kind === 'line' || drawing.kind === 'arrow') {
-          drawStraightLine(page, drawing, width, height)
-        } else if (drawing.kind === 'image' && drawing.data.image && drawing.data.box) {
-          const canonicalImage = resolveInsideReal(deps.getCourseFolder(courseId), drawing.data.image.relPath)
-          const { nativeImage } = await import('electron')
-          const png = nativeImage.createFromBuffer(await readFile(canonicalImage)).toPNG()
-          const image = await pdf.embedPng(png)
-          const box = drawing.data.box
-          page.drawImage(image, { x: box.x * width, y: (1 - box.y - box.height) * height, width: box.width * width, height: box.height * height, opacity: drawing.style.opacity })
+          drawStraightLine(page, drawing, width, height, palette)
+        } else if (drawing.kind === 'image' || drawing.kind === 'clip') {
+          await renderMedia(page, drawing, { width, height })
         } else if (drawing.kind === 'textbox' && fonts !== null && drawing.data.box !== undefined) {
-          drawTextbox(page, drawing, drawing.data.box, fonts, width, height)
+          drawTextbox(page, drawing, drawing.data.box, fonts, width, height, palette)
         }
       } finally { page.pushOperators(popGraphicsState()) }
     }

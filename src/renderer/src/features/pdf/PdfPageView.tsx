@@ -44,7 +44,8 @@ import {
   readBandalImageDragData
 } from '../ink'
 import { imageDataUrl } from '../image/imageSource'
-import { pdfClipLabel, writeBandalClipDragData } from './clipTransfer'
+import { BANDAL_CLIP_MIME, readBandalClipDragData, pdfClipLabel, writeBandalClipDragData } from './clipTransfer'
+import { clipBoxAtDrop } from '../canvas/canvasModel'
 
 const PDF_PASTED_IMAGE_DIRECTORY = 'images'
 
@@ -71,6 +72,7 @@ export interface PdfPageViewProps {
   drawingsInteractive: boolean
   courseId: string
   relPath: string
+  documentRevision?: string
   staleIds: Set<string>
   hoveredId: string | null
   activeId: string | null
@@ -307,12 +309,26 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
 
   const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>): void => {
     const types = Array.from(event.dataTransfer.types)
-    if (!types.includes(BANDAL_IMAGE_MIME) && !types.includes('Files')) return
+    if (!types.includes(BANDAL_IMAGE_MIME) && !types.includes(BANDAL_CLIP_MIME) && !types.includes('Files')) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
   }, [])
 
   const handleDrop = useCallback((event: ReactDragEvent<HTMLElement>): void => {
+    if (!drawingsInteractive || drawingsLoading) return
+    const clip = readBandalClipDragData(event.dataTransfer)
+    const target = wrapperRef.current
+    if (clip && target) {
+      const point = pointInPage(target, event.clientX, event.clientY)
+      if (!point) return
+      event.preventDefault()
+      event.stopPropagation()
+      void onDrawingCreate({ courseId, relPath, page: pageNumber, kind: 'clip',
+        data: { box: clipBoxAtDrop(point, aspect, (clip.pageAspect ?? Math.SQRT2) * (clip.crop ? clip.crop.height / clip.crop.width : 1)), clip },
+        style: { color: 'ink', width: .002, opacity: 1 }
+      }).catch(() => showToast('클립을 놓지 못했습니다.', 'danger'))
+      return
+    }
     const source =
       readBandalImageDragData(event.dataTransfer) ??
       imageSourceFromFileDrop(courseId, event.dataTransfer)
@@ -327,11 +343,12 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       console.error('[Bandal] PDF에 이미지를 놓지 못했습니다.', error)
       showToast('이미지를 놓지 못했습니다.', 'danger')
     })
-  }, [courseId, placeImage])
+  }, [courseId, relPath, pageNumber, aspect, drawingsInteractive, drawingsLoading, onDrawingCreate, placeImage])
 
   const height = Math.round(width * aspect)
   const clipSource: DrawingClipSource = {
     relPath,
+    ...(props.documentRevision ? { documentRevision: props.documentRevision } : {}),
     page: pageNumber,
     pageAspect: aspect,
     label: pdfClipLabel(relPath, pageNumber, false)
@@ -368,8 +385,8 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
           type="button"
           className="pdf-page__clip-drag"
           draggable
-          aria-label={`${pageNumber} 페이지를 화이트보드로 보내기`}
-          title="눌러서 화이트보드로 보내기 (끌어다 놓아도 돼요)"
+          aria-label={`${pageNumber} 페이지를 노트로 보내기`}
+          title="눌러서 노트로 보내기 (끌어다 놓아도 돼요)"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
@@ -386,7 +403,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
           }}
         >
           <TabKindIcon kind="whiteboard" />
-          화이트보드로
+          노트로
         </button>
       )}
       {isVisible ? (

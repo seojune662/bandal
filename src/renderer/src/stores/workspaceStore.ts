@@ -117,8 +117,8 @@ interface WorkspaceState {
   activePanelSource: () => { panelId: string; descriptor: TabDescriptor } | null
   /** Wired to dockview's onDidLayoutChange by WorkspaceHost. */
   notifyLayoutChanged: () => void
-  /** Send any pending save immediately (course switch / beforeunload). */
-  flushPendingSave: () => void
+  /** Send immediately; transitions await the durable ACK, legacy callers may ignore it. */
+  flushPendingSave: () => Promise<void>
   /**
    * [M5] Drop a pending save for a course that no longer exists
    * (delete/archive) — saving it would fail against the dead course row.
@@ -180,6 +180,16 @@ let pendingSaves: PendingSave[] = []
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let activeSave: ActiveSave | null = null
 let saveRevision = 0
+const saveWaiters = new Set<{ resolve(): void; reject(error: Error): void }>()
+
+function settleSaveWaiters(): void {
+  if (activeSave !== null || pendingSaves.some(save => !save.exhausted)) return
+  for (const waiter of saveWaiters) {
+    if (pendingSaves.length > 0) waiter.reject(new Error('작업 공간을 저장하지 못해 전환하지 않았어요. 저장 상태를 확인한 뒤 다시 시도해 주세요.'))
+    else waiter.resolve()
+  }
+  saveWaiters.clear()
+}
 
 const LAYOUT_SAVE_RETRY_LIMIT = 3
 const LAYOUT_SAVE_RETRY_BASE_MS = 250
@@ -327,7 +337,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       return
     }
     const saves = pendingSaves.filter(save => !save.exhausted)
-    if (saves.length === 0) return
+    if (saves.length === 0) { settleSaveWaiters(); return }
     const job: ActiveSave = {
       saves,
       failures: 0,
@@ -835,7 +845,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     flushPendingSave: () => {
+      const completed = new Promise<void>((resolve, reject) => { saveWaiters.add({ resolve, reject }) })
+      // Existing course-switch/beforeunload callers are intentionally best
+      // effort; observing their rejection here does not mask it from awaiters.
+      void completed.catch(() => {})
       flush()
+      return completed
     },
 
     discardPendingSave: (courseId) => {
@@ -848,6 +863,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       pendingSaves = pendingSaves.filter((save) => save.courseId !== courseId)
       if (pendingSaves.length !== previousLength && pendingSaves.length === 0) {
         clearSaveTimer()
+        settleSaveWaiters()
       }
       set({ openTabs: { ...get().openTabs } })
     }
@@ -876,6 +892,8 @@ export function resetWorkspaceStoreForTests(): void {
   discardedCourses.clear()
   activeSave = null
   saveRevision = 0
+  for (const waiter of saveWaiters) waiter.resolve()
+  saveWaiters.clear()
   useWorkspaceStore.setState({
     surface: 'course',
     activeCourseId: null,

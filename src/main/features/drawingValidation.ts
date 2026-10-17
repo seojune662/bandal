@@ -143,6 +143,19 @@ function assertClip(value: unknown): DrawingClipSource {
     page: clip.page,
     label: clip.label
   }
+  if (clip.materialID !== undefined) {
+    if(typeof clip.materialID!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(clip.materialID))throw new ValidationError('Invalid clip materialID')
+    result.materialID=clip.materialID
+  }
+  if (clip.documentRevision !== undefined) {
+    if(typeof clip.documentRevision!=='string'||!/^[a-f0-9]{64}$/.test(clip.documentRevision))throw new ValidationError('Invalid clip documentRevision')
+    result.documentRevision=clip.documentRevision
+  }
+  if (clip.documentByteCount !== undefined) {
+    if(!Number.isSafeInteger(clip.documentByteCount)||clip.documentByteCount<=0)throw new ValidationError('Invalid clip documentByteCount')
+    result.documentByteCount=clip.documentByteCount
+  }
+  if(clip.pageAspect!==undefined){if(!Number.isFinite(clip.pageAspect)||clip.pageAspect<=0)throw new ValidationError('Invalid clip pageAspect');result.pageAspect=clip.pageAspect}
   if (clip.crop !== undefined) result.crop = assertBox(clip.crop, 'data.clip.crop')
   return result
 }
@@ -275,7 +288,7 @@ export function assertDrawingData(
 
   const result: DrawingData = {}
   if (candidate.inkVersion !== undefined) {
-    if ((candidate.inkVersion !== 2 && candidate.inkVersion !== 3 && candidate.inkVersion !== 4) || (kind !== 'ink' && kind !== 'highlighter')) throw new ValidationError('Unsupported ink renderer version')
+    if ((candidate.inkVersion !== 2 && candidate.inkVersion !== 3 && candidate.inkVersion !== 4 && candidate.inkVersion !== 5) || (kind !== 'ink' && kind !== 'highlighter')) throw new ValidationError('Unsupported ink renderer version')
     result.inkVersion = candidate.inkVersion
   }
   if (points !== undefined) result.points = points

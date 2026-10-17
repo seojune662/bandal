@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -32,9 +32,14 @@ file_size_limit = "512MiB"
 [analytics]
 enabled = false
 `)
-copyFileSync(join(root,'tests/backend/syncAccess/personal-sync-fixture.sql'),join(workdir,'supabase/migrations/202610130001_personal_sync.sql'))
-for (const name of ['20261013010000_paddle_billing_sandbox.sql','20261015010000_paddle_billing_live.sql','20261015020000_sync_paid_access.sql','20261015030000_sync_quota_errors.sql']) {
+copyFileSync(join(root,'supabase/migrations/20261013005000_personal_sync.sql'),join(workdir,'supabase/migrations/20261013005000_personal_sync.sql'))
+for (const name of ['20261013010000_paddle_billing_sandbox.sql','20261015010000_paddle_billing_live.sql','20261015020000_sync_paid_access.sql','20261015030000_sync_quota_errors.sql','20261017000000_apple_billing.sql','20261017010000_account_deletion.sql']) {
   copyFileSync(join(root,'supabase/migrations',name),join(workdir,'supabase/migrations',name))
+}
+if (process.env.BANDAL_ACCOUNT_DELETE_FULL_SCHEMA === '1') {
+  for (const name of readdirSync(join(root, 'supabase/migrations')).filter(name => name.endsWith('.sql'))) {
+    copyFileSync(join(root, 'supabase/migrations', name), join(workdir, 'supabase/migrations', name))
+  }
 }
 function run(command,args,env=process.env,quiet=false) {
   return new Promise((resolve,reject) => {
@@ -56,7 +61,7 @@ function run(command,args,env=process.env,quiet=false) {
 try {
   console.info('Starting isolated sync access Auth/Postgres/Storage on ports 56830–56832…')
   await run(cli,['start','--workdir',workdir,'--exclude','realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor'],process.env,true)
-  await run(process.execPath,['node_modules/vitest/vitest.mjs','run','tests/backend/syncAccess/integration.test.ts','--testTimeout','20000'],{
+  await run(process.execPath,['node_modules/vitest/vitest.mjs','run',...(process.env.BANDAL_ACCOUNT_DELETE_ONLY === '1' ? ['tests/backend/appleBilling/deletion.integration.test.ts'] : ['tests/backend/syncAccess/integration.test.ts','tests/backend/appleBilling/integration.test.ts','tests/backend/appleBilling/deletion.integration.test.ts']),'--no-file-parallelism','--testTimeout','20000'],{
     ...process.env,BANDAL_SYNC_ACCESS_TEST_DIR:workdir,BANDAL_SUPABASE_CLI:cli
   })
 } finally {

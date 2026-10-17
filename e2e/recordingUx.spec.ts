@@ -188,26 +188,17 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
     const { page } = bandal
     await createCourse(page, '탭 설정 검증')
     await page.keyboard.press(`${mod}+t`)
-    const options = page.getByRole('option')
-    expect(
-      (await options.allTextContents())
-        .slice(0, 7)
-        .map((text) => text.replace(/\s+/g, ' '))
-    ).toEqual([
-      expect.stringContaining('새 마크다운'),
-      expect.stringContaining('새 브라우저 탭'),
-      expect.stringContaining('AI'),
-      expect.stringContaining('학습 공간'),
-      expect.stringContaining('녹음'),
-      expect.stringContaining('새 화이트보드'),
-      expect.stringContaining('학업 보드')
-    ])
-    for (const index of [0, 1, 2, 4, 5, 6])
+    const menu = page.getByRole('dialog', { name: '새 탭 열기' })
+    const options = menu.getByRole('option')
+    await expect(options).toHaveCount(5)
+    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    for (const index of [0, 1, 2, 3, 4])
       await expect(options.nth(index)).toContainText(process.platform === 'darwin' ? '⌘' : 'Ctrl')
     await page.keyboard.press('Escape')
     await page.keyboard.press(`${mod}+,`)
     await page.locator('.settings-nav [data-category="tabs"]').click()
     const prefs = page.locator('.tab-settings')
+    await expect(prefs.getByRole('tablist', { name: '탭 종류' }).getByRole('tab')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
     await prefs.getByRole('tab', { name: '녹음', exact: true }).click()
     await prefs
       .getByRole('combobox', { name: '기본 재생 속도' })
@@ -224,15 +215,9 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
       .getByRole('textbox', { name: '새 파일 제목 접두어' })
       .fill('강의 필기')
     await prefs.getByRole('button', { name: '저장', exact: true }).click()
-    await prefs.getByRole('tab', { name: '화이트보드', exact: true }).click()
-    await prefs
-      .getByRole('combobox', { name: '기본 배경' })
-      .selectOption('dots')
-    await prefs.getByRole('tab', { name: '학업 보드', exact: true }).click()
-    await prefs
-      .getByRole('combobox', { name: '시작 화면' })
-      .selectOption('board')
-    await prefs.getByRole('switch', { name: '완료한 항목 숨기기' }).click()
+    await prefs.getByRole('tab', { name: '노트', exact: true }).click()
+    await prefs.getByRole('combobox', { name: '기본 종이' }).selectOption('dots')
+    await prefs.getByRole('combobox', { name: '기본 방향' }).selectOption('landscape')
     await prefs.getByRole('tab', { name: '브라우저', exact: true }).click()
     await expect(
       prefs.getByText('홈페이지', { exact: true }).first()
@@ -252,15 +237,17 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
         recordingPlaybackRate: 1.5,
         recordingSidebarOpen: false,
         markdownTitlePrefix: '강의 필기',
-        whiteboardBackground: 'dots',
-        boardDefaultView: 'board',
-        boardHideDone: true
+        notePaper: 'dots',
+        noteOrientation: 'landscape'
       })
     await page.keyboard.press('Escape')
     await page.keyboard.press(`${mod}+Shift+m`)
     await expect(
       page.locator('.dv-tab').filter({ hasText: '강의 필기' })
     ).toBeVisible()
+    await page.evaluate(() => window.bandal.invoke('settings:set', { browser: { homePage: 'https://example.invalid' } }))
+    await page.keyboard.press(`${mod}+Shift+b`)
+    await expect(page.locator('.browser-toolbar:visible')).toBeVisible()
     await page.keyboard.press(`${mod}+Shift+a`)
     await expect(page.locator('.dv-tab.dv-active-tab')).toContainText('AI')
     await page.keyboard.press(`${mod}+Alt+r`)
@@ -269,11 +256,22 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
       page.locator('.recording:visible .recording__sidebar')
     ).toBeHidden()
     await page.keyboard.press(`${mod}+Alt+w`)
-    const boards = await page.evaluate(async () => {
+    const sheet = page.getByRole('dialog', { name: '새 노트', exact: true })
+    await expect(sheet.getByRole('radio', { name: '점', exact: true })).toBeChecked()
+    await expect(sheet.getByRole('radio', { name: '가로', exact: true })).toBeChecked()
+    await sheet.getByLabel('제목', { exact: true }).fill('기본 종이 검증')
+    await sheet.getByRole('button', { name: '만들기', exact: true }).click()
+    await expect(page.locator('.pdf-page[data-pdf-page="1"]')).toBeVisible()
+    const created = await page.evaluate(async () => {
       const course = (await window.bandal.invoke('courses:list', {}))[0]!
-      return window.bandal.invoke('canvas:list', { courseId: course.id })
+      return {
+        note: await window.bandal.invoke('pdfNotes:info', { courseId: course.id, relPath: '노트/기본 종이 검증.pdf' }),
+        legacyBoards: await window.bandal.invoke('canvas:list', { courseId: course.id })
+      }
     })
-    expect(boards[0]?.background).toBe('dots')
+    expect(created.note).toMatchObject({ paper: 'dots', orientation: 'landscape', surface: 'light' })
+    expect(created.legacyBoards).toHaveLength(0)
+    // A saved legacy tab remains reachable without reappearing in the five-item menu.
     await page.keyboard.press(`${mod}+Alt+d`)
     await expect(page.locator('.dv-tab.dv-active-tab')).toContainText(
       '학업 보드'

@@ -1,3 +1,5 @@
+import { reconcilePageNoteRevision } from './reconcilePageNoteRevision'
+import { flushDocumentSaves } from '../documents/saveRegistry'
 import { usePanelAssistant } from '../assistantPanel/panelContext'
 import { registerDocumentContext } from '../agent/documentContext'
 /**
@@ -22,7 +24,7 @@ import { Document } from 'react-pdf'
 import type { IDockviewPanelProps } from 'dockview'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { showToast } from '../../app/toast'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 import { configurePdfWorker } from './pdfWorker'
 import 'react-pdf/dist/Page/TextLayer.css'
 import './pdf.css'
@@ -43,7 +45,9 @@ import { wheelZoomFactor } from './lib/zoomInput'
 import { PdfPageView } from './PdfPageView'
 import { usePageImageCopy } from '../pageImageCopy/usePageImageCopy'
 import { renderPdfPageImage } from './lib/renderPageImage'
-import { PdfPreviewPanel } from './PdfPreviewPanel'
+import { PdfPagesPanel } from './PdfPagesPanel'
+import { rememberPageMap, takeRemappedAnchor } from './pageRecipe'
+import type { PdfNoteInfo } from '../../../../shared/types/pdfNote'
 import { AnnotationRail } from './AnnotationRail'
 import {
   HighlightPopover,
@@ -72,9 +76,6 @@ import type { Drawing } from '../../../../shared/types/drawing'
 import type { TabDescriptor } from '../../../../shared/tabs'
 import {
   isPdfPageNotePairContext,
-  parsePdfPageNote,
-  reconcilePdfPageNote,
-  serializePdfPageNote,
   type PdfPageNotePairContext
 } from '../../../../shared/pdfPageNote'
 import { pdfClipLabel } from './clipTransfer'
@@ -173,7 +174,11 @@ function PdfViewer({
   interactive,
   visible,
   panelId,
-  pageNotePair
+  pageNotePair,
+  noteInfo,
+  isPreviewOpen,
+  setIsPreviewOpen,
+  onRestructured
 }: {
   courseId: string
   relPath: string
@@ -181,18 +186,42 @@ function PdfViewer({
   visible: boolean
   panelId: string
   pageNotePair: PdfPageNotePairContext | null
+  noteInfo: PdfNoteInfo
+  isPreviewOpen: boolean
+  setIsPreviewOpen: React.Dispatch<React.SetStateAction<boolean>>
+  onRestructured(result?: { pageMap: number[][] }): void
 }): JSX.Element {
   const assistant = usePanelAssistant()
   // 문서 소스는 bandal-media:// URL — pdf.js 가 Range 요청으로 필요한
   // 페이지만 가져온다. base64-over-IPC 시절의 64MB 캡·메모리 상주가 없다.
   const fileSource = useMemo(
-    () => ({ url: mediaUrlFor(courseId, relPath) }),
-    [courseId, relPath]
+    () => ({ url: `${mediaUrlFor(courseId, relPath)}?revision=${noteInfo.documentRevision}` }),
+    [courseId, relPath, noteInfo.documentRevision]
   )
   const [loadError, setLoadError] = useState<string | null>(null)
-  const annotationsApi = useAnnotations(courseId, relPath)
+  const [restructuring, setRestructuring] = useState(false)
+  const [updatedElsewhere, setUpdatedElsewhere] = useState(false)
+  useEffect(() => {
+    let active = true
+    const off = onPush('materials:changed', event => {
+      if (event.courseId !== courseId) return
+      void invoke('pdfNotes:info', { courseId, relPath }).then(info => {
+        if (active && info.documentRevision !== noteInfo.documentRevision) setUpdatedElsewhere(true)
+      }).catch(() => {})
+    })
+    return () => { active = false; off() }
+  }, [courseId, relPath, noteInfo.documentRevision])
+  const showUpdatedDocument = async (): Promise<void> => {
+    try {
+      await flushDocumentSaves().catch(error => {
+        if (!(error instanceof Error) || !error.message.includes('복구함에 보관했습니다')) throw error
+      })
+      onRestructured()
+    } catch (error) { showToast(error instanceof Error ? error.message : '필기 저장 후 다시 시도해 주세요.', 'danger') }
+  }
+  const annotationsApi = useAnnotations(courseId, relPath, noteInfo.documentRevision)
   const { annotations, byPage } = annotationsApi
-  const drawingsApi = useDrawings(courseId, relPath)
+  const drawingsApi = useDrawings(courseId, relPath, noteInfo.documentRevision)
   const activeTool = usePdfToolStore((state) => state.activeTool)
 
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -229,7 +258,6 @@ function PdfViewer({
     return () => { live = false; off() }
   }, [courseId, relPath, currentPage, pdfProxy, panelId])
 
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [localRailOpen, setLocalRailOpen] = useState(false)
   const isRailOpen = assistant?.highlightsOpen ?? localRailOpen
   const setIsRailOpen = (open: boolean | ((value: boolean) => boolean)): void => {
@@ -328,7 +356,7 @@ function PdfViewer({
   }, [pageNotePair, pairedConnection, setPageNoteSync])
 
   useEffect(() => {
-    if (pdfProxy === null || pageNoteConnections.length === 0) return
+    if (updatedElsewhere || pdfProxy === null || pageNoteConnections.length === 0) return
     const fingerprint = pdfProxy.fingerprints[0] ?? ''
     const stale = pageNoteConnections.filter(
       (record) =>
@@ -344,30 +372,9 @@ function PdfViewer({
       for (const record of stale) {
         if (disposed || record.target.kind !== 'note') return
         try {
-          const note = await invoke('notes:read', record.target.payload)
-          const document = parsePdfPageNote(note.markdown)
-          if (document === null) continue
-          const reconciled = reconcilePdfPageNote(
-            document,
-            relPath,
-            fingerprint,
-            pageSizes
-          )
-          await invoke('notes:write', {
-            ...record.target.payload,
-            markdown: serializePdfPageNote(reconciled),
-            expectedMtime: note.mtime
-          })
-          await invoke('links:updatePageNote', {
-            courseId,
-            id: record.id,
-            metadata: {
-              version: 1,
-              syncScroll: record.metadata?.syncScroll ?? true,
-              fingerprint,
-              pageSizes
-            }
-          })
+          const result = await reconcilePageNoteRevision({ courseId, relPath,
+            documentRevision: noteInfo.documentRevision, fingerprint, pageSizes, record, cancelled: () => disposed })
+          if (result === 'stale') { if (!disposed) setUpdatedElsewhere(true); return }
         } catch (error) {
           console.error('[Bandal] 변경된 PDF와 페이지 필기를 맞추지 못했습니다.', error)
         }
@@ -379,7 +386,7 @@ function PdfViewer({
     return () => {
       disposed = true
     }
-  }, [courseId, pageNoteConnections, pdfProxy, relPath])
+  }, [courseId, pageNoteConnections, pdfProxy, relPath, noteInfo.documentRevision, updatedElsewhere])
 
   useEffect(() => {
     if (pdfProxy === null) return
@@ -709,15 +716,16 @@ function PdfViewer({
   const togglePageNoteSync = useCallback((): void => {
     const next = !pageNoteSync
     setPageNoteSync(next)
-    if (pairedConnection?.metadata === null || pairedConnection === null) return
+    if (pairedConnection?.metadata === null || pairedConnection === null || !noteInfo?.documentRevision || updatedElsewhere) return
     void invoke('links:updatePageNote', {
       courseId,
       id: pairedConnection.id,
-      metadata: { ...pairedConnection.metadata, syncScroll: next }
+      metadata: { ...pairedConnection.metadata, syncScroll: next },
+      pageNoteSource: { relPath, documentRevision: noteInfo.documentRevision }
     }).catch((error: unknown) => {
       console.error('[Bandal] 페이지 필기 동기화 설정을 저장하지 못했습니다.', error)
     })
-  }, [courseId, pageNoteSync, pairedConnection, setPageNoteSync])
+  }, [courseId, relPath, pageNoteSync, pairedConnection, setPageNoteSync, noteInfo?.documentRevision, updatedElsewhere])
 
   // Switching away should flush the semantic anchor immediately instead of
   // waiting for the scroll debounce. On return, the layout effect above uses
@@ -756,7 +764,7 @@ function PdfViewer({
     // linked pane, explicit jump, or a tab that has since been hidden/closed.
     const canRestore = (): boolean => restoreMountedRef.current && !restoreRef.current.cancelled && visibleRef.current && scrollerRef.current === scroller
     restoreRef.current.done = true
-    const entry = pdfScrollMemory.get(courseId, relPath)
+    const entry = takeRemappedAnchor(courseId, relPath, pdfScrollMemory.get(courseId, relPath))
     if (
       entry !== null &&
       (entry.anchor !== undefined || entry.scrollHeight > 0)
@@ -1120,6 +1128,8 @@ function PdfViewer({
   return (
     <div
       className="pdf-tab"
+      data-note-surface={noteInfo.surface}
+      data-restructuring={restructuring || undefined}
       data-tool={activeTool}
       data-text-selecting={textSelectionActive ? 'true' : undefined}
       onWheelCapture={cancelInitialRestore}
@@ -1149,6 +1159,7 @@ function PdfViewer({
         pageNoteSyncEnabled={pageNoteSync}
         onTogglePageNoteSync={togglePageNoteSync}
       />
+      {updatedElsewhere && <div className="pdf-annotation-error" role="status"><span>다른 창이나 기기에서 PDF 페이지가 변경되었습니다. 이전 페이지에 쓴 필기는 복구 기록에 보관합니다.</span><button type="button" onClick={() => void showUpdatedDocument()}>변경된 페이지 열기</button></div>}
       {annotationsApi.error !== null && (
         <div className="pdf-annotation-error" role="alert">
           <span>주석을 저장하거나 불러오지 못했어요: {annotationsApi.error}</span>
@@ -1161,11 +1172,15 @@ function PdfViewer({
       <TextFormatRow visible={activeTool === 'text'} />
       <div className="pdf-tab__main">
         {isPreviewOpen && (
-          <PdfPreviewPanel
+          <PdfPagesPanel
             pdf={pdfProxy}
             numPages={numPages}
             currentPage={currentPage}
             onJump={jumpToPage}
+            courseId={courseId} relPath={relPath} revision={noteInfo.documentRevision}
+            suspend={async () => { setRestructuring(true); await flushDocumentSaves() }}
+            resume={() => setRestructuring(false)}
+            onRestructured={onRestructured}
           />
         )}
         <div
@@ -1229,6 +1244,7 @@ function PdfViewer({
                       drawingsLoading={drawingsApi.loading}
                       courseId={courseId}
                       relPath={relPath}
+                      documentRevision={noteInfo.documentRevision}
                       staleIds={staleIds}
                       hoveredId={idOnPage(hoveredId)}
                       activeId={idOnPage(editPopover?.annotationId ?? null)}
@@ -1258,6 +1274,7 @@ function PdfViewer({
                   crop: rectsBoundingBox(pendingSelection.rects),
                   pageAspect:
                     pageAspects.get(pendingSelection.page) ?? defaultAspect,
+                  documentRevision: noteInfo.documentRevision,
                   label: pdfClipLabel(relPath, pendingSelection.page, true)
                 }}
                 onPick={(color) => void createHighlight(color)}
@@ -1337,6 +1354,18 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
   const hasBeenShown = useHasBeenShown(props.api)
   const panelActive = usePanelActive(props.api)
   const panelVisible = usePanelVisible(props.api)
+  const [generation, setGeneration] = useState(0)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [noteInfo, setNoteInfo] = useState<PdfNoteInfo | null>(null)
+  const [infoError, setInfoError] = useState('')
+  const currentDescriptor = descriptorFromParams(props.params)
+  const course = currentDescriptor?.kind === 'pdf' ? currentDescriptor.payload.courseId : null
+  const path = currentDescriptor?.kind === 'pdf' ? currentDescriptor.payload.relPath : null
+  useEffect(() => {
+    let current = true; setNoteInfo(null); setInfoError('')
+    if (hasBeenShown && course && path) void invoke('pdfNotes:info', { courseId: course, relPath: path }).then(info => { if (current) setNoteInfo(info) }).catch(error => { if (current) setInfoError(error instanceof Error ? error.message : 'PDF를 확인하지 못했습니다.') })
+    return () => { current = false }
+  }, [course, path, generation, hasBeenShown])
 
   // dockview 기본 렌더러('onlyWhenVisible')는 비활성 패널의 DOM 을 떼어내고,
   // 분리된 스크롤 컨테이너는 브라우저가 scrollTop 을 0으로 리셋한다 — 탭을
@@ -1357,6 +1386,8 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
       </div>
     )
   }
+  if (infoError) return <ErrorPanel message={infoError} />
+  if (!noteInfo) return <LoadingSkeleton />
   const { courseId, relPath } = descriptor.payload
   const pageNotePair = isPdfPageNotePairContext(props.params['pageNotePair']) &&
     props.params['pageNotePair'].role === 'pdf'
@@ -1365,13 +1396,17 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
   return (
     <div className="workspace-panel pdf-panel" data-kind="pdf">
       <PdfViewer
-        key={`${courseId}:${relPath}`}
+        key={`${courseId}:${relPath}:${generation}`}
         courseId={courseId}
         relPath={relPath}
         interactive={panelActive}
         visible={panelVisible}
         panelId={props.api.id}
         pageNotePair={pageNotePair}
+        noteInfo={noteInfo}
+        isPreviewOpen={isPreviewOpen}
+        setIsPreviewOpen={setIsPreviewOpen}
+        onRestructured={result => { if (result) rememberPageMap(courseId, relPath, result.pageMap); setGeneration(value => value + 1) }}
       />
     </div>
   )

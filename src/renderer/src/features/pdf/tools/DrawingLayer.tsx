@@ -1,14 +1,17 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type {
   CreateDrawingInput,
   Drawing,
   DrawingBox,
+  DrawingClipSource,
   DrawingShape,
   UpdateDrawingInput
 } from '../../../../../shared/types/drawing'
 import { InkLayer } from '../../ink/InkLayer'
 import type { InkToolState } from '../../ink/inkToolStore'
 import { usePdfToolStore } from './toolStore'
+import { createPdfClipRenderer } from '../renderClip'
+import { ClipOriginalDialog } from '../ClipOriginalDialog'
 
 interface DrawingLayerProps {
   courseId: string
@@ -50,6 +53,10 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
     remove,
     resolveId
   } = props
+  const renderClip = useMemo(() => createPdfClipRenderer(courseId), [courseId])
+  const [clipSource,setClipSource]=useState<DrawingClipSource|null>(null)
+  const openClip=useCallback((source:DrawingClipSource)=>setClipSource(source),[])
+  const closeClip=useCallback(()=>setClipSource(null),[])
   const activeTool = usePdfToolStore((state) => state.activeTool)
   const color = usePdfToolStore((state) => state.color)
   const width = usePdfToolStore((state) => state.width)
@@ -78,6 +85,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
   }, [drawings, refine])
 
   return (
+    <>
     <InkLayer
       key={JSON.stringify([courseId, relPath, page])}
       courseId={courseId}
@@ -85,6 +93,8 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
       baseWidthPx={pageWidth}
       surfaceWidthPt={pageWidthPt}
       shapes={drawings}
+      renderClip={renderClip}
+      onOpenClip={openClip}
       tool={tool}
       onCreate={handleCreate}
       onUpdate={handleUpdate}
@@ -96,5 +106,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
       ariaLabel={`${page} 페이지 필기 레이어`}
       className={loading ? 'pdf-drawing-layer is-loading' : 'pdf-drawing-layer'}
     />
+    {clipSource&&<ClipOriginalDialog courseId={courseId} source={clipSource} onClose={closeClip}/>}
+    </>
   )
 }

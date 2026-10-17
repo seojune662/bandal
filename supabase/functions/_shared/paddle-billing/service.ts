@@ -20,7 +20,7 @@ export function configured(config: BillingConfig): boolean { return config.enabl
 
 function checked<T>(result: { data: T; error: { message: string } | null }): T {
   if (result.error) {
-    const safe = ['subscription_exists', 'checkout_plan_already_pending', 'request_id_reused', 'checkout_binding_pending', 'checkout_binding_mismatch', 'customer_binding_mismatch', 'subscription_mismatch', 'payment_mismatch', 'event_payload_mismatch', 'checkout_not_ready', 'adjustment_binding_pending', 'adjustment_mismatch']
+    const safe = ['subscription_exists', 'checkout_in_progress', 'checkout_plan_already_pending', 'request_id_reused', 'checkout_binding_pending', 'checkout_binding_mismatch', 'customer_binding_mismatch', 'subscription_mismatch', 'payment_mismatch', 'event_payload_mismatch', 'checkout_not_ready', 'adjustment_binding_pending', 'adjustment_mismatch']
     throw new BillingError(safe.includes(result.error.message) ? result.error.message : 'billing_storage_unavailable', ['checkout_binding_pending', 'adjustment_binding_pending'].includes(result.error.message) ? 503 : 409)
   }
   return result.data
@@ -35,7 +35,8 @@ export function createBillingService(db: SupabaseClient, config: BillingConfig, 
   async function status(userId: string) {
     const customer = checked(await table('customers').select('customer_id').eq('environment', env).eq('user_id', userId).maybeSingle())
     const sync = env === 'live' ? checked(await db.rpc('bandal_sync_status_for', { actor: userId })) : undefined
-    return { paddleCustomerId: customer ? identifier(customer.customer_id, 'ctm') : null, environment: env, enabled: configured(config) && mayCheckout(userId), entitlement: await rpc('status', { actor: userId, env }), ...(sync ? { sync } : {}) }
+    const subscription = env === 'live' ? checked(await db.rpc('bandal_subscription_status_for', { actor: userId })) : undefined
+    return { paddleCustomerId: customer ? identifier(customer.customer_id, 'ctm') : null, environment: env, enabled: configured(config) && mayCheckout(userId), entitlement: await rpc('status', { actor: userId, env }), ...(sync ? { sync, subscription } : {}) }
   }
   async function actor(request: Request): Promise<string> {
     const auth = request.headers.get('authorization') ?? ''

@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 const publishedRelease = (tag_name, published_at, extra = {}) => ({ tag_name, published_at, draft: false, prerelease: false, ...extra })
@@ -211,12 +211,16 @@ test('Paddle Deno checks target existing API and webhook entrypoints selected in
 test('iPad billing client changes select safe error handling and the account menu', () => {
   for (const file of ['resources/ipad-bridge/bridge.py', 'src/main/features/ipadSync/runtime.ts', 'tests/main/ipadSync/test_bridge_billing.py']) {
     const plan = planChecks([file])
-    assert.deepEqual(plan.pythonTests, ['tests/main/ipadSync/test_bridge_billing.py'])
+    const expected = ['tests/main/ipadSync/test_bridge_billing.py']
+    if (file.startsWith('resources/')) expected.push('tests/main/ipadSync/test_bridge_scope.py')
+    if (!file.startsWith('tests/')) expected.push('tests/main/ipadSync/test_bridge_cancellation.py')
+    assert.deepEqual(plan.pythonTests, expected)
     assert.deepEqual(plan.e2e, ['e2e/ipadBilling.spec.ts'])
     assert.equal(plan.paddleBillingBackend, false)
     assert.equal(plan.syncAccessBackend, false)
   }
   assert.deepEqual(planChecks(['src/main/features/pdf/exportPdf.ts']).pythonTests, [])
+  assert.deepEqual(planChecks(['tests/main/ipadSync/test_bridge_cancellation.py']).pythonTests, ['tests/main/ipadSync/test_bridge_cancellation.py'])
 })
 
 test('only isolated Live function declarations narrow shared Supabase configuration scope', () => {
@@ -244,12 +248,46 @@ test('sync access and billing schema changes select SQL and Storage quota checks
   assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).syncAccessBackend, false)
 })
 
+test('Apple verification and notifications select native-provider units and sync SQL without unrelated app E2E', () => {
+  for (const file of [...APPLE_BILLING_FUNCTIONS, 'supabase/functions/_shared/apple-billing/provider.ts', 'supabase/migrations/20261017000000_apple_billing.sql', 'tests/backend/appleBilling/provider.deno.ts']) {
+    const plan = planChecks([file])
+    assert.equal(plan.appleBillingBackend, true)
+    assert.equal(plan.accountDeletionBackend, false)
+    assert.equal(plan.syncAccessBackend, true)
+    assert.equal(plan.studyMarketBackend, false)
+    assert.equal(plan.full, false)
+    assert.deepEqual(plan.types, [])
+    assert.deepEqual(plan.e2e, [])
+    assert.ok(plan.unitInputs.includes('tests/backend/appleBilling/service.test.ts'))
+    assert.ok(!plan.unitInputs.some(input => input.endsWith('.deno.ts')))
+  }
+  for (const file of APPLE_BILLING_FUNCTIONS) assert.equal(existsSync(file), true)
+  assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).appleBillingBackend, false)
+})
+
+test('account deletion selects all-schema cleanup integration and custody tests, while the base schema selects sync', () => {
+  for (const file of [...ACCOUNT_DELETION_FUNCTIONS, 'supabase/functions/_shared/account-delete/apple.ts', 'supabase/migrations/20261017010000_account_deletion.sql', 'tests/backend/appleBilling/deletion.test.ts']) {
+    const plan = planChecks([file])
+    assert.equal(plan.accountDeletionBackend, true)
+    assert.equal(plan.appleBillingBackend, false)
+    assert.equal(plan.syncAccessBackend, true)
+    assert.equal(plan.full, false)
+    assert.deepEqual(plan.e2e, [])
+    assert.ok(plan.unitInputs.includes('tests/backend/appleBilling/deletion.test.ts'))
+  }
+  for (const file of ACCOUNT_DELETION_FUNCTIONS) assert.equal(existsSync(file), true)
+  assert.equal(planChecks(['supabase/migrations/20261013005000_personal_sync.sql']).syncAccessBackend, true)
+  assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).accountDeletionBackend, false)
+})
+
 test('shared Edge configuration and full checks verify both billing backends', () => {
   for (const file of ['supabase/config.toml', 'supabase/functions/deno.json', 'supabase/functions/deno.lock', 'package.json']) {
     const plan = planChecks([file])
     assert.equal(plan.studyMarketBackend, true)
     assert.equal(plan.paddleBillingBackend, true)
     assert.equal(plan.syncAccessBackend, true)
+    assert.equal(plan.appleBillingBackend, true)
+    assert.equal(plan.accountDeletionBackend, true)
   }
   assert.equal(planChecks([], true).paddleBillingBackend, true)
 })
@@ -669,4 +707,12 @@ test('onboarding and plugin management select their own regressions without glob
   const mixed = planChecks(['src/renderer/src/features/settings/settings-plugins.css', 'src/renderer/src/styles/tokens.css'])
   assert.ok(mixed.e2e.includes('e2e/theme.spec.ts'))
   assert.ok(mixed.e2e.includes('e2e/pluginCenter.spec.ts'))
+})
+
+test('account entry and PDF note flows keep their focused packaged coverage', () => {
+  assert.ok(planChecks(['src/renderer/src/features/account/AccountAccessGate.tsx']).e2e.includes('e2e/accountNotes.spec.ts'))
+  for (const file of ['src/renderer/src/features/account/AccountAccessGate.tsx', 'src/main/features/account/profileManager.ts', 'src/main/ipc/workspaceTransition.ts', 'src/renderer/src/features/documents/workspaceTransition.ts', 'src/preload/index.ts', 'src/shared/ipc/events.ts']) assert.ok(planChecks([file]).e2e.includes('e2e/accountProfileBackup.spec.ts'), file)
+  assert.ok(planChecks(['src/main/features/pdf/pdfNotes.ts']).e2e.includes('e2e/accountNotes.spec.ts'))
+  assert.ok(planChecks(['src/renderer/src/features/pdf/useWhiteboardClipDelivery.ts']).e2e.includes('e2e/pdfClip.spec.ts'))
+  assert.deepEqual(planChecks(['resources/ipad-bridge/projector-host.cjs']).pythonTests, ['tests/main/ipadSync/test_bridge_scope.py'])
 })

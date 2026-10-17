@@ -67,7 +67,7 @@ for (const scenario of [{ theme: 'dark', width: 1440, height: 900, zoom: 1 }, { 
       // The last pane is focused; opening from the first pane must honor its +.
       const first = groups.first()
       await first.getByRole('button', { name: '새 탭 열기', exact: true }).click()
-      await page.locator('.new-tab-menu').getByRole('option').filter({ hasText: '새 마크다운' }).first().click()
+      await page.locator('.new-tab-menu').getByRole('option', { name: '마크다운', exact: true }).click()
       await expect(first.locator('.dv-tab')).toHaveCount(4)
       expect(await groups.evaluateAll(elements => elements.map(element => element.querySelectorAll('.dv-tab').length))).toEqual([4, 3, 3, 3])
       for (let count = 4; count > 0; count--) {

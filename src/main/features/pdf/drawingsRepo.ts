@@ -38,10 +38,8 @@ interface DrawingRow {
   updated_at: string
 }
 
-/** A PDF page accepts every drawing kind except a clip of another PDF page. */
-const DRAWING_KINDS: readonly DrawingKind[] = ALL_DRAWING_KINDS.filter(
-  (kind) => kind !== 'clip'
-)
+// Notes preserve every editable object from a legacy board, including PDF clips.
+const DRAWING_KINDS: readonly DrawingKind[] = ALL_DRAWING_KINDS
 
 function rowToDrawing(row: DrawingRow): Drawing {
   return {
@@ -96,7 +94,7 @@ export function createDrawingsRepo(db: Database, options: { documentRevision?: (
       const relPath = requireNonEmptyString(input.relPath, 'relPath')
       const page = requireInt(input.page, 'page', 1)
       const kind = assertDrawingKind(input.kind, DRAWING_KINDS)
-      const data = assertDrawingData(input.data, kind)
+      const data = assertDrawingData(input.data, kind, { allowClip: true })
       const style = assertDrawingStyle(input.style)
       const operationID = input.clientMutationId
       if (operationID !== undefined && (typeof operationID !== 'string' ||
@@ -157,7 +155,7 @@ export function createDrawingsRepo(db: Database, options: { documentRevision?: (
       const kind = row.kind as DrawingKind
       const data = input.data === undefined
         ? JSON.parse(row.data_json) as DrawingData
-        : assertDrawingData(input.data, kind)
+        : assertDrawingData(input.data, kind, { allowClip: true })
       const style = input.style === undefined
         ? JSON.parse(row.style_json) as DrawingStyle
         : assertDrawingStyle(input.style)

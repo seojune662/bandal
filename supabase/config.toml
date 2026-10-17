@@ -439,3 +439,23 @@ verify_jwt = false
 
 [functions.paddle-webhook-live]
 verify_jwt = false
+
+[functions.apple-billing]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.apple-notifications]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.apple-billing-sandbox]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.apple-notifications-sandbox]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.account-delete]
+verify_jwt = false
+import_map = "./functions/deno.json"

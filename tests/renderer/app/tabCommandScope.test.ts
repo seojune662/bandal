@@ -1,7 +1,8 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createMarkdownTab, createStudyTab } from '../../../src/renderer/src/app/tabCommands'
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), load: vi.fn(), toast: vi.fn(), courseId: 'first' as string | null, surface: 'course' }))
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), load: vi.fn(), toast: vi.fn(), paper: vi.fn(), courseId: 'first' as string | null, surface: 'course' }))
+vi.mock('../../../src/renderer/src/features/pdfNotes/NewNoteSheet', () => ({ openNewNoteSheet: mocks.paper }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: mocks.invoke }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: mocks.toast }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => ({ selectedCourseId: mocks.courseId }) } }))
@@ -30,32 +31,28 @@ test('a failed new note command gives actionable feedback', async () => {
 })
 
 
-test.each(['other-course', 'learning-home'])('a delayed whiteboard creation preserves the current %s surface', async destination => {
-  let resolve!: (value: unknown) => void
-  mocks.invoke.mockReturnValue(new Promise(done => { resolve = done }))
-  const pending = createStudyTab('whiteboard')
-  if (destination === 'other-course') mocks.courseId = 'second'
-  else mocks.surface = 'learning-home'
-  resolve({ id: 'new-board' })
-  await pending
-  expect(mocks.invoke).toHaveBeenCalledWith('canvas:create', { courseId: 'first' })
+test('the note command captures its course and pane before opening the paper sheet', async () => {
+  const target = { courseId: 'first', groupId: 'bottom-right' }
+  await createStudyTab('whiteboard', target)
+  mocks.courseId = 'second'
+  expect(mocks.paper).toHaveBeenCalledWith('first', target)
+  expect(mocks.invoke).not.toHaveBeenCalled()
   expect(mocks.open).not.toHaveBeenCalled()
-  expect(mocks.toast).toHaveBeenCalledWith('원래 과목에 새 화이트보드를 만들었어요.')
 })
 
-test('a whiteboard still opens when its original course remains active', async () => {
-  mocks.invoke.mockResolvedValue({ id: 'new-board' })
+test('the note command needs an active course without an explicit pane', async () => {
+  mocks.surface = 'learning-home'
   await createStudyTab('whiteboard')
-  expect(mocks.open).toHaveBeenCalledWith({ kind: 'whiteboard', payload: { courseId: 'first', boardId: 'new-board' } })
+  expect(mocks.paper).not.toHaveBeenCalled()
 })
 
-test.each(['note', 'whiteboard'])('an asynchronous %s keeps its captured pane when focus changes', async kind => {
+test('an asynchronous markdown keeps its captured pane when focus changes', async () => {
   let resolve!: (value: unknown) => void
   mocks.invoke.mockReturnValue(new Promise(done => { resolve = done }))
   const target = { courseId: 'first', groupId: 'bottom-right' }
-  const pending = kind === 'note' ? createMarkdownTab('내용', target) : createStudyTab('whiteboard', target)
+  const pending = createMarkdownTab('내용', target)
   mocks.courseId = 'second'
-  resolve(kind === 'note' ? { courseId: 'first', relPath: '내용.md' } : { id: 'new-board' })
+  resolve({ courseId: 'first', relPath: '내용.md' })
   await pending
-  expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ kind: kind === 'note' ? 'note' : 'whiteboard' }), { target })
+  expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ kind: 'note' }), { target })
 })

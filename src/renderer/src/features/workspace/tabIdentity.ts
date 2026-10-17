@@ -92,7 +92,7 @@ export function tabTitle(descriptor: TabDescriptor): string {
     case 'board':
       return '학업 보드'
     case 'whiteboard':
-      return '화이트보드'
+      return '노트'
     case 'plugin-panel': {
       const panel = usePluginsStore
         .getState()

@@ -9,18 +9,15 @@
  * BrowserWindow would put us inside Google's "embedded user-agent" ban and
  * give the renderer a view of the auth code.
  *
- * THE NON-NEGOTIABLE RULE (§1.4): with auth unconfigured or signed out, every
- * Phase-1 feature works exactly as it does today. Which is why:
- *   - nothing here runs unless an `auth:*` invoke arrives
- *   - a missing key set is `phase: 'unconfigured'`, not an error
- *   - every session-restore failure (network, expiry, corrupt file) degrades
- *     to `signed-out` and the app boots normally
+ * Local access is granted by a durable, account-bound verification receipt.
+ * Network/session failure does not revoke that receipt; explicit logout does.
  *
  * ⚠ NEVER log the callback URL or a token. The URL carries a single-use
  * authorization code; `authCallbackUrl.ts` owns every look at it and
  * `describeAuthCallback()` is the only log-safe rendering.
  */
 
+import type { LocalAccessStore } from './localAccessStore'
 import { accountAvatarUrl } from '../../../shared/account/avatar'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
@@ -45,6 +42,7 @@ import {
 } from './authCallbackUrl'
 
 export interface AuthServiceDeps {
+  localAccess?: LocalAccessStore
   /** null when the build has no Supabase keys → 'unconfigured' forever. */
   client: SupabaseClient | null
   /** Broadcast `auth:changed` to every window. */
@@ -63,6 +61,9 @@ export interface AuthService {
   /** Restores a persisted session. Never throws; never blocks boot. */
   restore(): Promise<AuthState>
   signIn(provider: AuthProvider): Promise<AuthSignInResult>
+  linkProvider(provider: AuthProvider): Promise<AuthSignInResult>
+  confirmProfile(userID: string): Promise<AuthState>
+  beginAccountDeletion(): { cancel(): void; uncertain(): void }
   /**
    * Completes (or abandons) a sign-in from a `bandal://` deep link.
    * Never throws — every failure lands in the auth state instead.
@@ -109,13 +110,15 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   let sessionVersion = 0
   let unsubscribe: (() => void) | null = null
   let signingOut = false
+  let linking = false
+  let deleting = false
   /** The code currently being exchanged — the re-entrancy guard (§handleDeepLink). */
   let exchangingCode: string | null = null
   /** Codes already spent. A replayed callback must not burn a rate-limit slot. */
   const spentCodes = new Set<string>()
 
   function publish(next: AuthState): AuthState {
-    state = next
+    state = { ...next, ...(deps.localAccess ? { localAccess: deps.localAccess.state() } : {}) }
     deps.onChanged(state)
     return state
   }
@@ -139,7 +142,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   function ensureAuthSubscription(client: SupabaseClient): void {
     if (unsubscribe !== null) return
     const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
-      if (signingOut) return
+      if (signingOut || deleting || exchangingCode !== null) return
       if (session === null) {
         clearSession()
         publish({ ...SIGNED_OUT_AUTH_STATE })
@@ -174,10 +177,32 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     accessToken: string,
     userId: string,
     userEmail: string | null,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    interactive = false
   ): Promise<AuthState> {
     const version = ++sessionVersion
     const avatarUrl = accountAvatarUrl(metadata)
+    if (deps.localAccess && deps.client) {
+      if (!interactive && deps.localAccess.requiresInteractiveSignIn()) {
+        clearSession(); deps.destroySession()
+        return publish({ ...SIGNED_OUT_AUTH_STATE })
+      }
+      if (!deps.localAccess.canAccept(userId)) {
+        clearSession()
+        unsubscribe?.(); unsubscribe = null
+        deps.destroySession()
+        return failed('profile-mismatch')
+      }
+      try {
+        const { data, error } = await deps.client.auth.getUser(accessToken)
+        if (version !== sessionVersion || signingOut) return state
+        if (!error && data.user?.id === userId) deps.localAccess.acceptVerified(userId)
+        else if (!deps.localAccess.state().allowed) return failed('network')
+      } catch {
+        if (version !== sessionVersion || signingOut) return state
+        if (!deps.localAccess.state().allowed) return failed('network')
+      }
+    }
     token = accessToken
     uid = userId
     try {
@@ -217,7 +242,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   async function updateProfile(
     patch: Record<string, string>
   ): Promise<MyProfile> {
-    if (deps.client === null || uid === null) {
+    if (deps.client === null || uid === null || deleting) {
       throw new Error('not-signed-in')
     }
     const userId = uid
@@ -246,10 +271,58 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   }
 
   return {
-    getState: () => state,
+    getState: () => ({ ...state, ...(deps.localAccess ? { localAccess: deps.localAccess.state() } : {}) }),
+
+    beginAccountDeletion() {
+      if (deleting || !uid || !deps.localAccess) throw new Error('login-required')
+      const transaction = deps.localAccess.beginDeletion()
+      deleting = true
+      linking = false
+      sessionVersion += 1
+      let settled = false
+      return {
+        cancel() {
+          if (settled) return
+          transaction.cancel()
+          settled = true; deleting = false
+          publish(state)
+        },
+        uncertain() {
+          if (settled) return
+          settled = true; deleting = false
+          unsubscribe?.(); unsubscribe = null
+          clearSession(); deps.destroySession()
+          failed('network')
+        }
+      }
+    },
+
+    async confirmProfile(userID) {
+      if (uid !== userID || !token || !deps.client || !deps.localAccess) throw new Error('not-signed-in')
+      const { data, error } = await deps.client.auth.getUser(token)
+      if (error || data.user?.id !== userID || uid !== userID) throw new Error('다시 로그인한 뒤 계정 연결을 확인해 주세요.')
+      deps.localAccess.confirm(userID)
+      return publish(state)
+    },
+
+    async linkProvider(provider) {
+      if (!deps.client || !uid || deleting) return { ok: false, reason: 'provider' }
+      try {
+        const { data, error } = await deps.client.auth.linkIdentity({ provider, options: { redirectTo: AUTH_CALLBACK_URL, skipBrowserRedirect: true } })
+        if (error || !data.url) return { ok: false, reason: 'provider' }
+        linking = true
+        await deps.openExternal(data.url)
+        return { ok: true }
+      } catch { linking = false; return { ok: false, reason: 'network' } }
+    },
 
     async restore() {
       if (deps.client === null) return state
+      if (deleting) return state
+      if (deps.localAccess?.requiresInteractiveSignIn()) {
+        clearSession(); deps.destroySession()
+        return publish({ ...SIGNED_OUT_AUTH_STATE })
+      }
       const version = sessionVersion
       try {
         const { data, error } = await deps.client.auth.getSession()
@@ -344,7 +417,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
      *  4. Two callbacks racing → the in-flight code is the guard.
      */
     async handleDeepLink(url) {
-      if (signingOut) return
+      if (signingOut || deleting) return
       const parsed = parseAuthCallbackUrl(url)
       if (parsed.kind === 'ignored') {
         if (parsed.why !== 'not-auth-callback') return
@@ -361,11 +434,12 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       // over ANY late callback. macOS re-delivers `open-url` on relaunch and
       // people click the browser's "return to app" twice — treating a stale
       // cancellation as a sign-out would evict a perfectly good session.
-      if (uid !== null || state.phase === 'signed-in') {
+      if (!linking && (uid !== null || state.phase === 'signed-in')) {
         console.info('[account] auth callback ignored — a session already exists')
         return
       }
 
+      if (linking && (parsed.kind === 'cancelled' || parsed.kind === 'failed')) { linking = false; return }
       if (parsed.kind === 'cancelled') {
         console.info('[account] sign-in cancelled by the user')
         clearSession()
@@ -411,7 +485,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           data.session.access_token,
           data.session.user.id,
           data.session.user.email ?? null,
-          data.session.user.user_metadata
+          data.session.user.user_metadata,
+          true
         )
       } catch (error) {
         if (version !== sessionVersion || signingOut) return
@@ -419,10 +494,14 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         failed('network')
       } finally {
         exchangingCode = null
+        linking = false
       }
     },
 
     async signOut() {
+      deps.localAccess?.lock()
+      deleting = false
+      linking = false
       signingOut = true
       unsubscribe?.()
       unsubscribe = null

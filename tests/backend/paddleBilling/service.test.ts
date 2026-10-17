@@ -9,6 +9,7 @@ const config: BillingConfig = { enabled: true, environment: 'sandbox', webOrigin
 function fixture(overrides: Partial<BillingConfig> = {}) {
   const getUser = vi.fn(async () => ({ data: { user: { id: TEST_USER } }, error: null }))
   const rpc = vi.fn(async (name: string, _input: unknown): Promise<any> => {
+    if (name === 'bandal_subscription_status_for') return { data: { active: false, sources: [], duplicateSubscription: false }, error: null }
     if (name === 'bandal_sync_status_for') return { data: { storageUsedBytes: 120, storageLimitBytes: 5368709120, usageComplete: true, writeAllowed: true, accessSource: 'subscription' }, error: null }
     if (name.endsWith('reserve_checkout')) return { data: { id: TEST_USER, created: true, state: 'creating' }, error: null }
     if (name.endsWith('status')) return { data: { active: false, status: 'none' }, error: null }

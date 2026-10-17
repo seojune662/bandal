@@ -7,6 +7,8 @@ export interface TabPreferences {
   recordingSidebarOpen: boolean
   recordingFollowTranscript: boolean
   recordingPlaybackRate: number
+  notePaper: 'blank' | 'grid' | 'dots' | 'lines'
+  noteOrientation: 'portrait' | 'landscape'
   whiteboardBackground: 'blank' | 'grid' | 'dots' | 'lines'
   boardDefaultView: 'board' | 'calendar'
   boardHideDone: boolean
@@ -18,6 +20,8 @@ export const DEFAULT_TAB_PREFERENCES: TabPreferences = {
   recordingSidebarOpen: true,
   recordingFollowTranscript: true,
   recordingPlaybackRate: 1,
+  notePaper: 'lines',
+  noteOrientation: 'portrait',
   whiteboardBackground: 'grid',
   boardDefaultView: 'calendar',
   boardHideDone: false
@@ -61,6 +65,8 @@ export function sanitizeTabPreferences(raw: unknown): TabPreferences {
     )
       ? (r.recordingPlaybackRate as number)
       : d.recordingPlaybackRate,
+    notePaper: typeof r.notePaper === 'string' && ['blank', 'grid', 'dots', 'lines'].includes(r.notePaper) ? r.notePaper as TabPreferences['notePaper'] : d.notePaper,
+    noteOrientation: r.noteOrientation === 'landscape' ? 'landscape' : 'portrait',
     whiteboardBackground:
       typeof r.whiteboardBackground === 'string' &&
       ['blank', 'grid', 'dots', 'lines'].includes(r.whiteboardBackground)

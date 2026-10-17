@@ -134,7 +134,7 @@ export function parseRangeHeader(
 
 export interface MediaProtocolDeps {
   /** 경로 이탈 가드를 거친 절대 경로 (materialsRepo.absolutePathFor). */
-  absolutePathFor(courseId: string, relPath: string): string | Promise<string>
+  absolutePathFor(courseId: string, relPath: string, revision?: string): string | Promise<string>
 }
 
 function notFound(): Response {
@@ -152,7 +152,9 @@ export function createMediaProtocolHandler(
     let abs: string
     try {
       // absolutePathFor 는 이탈/부재 시 throw 한다 — 존재 여부를 숨기고 404.
-      abs = await deps.absolutePathFor(parsed.courseId, parsed.relPath)
+      const revision = new URL(request.url).searchParams.get('revision') ?? undefined
+      if (revision !== undefined && !/^[0-9a-f]{64}$/.test(revision)) return notFound()
+      abs = await deps.absolutePathFor(parsed.courseId, parsed.relPath, revision)
     } catch {
       return notFound()
     }

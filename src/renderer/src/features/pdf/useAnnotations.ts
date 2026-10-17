@@ -1,3 +1,5 @@
+import { readViewedPdfRevision } from './readViewedPdfRevision'
+import { registerDocumentSave } from '../documents/saveRegistry'
 /**
  * Annotation state for one open PDF: loads the file's annotations over IPC
  * and exposes create/update/remove that keep local state in sync with the
@@ -34,7 +36,8 @@ function errorMessage(error: unknown): string {
 
 export function useAnnotations(
   courseId: string,
-  relPath: string
+  relPath: string,
+  documentRevision?: string
 ): AnnotationsApi {
   // The load and every write share one queue. A late initial read must not
   // erase a highlight created while the PDF itself was already usable.
@@ -65,7 +68,8 @@ export function useAnnotations(
     active.current = session
     void enqueue(async () => {
       try {
-        session.annotations = await invoke('annotations:listForFile', { courseId, relPath })
+        const rows = await readViewedPdfRevision(courseId, relPath, documentRevision, () => invoke('annotations:listForFile', { courseId, relPath, ...(documentRevision ? { documentRevision } : {}) }))
+        if (rows !== undefined) session.annotations = rows
         session.loadError = null
       } catch (cause) {
         session.loadError = errorMessage(cause)
@@ -75,24 +79,25 @@ export function useAnnotations(
       }
     })
     return () => { if (active.current === session) active.current = null }
-  }, [courseId, relPath, enqueue, publish, session])
+  }, [documentRevision, courseId, relPath, enqueue, publish, session])
 
   useEffect(() => onPush('materials:changed', ({ courseId: changedCourseId }) => {
     if (changedCourseId !== courseId) return
     void enqueue(async () => {
       try {
-        session.annotations = await invoke('annotations:listForFile', { courseId, relPath })
+        const rows = await readViewedPdfRevision(courseId, relPath, documentRevision, () => invoke('annotations:listForFile', { courseId, relPath, ...(documentRevision ? { documentRevision } : {}) }))
+        if (rows !== undefined) session.annotations = rows
         session.loadError = null
       } catch (cause) { session.loadError = errorMessage(cause) }
       finally { publish() }
     })
-  }), [courseId, relPath, enqueue, publish, session])
+  }), [documentRevision, courseId, relPath, enqueue, publish, session])
 
   const create = useCallback((input: CreateAnnotationInput): Promise<Annotation | null> => {
     if (input.courseId !== courseId || input.relPath !== relPath) return Promise.resolve(null)
     return enqueue(async () => {
       try {
-        const created = await invoke('annotations:create', input)
+        const created = await invoke('annotations:create', { ...input, ...(documentRevision ? { documentRevision } : {}) })
         session.annotations = [...session.annotations, created]
         session.saveError = session.failedUpdates.values().next().value?.error ?? null
         return created
@@ -101,12 +106,12 @@ export function useAnnotations(
         return null
       } finally { publish() }
     })
-  }, [courseId, relPath, enqueue, publish, session])
+  }, [documentRevision, courseId, relPath, enqueue, publish, session])
 
   const update = useCallback((input: UpdateAnnotationInput): Promise<Annotation | null> =>
     enqueue(async () => {
       try {
-        const updated = await invoke('annotations:update', input)
+        const updated = await invoke('annotations:update', { ...input, ...(documentRevision ? { documentRevision } : {}) })
         session.annotations = session.annotations.map((entry) => entry.id === updated.id ? updated : entry)
         const failed = session.failedUpdates.get(input.id)
         if (failed !== undefined) {
@@ -125,11 +130,11 @@ export function useAnnotations(
         })
         return null
       } finally { publish() }
-    }), [enqueue, publish, session])
+    }), [documentRevision, enqueue, publish, session])
 
   const remove = useCallback((id: string): Promise<boolean> => enqueue(async () => {
     try {
-      await invoke('annotations:delete', { id })
+      await invoke('annotations:delete', { id, ...(documentRevision ? { documentRevision } : {}) })
       session.annotations = session.annotations.filter((entry) => entry.id !== id)
       session.failedUpdates.delete(id)
       session.saveError = session.failedUpdates.values().next().value?.error ?? null
@@ -138,7 +143,7 @@ export function useAnnotations(
       session.saveError = errorMessage(cause)
       return false
     } finally { publish() }
-  }), [enqueue, publish, session])
+  }), [documentRevision, enqueue, publish, session])
 
   const retryUpdates = useCallback(async (): Promise<void> => {
     for (const pending of [...session.failedUpdates.values()]) await update(pending.input)
@@ -146,9 +151,9 @@ export function useAnnotations(
   const flush = useCallback(async (): Promise<void> => {
     let queue: Promise<void>
     do { queue = session.queue; await queue } while (queue !== session.queue)
-    const error = session.saveError ?? session.loadError
-    if (error !== null) throw new Error(error)
+    if (session.saveError !== null) throw new Error(session.saveError)
   }, [session])
+  useEffect(() => registerDocumentSave(flush), [flush])
   const { annotations, loading, error } = snapshot.session === session
     ? snapshot
     : { annotations: [] as Annotation[], loading: true, error: null }

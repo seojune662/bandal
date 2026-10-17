@@ -18,7 +18,7 @@ import type {
   HighlightColor
 } from '../../../../shared/types/annotation'
 import type { DrawingClipSource } from '../../../../shared/types/drawing'
-import type { PersonalBoard } from '../../../../shared/types/whiteboard'
+import type { NotePickerItem } from './useWhiteboardClipDelivery'
 import { writeBandalClipDragData } from './clipTransfer'
 
 const COLOR_LABEL: Record<HighlightColor, string> = {
@@ -121,13 +121,13 @@ export function SelectionPopover({
         type="button"
         className="pdf-popover__clip-drag"
         draggable
-        title="선택 영역을 화이트보드로 드래그"
-        aria-label="선택 영역을 화이트보드로 보내기"
+        title="선택 영역을 노트로 드래그"
+        aria-label="선택 영역을 노트로 보내기"
         onDragStart={(event) => writeBandalClipDragData(event.dataTransfer, clipSource)}
         onDragEnd={onDismiss}
       >
         <TabKindIcon kind="whiteboard" />
-        화이트보드로 보내기
+        노트로 보내기
       </button>
     </div>
   )
@@ -136,9 +136,9 @@ export function SelectionPopover({
 // -- whiteboard destination ------------------------------------------------
 
 interface WhiteboardPickerPopoverProps {
-  boards: PersonalBoard[]
+  boards: NotePickerItem[]
   position: ContentPoint
-  onPick: (board: PersonalBoard) => void
+  onPick: (board: NotePickerItem) => void
   onCreate: () => void
   onDismiss: () => void
 }
@@ -156,7 +156,7 @@ export function WhiteboardPickerPopover({
       ref={ref}
       className="pdf-popover pdf-popover--edit"
       role="menu"
-      aria-label="보낼 화이트보드 선택"
+      aria-label="보낼 노트 선택"
       style={{ left: position.left, top: position.top }}
     >
       {boards.map((board) => (
@@ -177,7 +177,7 @@ export function WhiteboardPickerPopover({
         onClick={onCreate}
       >
         <TabKindIcon kind="whiteboard" />
-        새 화이트보드
+        새 노트
       </button>
     </div>
   )

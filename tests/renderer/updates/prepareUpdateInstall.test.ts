@@ -4,7 +4,7 @@ vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ retainedTabD
 vi.mock('../../../src/renderer/src/features/notes/noteSessionRegistry', () => ({ flushOpenNoteSession: mocks.flush }))
 import { prepareUpdateInstall } from '../../../src/renderer/src/features/updates/prepareUpdateInstall'
 
-beforeEach(() => { vi.clearAllMocks(); mocks.flush.mockResolvedValue({ result: { status: 'saved' } }) })
+beforeEach(() => { vi.clearAllMocks(); mocks.flush.mockResolvedValue({ result: { status: 'saved' } }); mocks.layout.mockResolvedValue(undefined) })
 const note = (courseId: string, relPath: string) => ({ kind: 'note', payload: { courseId, relPath } })
 
 test('awaits every unique resource across active and moved hidden placements before flushing layout', async () => {
@@ -12,6 +12,7 @@ test('awaits every unique resource across active and moved hidden placements bef
   let saved!: () => void
   mocks.flush.mockImplementationOnce(() => new Promise(resolve => { saved = () => resolve({ result: { status: 'saved' } }) }))
   const pending = prepareUpdateInstall()
+  await vi.waitFor(() => expect(mocks.flush).toHaveBeenCalled())
   expect(mocks.flush).toHaveBeenCalledWith({ courseId: 'source', relPath: 'a.md' })
   expect(mocks.layout).not.toHaveBeenCalled()
   saved(); await pending
@@ -31,4 +32,18 @@ test('a restored note with no live editor has no unsaved content to flush', asyn
   mocks.descriptors.mockReturnValue([note('old', 'saved.md')]); mocks.flush.mockResolvedValue(null)
   await prepareUpdateInstall()
   expect(mocks.layout).toHaveBeenCalledOnce()
+})
+
+test('does not finish preparing until the layout ACK and rejects failed layout persistence', async () => {
+  mocks.descriptors.mockReturnValue([])
+  let acknowledge!: () => void
+  mocks.layout.mockImplementationOnce(() => new Promise<void>(resolve => { acknowledge = resolve }))
+  const finished = vi.fn()
+  const pending = prepareUpdateInstall().then(finished)
+  await vi.waitFor(() => expect(mocks.layout).toHaveBeenCalledOnce())
+  expect(finished).not.toHaveBeenCalled()
+  acknowledge(); await pending
+  expect(finished).toHaveBeenCalledOnce()
+  mocks.layout.mockRejectedValueOnce(new Error('layout disk full'))
+  await expect(prepareUpdateInstall()).rejects.toThrow('layout disk full')
 })

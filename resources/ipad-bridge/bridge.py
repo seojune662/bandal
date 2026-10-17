@@ -16,6 +16,7 @@ import mimetypes
 import os
 from pathlib import Path
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -28,6 +29,33 @@ import uuid
 KINDS = {"course", "material", "note", "drawing", "annotation", "board", "task",
          "calendarEvent", "recording", "favorite", "chat", "learningEvent",
          "vocabulary", "flashcard", "quiz", "artifact"}
+SYNC_SCOPE = "personal-content-v1"
+_cancel_requested = False
+
+
+def request_cancellation(_signal=None, _frame=None):
+    global _cancel_requested
+    _cancel_requested = True
+
+
+def check_cancelled():
+    marker = os.environ.get("BANDAL_CANCEL_FILE")
+    if _cancel_requested or (marker and Path(marker).is_file()):
+        raise InterruptedError("자료 작업이 중단되었습니다. 기기 자료와 대기 중인 변경은 보관됩니다.")
+
+
+def record_payload(record):
+    value = record.get("payload", {})
+    if isinstance(value, dict): return value
+    if isinstance(value, str): return json.loads(base64.b64decode(value, validate=True))
+    return json.loads(value)
+
+
+def in_scope(record):
+    kind = record.get("kind")
+    return kind in {"course", "material", "note", "drawing", "annotation"} or kind == "artifact" and record_payload(record).get("recordType") == "desktop-course-group"
+
+
 COORDINATES = "unrotated-crop-box-top-left-normalized"
 
 
@@ -98,6 +126,7 @@ class Exchange:
           CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS desktop_map(record_id TEXT PRIMARY KEY,source BLOB NOT NULL,baseline TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS asset_metadata(hash TEXT PRIMARY KEY,metadata BLOB NOT NULL);
+          CREATE TABLE IF NOT EXISTS file_hash_cache(path TEXT PRIMARY KEY,signature TEXT NOT NULL,sha TEXT NOT NULL);
         """)
         with self.db:
             if not self.db.execute("SELECT 1 FROM metadata WHERE key='projection_recovery_version'").fetchone():
@@ -157,8 +186,21 @@ class Exchange:
                             (operation["id"], record_id, encoded(operation)))
             self.remember(record_id, source, payload)
 
+    def file_digest(self, source):
+        path = Path(source).resolve()
+        def signature():
+            stat = path.stat()
+            return ":".join(str(value) for value in (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns))
+        before = signature()
+        cached = self.db.execute("SELECT signature,sha FROM file_hash_cache WHERE path=?", (str(path),)).fetchone()
+        if cached and cached[0] == before: return cached[1]
+        sha = file_hash(path)
+        if signature() != before: raise ValueError("File changed while hashing")
+        self.db.execute("INSERT INTO file_hash_cache VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET signature=excluded.signature,sha=excluded.sha", (str(path), before, sha))
+        return sha
+
     def asset(self, source):
-        sha = file_hash(source)
+        sha = self.file_digest(source)
         target = self.assets / sha
         if not target.exists():
             temporary = self.assets / (str(uuid.uuid4()) + ".partial")
@@ -169,6 +211,7 @@ class Exchange:
                 os.replace(temporary, target)
             finally:
                 temporary.unlink(missing_ok=True)
+        if self.file_digest(target) != sha: raise ValueError("Existing asset is corrupt")
         metadata = {"sha256": sha, "byteCount": target.stat().st_size, "originalName": Path(source).name,
                     "contentType": mimetypes.guess_type(source)[0] or "application/octet-stream"}
         self.db.execute("INSERT OR REPLACE INTO asset_metadata VALUES(?,?)", (sha, encoded(metadata)))
@@ -271,7 +314,7 @@ def require_settled_material_paths(db):
         raise ValueError("Recover interrupted material paths in Bandal before using the legacy bridge; files and records were retained")
 
 
-def export_desktop(desktop, exchange, geometry_reader=geometry_for, use_projector=True):
+def export_desktop(desktop, exchange, geometry_reader=geometry_for, use_projector=True, scope=None):
     if exchange.projection_pending(): raise ValueError("Recover pending desktop import before exporting local documents")
     if use_projector and os.environ.get("BANDAL_DESKTOP_PROJECTOR"):
         return projector_export(desktop, exchange)
@@ -373,7 +416,7 @@ def export_desktop(desktop, exchange, geometry_reader=geometry_for, use_projecto
                     exchange.export_record(prefix + str(page), "drawing", wrapper,
                                            {**source, "geometry": bounds, "inkFingerprint": fingerprint})
                     counts["pages"] += 1
-        for task in rows(db, "board_tasks"):
+        for task in ([] if scope == SYNC_SCOPE else rows(db, "board_tasks")):
             if not task.get("course_id"): continue  # Global tasks have no iPad course yet; remain untouched.
             payload = {"id": task["id"], "courseID": task["course_id"], "title": task["title"], "completed": task["status"] == "done"}
             if task.get("due_at"): payload["due"] = task["due_at"]
@@ -410,7 +453,7 @@ def recover_import(db, exchange):
     journal_path.unlink()
 
 
-def import_desktop(desktop, exchange, course_root=None, use_projector=True):
+def import_desktop(desktop, exchange, course_root=None, use_projector=True, scope=None):
     if use_projector and os.environ.get("BANDAL_DESKTOP_PROJECTOR"):
         return projector_import(desktop, exchange, course_root)
     counts = {"courses": 0, "materials": 0, "pages": 0, "tasks": 0}
@@ -552,7 +595,7 @@ def import_desktop(desktop, exchange, course_root=None, use_projector=True):
                     if original is None: raise ValueError("Cannot infer deletion of untracked desktop annotation")
                     old.update(deleted_at=timestamp, updated_at=timestamp); changes.append(("annotations", old))
             counts["pages"] += 1
-        for record in exchange.records("task"):
+        for record in ([] if scope == SYNC_SCOPE else exchange.records("task")):
             payload = json.loads(record["payload"])
             existing = db.execute("SELECT * FROM board_tasks WHERE id=?", (payload["id"],)).fetchone()
             values = dict(existing) if existing else {"id": payload["id"], "notes": "", "sort_order": 0, "created_at": timestamp}
@@ -625,6 +668,7 @@ def import_desktop(desktop, exchange, course_root=None, use_projector=True):
 
 
 def projector_call(desktop, exchange, action, request=None, course_root=None):
+    check_cancelled()
     helper = Path(os.environ["BANDAL_DESKTOP_PROJECTOR"]).resolve()
     runtime = os.environ.get("BANDAL_DESKTOP_RUNTIME")
     module_root = os.environ.get("BANDAL_DESKTOP_MODULE_ROOT")
@@ -647,6 +691,9 @@ def projector_call(desktop, exchange, action, request=None, course_root=None):
                    {"BANDAL_ACCESS_TOKEN", "BANDAL_SUPABASE_KEY", "BANDAL_USER_ID", "BANDAL_SUPABASE_URL"}}
     environment["ELECTRON_RUN_AS_NODE"] = "1"
     result = subprocess.run([runtime, str(helper)], input=encoded(value), capture_output=True, env=environment, timeout=180)
+    # Keep Python alive until the projector finishes its atomic file/DB work.
+    # Killing only the parent would leave this writer running during backup.
+    check_cancelled()
     if result.returncode:
         raise ValueError("Desktop projection failed: " + result.stderr.decode("utf8", errors="replace")[-2000:])
     return json.loads(result.stdout)
@@ -660,16 +707,17 @@ def projector_export(desktop, exchange):
         # optimistic guards before changing projection implementations. A local
         # conflict aborts here, retaining every queued operation and old baseline.
         if exchange.db.execute("SELECT 1 FROM desktop_map LIMIT 1").fetchone():
-            export_desktop(desktop, exchange, use_projector=False)
-            import_desktop(desktop, exchange, use_projector=False)
+            export_desktop(desktop, exchange, use_projector=False, scope=SYNC_SCOPE)
+            import_desktop(desktop, exchange, use_projector=False, scope=SYNC_SCOPE)
         exchange.db.execute("INSERT INTO metadata VALUES('typescript-projector-v1','ready')")
         exchange.db.commit()
-    snapshot = projector_call(desktop, exchange, "export")
+    snapshot = projector_call(desktop, exchange, "export", {"scope": SYNC_SCOPE})
     for asset in snapshot["assets"]:
         actual = exchange.asset(asset["path"])
         if actual != asset["sha256"] or (exchange.assets / actual).stat().st_size != asset["byteCount"]:
             raise ValueError("Desktop source changed during projection snapshot")
     for record in snapshot["records"]:
+        if not in_scope(record): continue
         source, _ = exchange.mapping(record["id"])
         source = source or {}
         if record["kind"] == "drawing": source["inkFingerprint"] = digest(encoded(record["payload"]))
@@ -690,14 +738,10 @@ def projector_import(desktop, exchange, course_root=None):
         for variant in ("local", "remote"):
             conflict[variant] = {**conflict[variant], "payload": json.loads(base64.b64decode(conflict[variant]["payload"], validate=True))}
         conflicts.append(conflict)
-    result = projector_call(desktop, exchange, "import", {"records": records, "assets": assets, "conflicts": conflicts}, course_root)
+    result = projector_call(desktop, exchange, "import", {"records": records, "assets": assets, "conflicts": conflicts, "scope": SYNC_SCOPE}, course_root)
     # The original documents or their visible conflict copies are now durable.
     # Unresolved projector records stay excluded from subsequent local exports.
     exchange.finish_projection()
-    if result["conflicts"]:
-        # Conflict entries and originals are durable in desktop SQLite/Recovery;
-        # expose attention instead of declaring a successful invisible overwrite.
-        raise ValueError(f"{len(result['conflicts'])} desktop sync conflicts are preserved for review")
     return result
 
 
@@ -738,6 +782,7 @@ class Supabase:
         if subject != self.user_id: raise ValueError("Access token belongs to another account")
 
     def request(self, path, body=None, method=None, content_type="application/json"):
+        check_cancelled()
         request = urllib.request.Request(self.url + "/" + path, data=body, method=method,
                                          headers={"apikey": self.key, "Authorization": "Bearer " + self.token,
                                                   "Content-Type": content_type, "x-upsert": "false"})
@@ -791,28 +836,50 @@ def merge_drawing(local, remote):
     return {**remote, "payload": base64.b64encode(payload).decode(), "revision": remote["revision"] + 1}
 
 
+def public_access(value):
+    if not isinstance(value, dict) or type(value.get("writeAllowed")) is not bool:
+        raise ValueError("Invalid sync access response")
+    result = {key: value[key] for key in ("writeAllowed", "accessSource", "storageUsedBytes", "storageLimitBytes", "recordBytes", "assetBytes", "usageComplete", "paidThrough") if key in value}
+    reason = value.get("writeDeniedReason") or value.get("reason")
+    if reason not in SYNC_BILLING_MESSAGES: reason = None
+    if not value["writeAllowed"]: reason = reason or "sync_subscription_required"
+    if value["writeAllowed"] and isinstance(value.get("storageLimitBytes"), (int, float)) and value["storageLimitBytes"] > 0 and value.get("storageUsedBytes", 0) >= value["storageLimitBytes"]:
+        result["writeAllowed"] = False; reason = "sync_storage_quota_exceeded"
+    result.update(reason=reason, message=SYNC_BILLING_MESSAGES.get(reason))
+    return result
+
+
+def stop_writes(error, access):
+    reason = next((code for code, message in SYNC_BILLING_MESSAGES.items() if str(error) == message), None)
+    if reason is None and str(error) not in ("Supabase HTTP 401", "Supabase HTTP 403"): return False
+    access.update(writeAllowed=False, reason=reason or "sync_permission_denied", message=SYNC_BILLING_MESSAGES.get(reason, "동기화 쓰기 권한을 확인해 주세요. 대기 중인 변경은 보관됩니다."))
+    return True
+
+
+def exchange_status(exchange, access=None, conflict_count=None):
+    pending = deferred = 0
+    for row in exchange.db.execute("SELECT operation FROM outbox"):
+        if in_scope(json.loads(row[0])["record"]): pending += 1
+        else: deferred += 1
+    return {"scope": SYNC_SCOPE, "access": access, "pending": pending, "deferred": deferred,
+            "conflicts": conflict_count if conflict_count is not None else exchange.db.execute("SELECT count(*) FROM conflicts").fetchone()[0],
+            "projectionPending": exchange.projection_pending()}
+
+
 def sync_exchange(exchange, remote):
+    check_cancelled()
     if exchange.projection_pending(): raise ValueError("Recover pending desktop import before sending another exchange")
     account = exchange.db.execute("SELECT value FROM metadata WHERE key='sync_account'").fetchone()
     if account and account[0] != remote.user_id: raise ValueError("Exchange belongs to another account")
     exchange.db.execute("INSERT OR IGNORE INTO metadata VALUES('sync_account',?)", (remote.user_id,))
-    pending_records = exchange.db.execute("SELECT 1 FROM outbox LIMIT 1").fetchone()
-    pending_assets = exchange.db.execute("SELECT 1 FROM asset_metadata a WHERE NOT EXISTS (SELECT 1 FROM metadata m WHERE m.key='asset_uploaded:' || a.hash) LIMIT 1").fetchone()
-    write_allowed = True
-    if pending_records or pending_assets:
-        # Storage can hide the trigger code behind a generic RLS denial. The
-        # authenticated status endpoint gives an exact, safe explanation before
-        # writes; server-side RPC/Storage rules still enforce every request.
-        access = remote.rpc("bandal_sync_status", {})
-        if not isinstance(access, dict) or type(access.get("writeAllowed")) is not bool:
-            raise ValueError("Invalid sync access response")
-        write_allowed = access["writeAllowed"]
-    # Push conflicts can change accepted records just like a pull page. Persist
-    # intent before either can run, not after downloading the last asset.
-    exchange.begin_projection()
-    exchange.db.commit()
-    # Upload immutable assets before any record references are published.
-    for asset in exchange.db.execute("SELECT hash,metadata FROM asset_metadata") if write_allowed else []:
+    # Always refresh entitlement, including a quiet device with no uploads.
+    access = public_access(remote.rpc("bandal_sync_status", {}))
+    exchange.begin_projection(); exchange.db.commit()
+    active_hashes = {sha for _, sha, _, _ in asset_references(exchange, scoped=True, include_outbox=True)}
+    for asset in exchange.db.execute("SELECT hash,metadata FROM asset_metadata"):
+        check_cancelled()
+        if not access["writeAllowed"]: break
+        if asset["hash"] not in active_hashes: continue
         marker = "asset_uploaded:" + asset["hash"]
         if exchange.db.execute("SELECT 1 FROM metadata WHERE key=?", (marker,)).fetchone(): continue
         path = "storage/v1/object/bandal-assets/" + remote.user_id + "/" + asset["hash"]
@@ -820,16 +887,23 @@ def sync_exchange(exchange, remote):
         if digest(data) != asset["hash"]: raise ValueError("Local asset changed")
         try: remote.request(path, data, "POST", json.loads(asset["metadata"])["contentType"])
         except RuntimeError as error:
+            if stop_writes(error, access): break
             if str(error) not in ("Supabase HTTP 400", "Supabase HTTP 409"): raise
             if digest(remote.request(path.replace("/object/", "/object/authenticated/"))) != asset["hash"]: raise ValueError("Remote asset hash mismatch")
         exchange.db.execute("INSERT INTO metadata VALUES(?,?)", (marker, "1")); exchange.db.commit()
     pushed = conflicts = merged_count = 0
-    for _ in range(1000 if write_allowed else 0):
-        row = exchange.db.execute("SELECT * FROM outbox ORDER BY sequence LIMIT 1").fetchone()
+    for _ in range(1000):
+        check_cancelled()
+        if not access["writeAllowed"]: break
+        # Excluded work remains intact; it cannot starve later eligible records.
+        row = next((row for row in exchange.db.execute("SELECT * FROM outbox ORDER BY sequence") if in_scope(json.loads(row["operation"])["record"])), None)
         if not row: break
         operation = json.loads(row["operation"])
         if operation["record"]["kind"] not in KINDS: raise ValueError("Local-only record in outbox")
-        result = remote.rpc("bandal_push", {"p_operation": operation})
+        try: result = remote.rpc("bandal_push", {"p_operation": operation})
+        except RuntimeError as error:
+            if stop_writes(error, access): break
+            raise
         with exchange.db:
             if result["status"] == "conflict":
                 local = exchange.get(row["record_id"])
@@ -852,6 +926,7 @@ def sync_exchange(exchange, remote):
     row = exchange.db.execute("SELECT value FROM metadata WHERE key='sync_cursor'").fetchone()
     cursor = int(row[0]) if row else 0
     while True:
+        check_cancelled()
         page = remote.rpc("bandal_pull", {"p_after": cursor, "p_limit": 200})
         if page["cursor"] < cursor or (page["hasMore"] and page["cursor"] <= cursor): raise ValueError("Invalid remote cursor")
         with exchange.db:
@@ -859,13 +934,15 @@ def sync_exchange(exchange, remote):
                 if record["formatVersion"] != 1 or record["kind"] not in KINDS: raise ValueError("Unsupported remote record")
                 if exchange.db.execute("SELECT 1 FROM outbox WHERE record_id=?", (record["id"],)).fetchone(): continue
                 local = exchange.get(record["id"])
+                # Retain excluded envelopes for future scopes while advancing
+                # the shared cursor. Projection and asset IO stay scoped.
                 if not local or record["revision"] > local["revision"]: exchange.set_record(record)
             cursor = page["cursor"]
             exchange.db.execute("INSERT INTO metadata VALUES('sync_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(cursor),))
         if not page["hasMore"]: break
     ensure_remote_assets(exchange, remote)
-    result = {"pushed": pushed, "conflicts": conflicts, "merged": merged_count, "cursor": cursor}
-    if not write_allowed: result["accessWarning"] = SYNC_BILLING_MESSAGES["sync_subscription_required"]
+    result = {"pushed": pushed, "conflicts": conflicts, "merged": merged_count, "cursor": cursor, "access": access}
+    if not access["writeAllowed"]: result["accessWarning"] = access["message"]
     return result
 
 
@@ -873,7 +950,8 @@ def ensure_remote_assets(exchange, remote=None):
     account = exchange.db.execute("SELECT value FROM metadata WHERE key='sync_account'").fetchone()
     if remote and account and account[0] != remote.user_id: raise ValueError("Exchange belongs to another account")
     seen = set()
-    for _, sha, _, count in asset_references(exchange, include_conflicts=True):
+    for _, sha, _, count in asset_references(exchange, include_conflicts=True, scoped=True):
+        check_cancelled()
         if sha in seen: continue
         seen.add(sha)
         if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha): raise ValueError("Invalid asset hash")
@@ -899,9 +977,13 @@ def envelope(row):
             "revision": row["revision"], "deleted": bool(row["deleted"]), "formatVersion": row["format_version"]}
 
 
-def asset_references(exchange, include_notes=True, include_conflicts=False):
+def asset_references(exchange, include_notes=True, include_conflicts=False, scoped=False, include_outbox=False):
     """Asset identifiers exactly match App/Services/Exchange.swift, including recordings."""
     records = exchange.records()
+    if include_outbox:
+        for row in exchange.db.execute("SELECT operation FROM outbox"):
+            value = json.loads(row[0])["record"]
+            records.append({**value, "payload": base64.b64decode(value.get("payload", "e30="), validate=True)})
     if include_conflicts:
         for row in exchange.db.execute("SELECT value FROM conflicts"):
             conflict = json.loads(row[0])
@@ -909,11 +991,21 @@ def asset_references(exchange, include_notes=True, include_conflicts=False):
                 value = conflict.get(variant)
                 if isinstance(value, dict): records.append({**value, "payload": base64.b64decode(value["payload"], validate=True)})
     for record in records:
-        if record["deleted"]: continue
+        if scoped and not in_scope(record): continue
+        if record.get("deleted", False): continue
         payload = json.loads(record["payload"])
         if record["kind"] == "material" and payload["kind"] != "whiteboard":
             if not include_notes and payload["kind"] == "note": continue
             yield payload["id"], payload["revision"], payload["fileName"], payload.get("byteCount")
+        elif record["kind"] in ("drawing", "annotation") and isinstance(payload.get("data"), str):
+            page = json.loads(base64.b64decode(payload["data"], validate=True))
+            for item in page.get("objects", []):
+                clip = item.get("data", {}).get("clip", {})
+                sha = clip.get("documentRevision")
+                if sha:
+                    count = clip.get("documentByteCount")
+                    if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha) or type(count) is not int or count <= 0: raise ValueError("Invalid clipped PDF asset reference")
+                    yield "clip:" + sha, sha, sha + ".pdf", count
         elif record["kind"] == "recording" and payload.get("assetRevision"):
             yield "recording:" + payload["id"], payload["assetRevision"], payload["fileName"], payload.get("byteCount")
         elif record["kind"] == "artifact" and payload.get("recordType") == "desktop-learning-file":
@@ -1004,32 +1096,109 @@ def read_pack(exchange, path):
             exchange.db.execute("INSERT OR REPLACE INTO asset_metadata VALUES(?,?)", (asset["sha256"], encoded(metadata)))
 
 
+def resolve_conflict(desktop, exchange, conflict_id, choice, course_root=None):
+    if choice not in ("local", "remote"): raise ValueError("Unknown conflict choice")
+    receipt_key = "resolution:" + conflict_id + ":" + choice
+    receipt = exchange.db.execute("SELECT value FROM metadata WHERE key=?", (receipt_key,)).fetchone()
+    if receipt and json.loads(receipt[0]).get("complete"):
+        items = projector_call(desktop, exchange, "conflicts", {"scope":SYNC_SCOPE}, course_root=course_root)
+        return {"resolved": True, "status": exchange_status(exchange, conflict_count=len(items))}
+    items = projector_call(desktop, exchange, "conflicts", {"scope":SYNC_SCOPE}, course_root=course_root)
+    conflict = next((item for item in items if item["id"] == conflict_id), None)
+    if conflict and conflict.get("kind") == "pending-ink":
+        result = projector_call(desktop, exchange, "restoreConflict", {"scope":SYNC_SCOPE,"conflictID":conflict_id,"variant":choice}, course_root)
+        items = projector_call(desktop, exchange, "conflicts", {"scope":SYNC_SCOPE}, course_root=course_root)
+        return {**result,"status":exchange_status(exchange,conflict_count=len(items))}
+    if not conflict or not conflict.get(choice): raise ValueError("Selected conflict version is unavailable")
+    selected = [conflict[choice], *conflict.get("related", {}).get(choice, [])]
+    assets = [{"sha256": file.name, "path": str(file)} for file in exchange.assets.iterdir() if file.is_file() and len(file.name) == 64]
+    # The user's choice becomes durable pending work before projector baselines
+    # change. Interrupted restores retry the same receipt, never queue twice.
+    if not receipt:
+        with exchange.db:
+            for value in selected:
+                if not in_scope(value): raise ValueError("Conflict is outside the active sync scope")
+                current = exchange.get(value["id"])
+                base = current["revision"] if current else 0
+                record = {**value, "payload": base64.b64encode(encoded(value["payload"])).decode(), "revision": base + 1}
+                operation = {"id": str(uuid.uuid4()), "baseRevision": base, "record": record}
+                exchange.set_record(record)
+                exchange.db.execute("INSERT INTO outbox(id,record_id,operation) VALUES(?,?,?)", (operation["id"], record["id"], encoded(operation)))
+            exchange.db.execute("INSERT INTO metadata VALUES(?,?)", (receipt_key, json.dumps({"complete": False})))
+    result = projector_call(desktop, exchange, "restoreConflict", {"scope":SYNC_SCOPE,"conflictID": conflict_id, "variant": choice, "assets": assets + conflict.get("assets", [])}, course_root)
+    resolved = result.get("resolved", result.get("applied") == 1 and not result.get("conflicts"))
+    if resolved:
+        with exchange.db: exchange.db.execute("UPDATE metadata SET value=? WHERE key=?", (json.dumps({"complete": True}), receipt_key))
+    items = projector_call(desktop, exchange, "conflicts", {"scope":SYNC_SCOPE}, course_root=course_root)
+    return {"resolved": resolved, "status": exchange_status(exchange, conflict_count=len(items))}
+
+
+def conflict_summaries(items, byte_limit=200_000):
+    """Bounded human-review metadata; full envelopes never cross runtime stdout."""
+    summaries = []
+    for item in items[:100]:
+        summary = {"id": item["id"], "recordID": item["recordID"][:512], "kind": item.get("kind"),
+                   "label": item["label"][:240], "reason": item["reason"][:360], "createdAt": item["createdAt"],
+                   "local": bool(item.get("local")), "remote": bool(item.get("remote")), "expectedRevision": item.get("expectedRevision")}
+        if isinstance(item.get("variants"), dict):
+            summary["variants"] = {}
+            for choice in ("local", "remote"):
+                value = item["variants"].get(choice) or {}
+                variant = {"exists": bool(value.get("exists")), "deleted": bool(value.get("deleted"))}
+                for key, limit in (("title", 160), ("text", 500), ("updatedAt", 80), ("revision", 128)):
+                    if isinstance(value.get(key), str): variant[key] = value[key][:limit]
+                for key in ("revision", "page", "objects"):
+                    if isinstance(value.get(key), (int, float)) and not isinstance(value[key], bool): variant[key] = value[key]
+                summary["variants"][choice] = variant
+        candidate = summaries + [summary]
+        if len(json.dumps(candidate, ensure_ascii=False).encode("utf8")) > byte_limit: break
+        summaries.append(summary)
+    return summaries
+
+
 def main():
+    check_cancelled()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("export", "import", "sync", "cycle", "watch"))
+    parser.add_argument("command", choices=("export", "import", "sync", "cycle", "watch", "conflicts", "resolve-conflict"))
     parser.add_argument("--desktop-db", type=Path)
     parser.add_argument("--exchange", type=Path, required=True)
     parser.add_argument("--course-root", type=Path)
     parser.add_argument("--interval", type=float, default=10)
     parser.add_argument("--pack", type=Path, help="Write export / read import as a .bandalpack JSON file")
+    parser.add_argument("--conflict-id")
+    parser.add_argument("--choice", choices=("local", "remote"))
     args = parser.parse_args()
-    if args.command in ("export", "import", "cycle", "watch") and not args.desktop_db: parser.error("--desktop-db is required")
+    if args.command in ("export", "import", "cycle", "watch", "conflicts", "resolve-conflict") and not args.desktop_db: parser.error("--desktop-db is required")
     exchange = Exchange(args.exchange)
+    if args.command == "conflicts":
+        items = projector_call(args.desktop_db, exchange, "conflicts", {"scope":SYNC_SCOPE,"summary":True}, course_root=args.course_root)
+        summaries = conflict_summaries(items)
+        print(json.dumps({"conflicts": summaries, "hasMore":len(items)>len(summaries), "status": exchange_status(exchange, conflict_count=len(items))}, ensure_ascii=False)); return
+    if args.command == "resolve-conflict":
+        if not args.conflict_id or not args.choice: parser.error("--conflict-id and --choice are required")
+        result = resolve_conflict(args.desktop_db, exchange, args.conflict_id, args.choice, args.course_root)
+        print(json.dumps(result)); return
     remote = None
     if args.command in ("sync", "cycle", "watch"):
         required = ["BANDAL_SUPABASE_URL", "BANDAL_SUPABASE_KEY", "BANDAL_USER_ID", "BANDAL_ACCESS_TOKEN"]
         if any(not os.environ.get(key) for key in required): parser.error("Set Supabase URL, public key, user ID and access token in BANDAL_* environment variables")
         remote = Supabase(*(os.environ[key] for key in required))
     while True:
+        check_cancelled()
         if args.desktop_db: recover_projection(args.desktop_db, exchange, remote, args.course_root)
+        check_cancelled()
         if args.pack and args.command == "import": read_pack(exchange, args.pack)
         if args.command in ("export", "cycle", "watch"): print(json.dumps(export_desktop(args.desktop_db, exchange)))
+        check_cancelled()
         if args.pack and args.command == "export": write_pack(exchange, args.pack)
         sync_result = sync_exchange(exchange, remote) if remote else None
         if sync_result: print(json.dumps(sync_result))
+        check_cancelled()
         if args.command in ("import", "cycle", "watch"): print(json.dumps(import_desktop(args.desktop_db, exchange, args.course_root)))
         # Materialize owned remote changes first, then tell the user why local
         # writes remain queued. Expiry never discards the outbox or blocks pull.
+        conflicts = projector_call(args.desktop_db, exchange, "conflicts", {"scope":SYNC_SCOPE,"summary":True}, course_root=args.course_root) if args.desktop_db else None
+        print(json.dumps({"status": exchange_status(exchange, sync_result.get("access") if sync_result else None, len(conflicts) if conflicts is not None else None), "sync": sync_result}))
         if sync_result and sync_result.get("accessWarning"): raise RuntimeError(sync_result["accessWarning"])
         if args.command != "watch": break
         time.sleep(max(2, args.interval))
@@ -1039,6 +1208,8 @@ if __name__ == "__main__":
     # The Electron parent decodes stderr as UTF-8 on every platform, including
     # Windows installations whose default console encoding is not UTF-8.
     if hasattr(sys.stderr, "reconfigure"): sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    signal.signal(signal.SIGTERM, request_cancellation)
+    signal.signal(signal.SIGINT, request_cancellation)
     try: main()
     except KeyboardInterrupt: pass
     except Exception as error:

@@ -73,10 +73,11 @@ class BridgeBillingTests(unittest.TestCase):
             exchange.db.execute("INSERT INTO outbox(id,record_id,operation) VALUES(?,?,?)", ("pending", "course:fixture", bridge.encoded(operation)))
             exchange.db.commit()
             remote = Mock(user_id=USER)
-            remote.rpc.side_effect = [{"writeAllowed": True}, RuntimeError(bridge.SYNC_BILLING_MESSAGES["sync_subscription_required"])]
+            remote.rpc.side_effect = [{"writeAllowed": True}, RuntimeError(bridge.SYNC_BILLING_MESSAGES["sync_subscription_required"]), {"records": [], "cursor": 0, "hasMore": False}]
             try:
-                with self.assertRaisesRegex(RuntimeError, "Bandal Sync 구독"):
-                    bridge.sync_exchange(exchange, remote)
+                result = bridge.sync_exchange(exchange, remote)
+                self.assertEqual(result["access"]["reason"], "sync_subscription_required")
+                self.assertEqual(remote.rpc.call_args.args[0], "bandal_pull")
                 self.assertEqual(exchange.db.execute("SELECT operation FROM outbox WHERE id='pending'").fetchone()[0], bridge.encoded(operation))
                 self.assertTrue(exchange.projection_pending())
             finally:
@@ -161,6 +162,7 @@ class BridgeBillingTests(unittest.TestCase):
                     patch.object(sys, "argv", ["bridge.py", "cycle", "--desktop-db", "unused-fixture.sqlite", "--exchange", directory]), \
                     patch.dict(os.environ, {"BANDAL_SUPABASE_URL": "https://fixture.invalid", "BANDAL_SUPABASE_KEY": "public-fixture", "BANDAL_USER_ID": USER, "BANDAL_ACCESS_TOKEN": TOKEN}), \
                     patch.object(bridge, "Supabase", return_value=remote), \
+                    patch.object(bridge, "projector_call", return_value=[]), \
                     patch.object(bridge, "export_desktop", side_effect=lambda *_: stages.append("export") or {}), \
                     patch.object(bridge, "import_desktop", side_effect=imported), contextlib.redirect_stdout(io.StringIO()):
                 with self.assertRaisesRegex(RuntimeError, "Bandal Sync 구독"):
@@ -177,10 +179,10 @@ class BridgeBillingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             exchange = bridge.Exchange(directory)
             remote = Mock(user_id=USER)
-            remote.rpc.return_value = {"records": [], "cursor": 0, "hasMore": False}
+            remote.rpc.side_effect = [{"writeAllowed":False}, {"records": [], "cursor": 0, "hasMore": False}]
             try:
                 self.assertEqual(bridge.sync_exchange(exchange, remote)["cursor"], 0)
-                remote.rpc.assert_called_once_with("bandal_pull", {"p_after": 0, "p_limit": 200})
+                self.assertEqual([call.args[0] for call in remote.rpc.call_args_list], ["bandal_sync_status", "bandal_pull"])
             finally:
                 exchange.db.close()
 
@@ -193,12 +195,13 @@ class BridgeBillingTests(unittest.TestCase):
             exchange.db.execute("INSERT INTO asset_metadata(hash,metadata) VALUES(?,?)", (sha, bridge.encoded({"contentType": "application/pdf"})))
             exchange.db.commit()
             remote = bridge.Supabase("https://fixture.invalid", "public-fixture", USER, TOKEN)
-            opener = Mock(open=Mock(side_effect=[io.BytesIO(b'{"writeAllowed":true}'), http_error({"message": "sync_storage_quota_exceeded"}, 400)]))
+            exchange.export_record("material:fixture", "material", {"id":"fixture","revision":sha,"kind":"pdf","fileName":"a.pdf","byteCount":len(data)}, {})
+            opener = Mock(open=Mock(side_effect=[io.BytesIO(b'{"writeAllowed":true}'), http_error({"message": "sync_storage_quota_exceeded"}, 400), io.BytesIO(b'{"records":[],"cursor":0,"hasMore":false}')]))
             try:
                 with patch.object(bridge.urllib.request, "build_opener", return_value=opener):
-                    with self.assertRaisesRegex(RuntimeError, "저장 공간 5 GiB"):
-                        bridge.sync_exchange(exchange, remote)
-                self.assertEqual(opener.open.call_count, 2)
+                    result = bridge.sync_exchange(exchange, remote)
+                    self.assertEqual(result["access"]["reason"], "sync_storage_quota_exceeded")
+                self.assertEqual(opener.open.call_count, 3)
                 self.assertEqual((exchange.assets / sha).read_bytes(), data)
                 self.assertIsNone(exchange.db.execute("SELECT value FROM metadata WHERE key=?", ("asset_uploaded:" + sha,)).fetchone())
             finally:

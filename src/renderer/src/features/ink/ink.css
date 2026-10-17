@@ -391,3 +391,16 @@ textarea.ink-layer__textbox::placeholder {
 .ink-layer__textbox-resize[data-resize-handle='s'] {
   cursor: ns-resize;
 }
+
+/* Migrated dark notes retain the same paper-relative palette in every theme. */
+.pdf-tab[data-note-surface='dark'] {
+  --drawing-color-ink: rgb(94% 96% 99%);
+  --drawing-color-red: rgb(100% 48% 50%);
+  --drawing-color-orange: rgb(100% 68% 32%);
+  --drawing-color-yellow: rgb(100% 88% 34%);
+  --drawing-color-green: rgb(46% 88% 60%);
+  --drawing-color-blue: rgb(46% 72% 100%);
+  --drawing-color-violet: rgb(78% 62% 100%);
+}
+.pdf-tab[data-note-surface='dark'] .ink-layer__mark.is-highlighter,
+.pdf-tab[data-note-surface='dark'] .ink-layer__preview.is-highlighter { mix-blend-mode: screen; }

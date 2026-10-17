@@ -22,6 +22,8 @@ export interface WriteNoteInput extends NoteRef {
    * mtime (optimistic concurrency).
    */
   expectedMtime?: number
+  /** Automatic page-note updates must still target the PDF revision they saw. */
+  pageNoteSource?: { relPath: string; documentRevision: string }
 }
 
 export interface CreateNoteInput {

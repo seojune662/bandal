@@ -20,22 +20,11 @@ import '../recordings/recording.css'
 import './tabs-settings.css'
 
 const TABS = [
-  { id: 'note', ko: '마크다운', en: 'Markdown', action: 'new-markdown' },
+  { id: 'whiteboard', ko: '노트', en: 'Note', action: 'new-whiteboard' },
   { id: 'browser', ko: '브라우저', en: 'Browser', action: 'new-browser-tab' },
+  { id: 'note', ko: '마크다운', en: 'Markdown', action: 'new-markdown' },
   { id: 'chat', ko: 'AI', en: 'AI', action: 'new-ai-tab' },
-  { id: 'recording', ko: '녹음', en: 'Recording', action: 'new-recording-tab' },
-  {
-    id: 'whiteboard',
-    ko: '화이트보드',
-    en: 'Whiteboard',
-    action: 'new-whiteboard'
-  },
-  {
-    id: 'board',
-    ko: '학업 보드',
-    en: 'Study board',
-    action: 'open-study-board'
-  }
+  { id: 'recording', ko: '녹음', en: 'Recording', action: 'new-recording-tab' }
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
@@ -51,7 +40,7 @@ export function TabsSettingsPanel({
   onNavigate: (category: SettingsCategoryId) => void
 }): JSX.Element {
   const ko = useLocale() === 'ko-KR'
-  const [selected, setSelected] = useState<TabId>('note')
+  const [selected, setSelected] = useState<TabId>('whiteboard')
   const id = useId()
   const current = TABS.find((tab) => tab.id === selected)!
   const [prefix, setPrefix] = useState(settings?.tabs.markdownTitlePrefix ?? '')
@@ -197,22 +186,22 @@ export function TabsSettingsPanel({
           </SettingsCard>
         ) : selected === 'whiteboard' ? (
           <SettingsCard
-            title={ko ? '새 화이트보드' : 'New whiteboards'}
+            title={ko ? '새 노트' : 'New notes'}
             description={
               ko
-                ? '새로 만드는 화이트보드의 배경입니다. 기존 보드의 배경과 필기는 변경하지 않습니다.'
-                : 'Default background for new boards. Existing boards and drawings are unchanged.'
+                ? 'PDF 노트의 기본 종이입니다. 기존 노트의 종이와 필기는 유지합니다.'
+                : 'Default paper for new PDF notes. Existing notes and drawings stay unchanged.'
             }
           >
             <label className="tab-settings__field">
-              {ko ? '기본 배경' : 'Default background'}
+              {ko ? '기본 종이' : 'Default paper'}
               <select
-                value={prefs?.whiteboardBackground ?? 'grid'}
+                value={prefs?.notePaper ?? 'lines'}
                 disabled={!prefs}
                 onChange={(event) =>
                   void savePreference({
                     tabs: {
-                      whiteboardBackground: event.target.value as
+                      notePaper: event.target.value as
                         | 'grid'
                         | 'blank'
                         | 'dots'
@@ -225,59 +214,20 @@ export function TabsSettingsPanel({
                   (value, index) => (
                     <option key={value} value={value}>
                       {ko
-                        ? ['격자', '점', '줄', '빈 배경'][index]
+                        ? ['모눈', '점', '줄', '빈 종이'][index]
                         : ['Grid', 'Dots', 'Lines', 'Blank'][index]}
                     </option>
                   )
                 )}
               </select>
             </label>
-          </SettingsCard>
-        ) : (
-          <SettingsCard
-            title={ko ? '학업 보드 기본 설정' : 'Study board defaults'}
-            description={
-              ko
-                ? '다음에 새로 여는 학업 보드에 적용됩니다.'
-                : 'Applies when a study board is next opened.'
-            }
-          >
-            <label className="tab-settings__field">
-              {ko ? '시작 화면' : 'Initial view'}
-              <select
-                value={prefs?.boardDefaultView ?? 'calendar'}
-                disabled={!prefs}
-                onChange={(event) =>
-                  void savePreference({
-                    tabs: {
-                      boardDefaultView: event.target.value as
-                        | 'calendar'
-                        | 'board'
-                    }
-                  })
-                }
-              >
-                <option value="calendar">{ko ? '캘린더' : 'Calendar'}</option>
-                <option value="board">
-                  {ko ? '칸반 보드' : 'Kanban board'}
-                </option>
+            <label className="tab-settings__field">{ko ? '기본 방향' : 'Default orientation'}
+              <select value={prefs?.noteOrientation ?? 'portrait'} disabled={!prefs} onChange={event => void savePreference({ tabs: { noteOrientation: event.target.value as 'portrait' | 'landscape' } })}>
+                <option value="portrait">{ko ? '세로' : 'Portrait'}</option><option value="landscape">{ko ? '가로' : 'Landscape'}</option>
               </select>
             </label>
-            <ToggleRow
-              label={ko ? '완료한 항목 숨기기' : 'Hide completed tasks'}
-              description={
-                ko
-                  ? '남은 할 일에 집중할 수 있도록 완료 항목을 숨깁니다.'
-                  : 'Focus on the remaining tasks.'
-              }
-              checked={prefs?.boardHideDone ?? false}
-              disabled={!prefs}
-              onChange={(boardHideDone) =>
-                void savePreference({ tabs: { boardHideDone } })
-              }
-            />
           </SettingsCard>
-        )}
+        ) : null}
       </div>
       <SettingsCard title={ko ? '모든 탭의 공통 동작' : 'Common tab behavior'}>
         <ToggleRow

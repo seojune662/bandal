@@ -1,3 +1,4 @@
+import { createPdfNote } from './helpers/pdfNotes'
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 import { lstatSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -199,7 +200,7 @@ test('real folder drag moves a live browser into an empty course without replaci
     // HTTPS fixture is reinstalled in the next process (including packaged runs).
     await visibleTab(page, 'Move browser fixture').click()
     await page.keyboard.press('ControlOrMeta+t')
-    await page.getByRole('option', { name: '새 브라우저 탭', exact: false }).click()
+    await page.getByRole('option', { name: /^브라우저(?:\s|$)/ }).click()
     await expect(page.locator('.workspace-course:not([hidden]) .dv-tab')).toHaveCount(2)
     await expect.poll(async () => Object.keys((await persistedPanels(page, source.id, target.id))[1]).length).toBe(2)
     const profileDir = bandal.profileDir
@@ -396,13 +397,14 @@ async function dragOverActiveToNextFolder(page: Page, name: string): Promise<voi
   await expect(selected(page, name)).toBeVisible()
 }
 
-test('whiteboard movement keeps the same canvas instance and committed text', async () => {
+test('PDF note movement preserves editable committed text', async () => {
   const bandal: BandalApp = await launchBandal()
   try {
     const { page } = bandal
     await createCourse(page, '판 출발'); await createCourse(page, '판 도착')
     await folder(page, '판 출발').locator('.course-row__select').click()
-    await page.locator('.whiteboards-group').getByRole('button', { name: '새 화이트보드 만들기' }).click()
+    await createPdfNote(page, '이동할 노트')
+    await page.getByRole('button', { name: '주석 도구', exact: true }).click()
     const ink = page.locator('.ink-layer:visible'); await expect(ink).toBeVisible()
     await page.getByRole('button', { name: /텍스트/ }).first().click()
     const bounds = (await ink.boundingBox())!
@@ -411,11 +413,9 @@ test('whiteboard movement keeps the same canvas instance and committed text', as
     await page.mouse.click(bounds.x + Math.min(420, bounds.width - 30), bounds.y + Math.min(320, bounds.height - 30))
     await page.keyboard.press('Escape')
     await expect(page.locator('.ink-layer__textbox', { hasText: '옮겨도 남아 있는 판' })).toBeVisible()
-    await page.evaluate(() => { (window as any).__movingInkDom = document.querySelector('.ink-layer') })
     const title = await page.locator('.workspace-course:not([hidden]) .workspace-tab__title').innerText()
     await dragOverFolder(page, visibleTab(page, title), '판 도착')
     await dropInCanvas(page)
-    expect(await page.evaluate(() => (window as any).__movingInkDom === document.querySelector('.ink-layer'))).toBe(true)
     await expect(page.locator('.ink-layer__textbox', { hasText: '옮겨도 남아 있는 판' })).toBeVisible()
   } finally { await bandal.close() }
 })

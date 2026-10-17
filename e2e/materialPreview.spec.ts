@@ -177,7 +177,7 @@ test('preview overlays a native browser, then releases it before material drag a
     if (await add.isVisible()) await add.click()
     else await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
     await page.getByLabel('새 탭 검색').fill(origin)
-    await page.getByRole('option', { name: `${origin} 열기` }).click()
+    await page.getByRole('option').filter({ hasText: '브라우저' }).click()
     await expect.poll(() => bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(w => w.getURL() === `${url}/`)?.id, origin)).toEqual(expect.any(Number))
     const browserId = await bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(w => w.getURL() === `${url}/`)!.id, origin)
     await expect.poll(() => visibleNativePages(bandal)).toEqual([browserId])
@@ -241,64 +241,46 @@ test('preview overlays a native browser, then releases it before material drag a
   }
 })
 
-test('whiteboard hover shows first-page text and attached image with current paper settings', async ({}, info) => {
+test('migrated note hover preserves editable first-page text and attached image', async ({}, info) => {
   const bandal = await launchBandal()
   try {
     const { page } = bandal
-    await createCourse(page, '화이트보드 미리보기')
+    await createCourse(page, '이전 노트 미리보기')
     const course = await page.evaluate(async () => (await window.bandal.invoke('courses:list', {}))[0]!)
     copyFileSync(resolve(__dirname, '..', 'resources', 'icon.png'), join(course.folderPath, 'board-image.png'))
-    const group = page.locator('.whiteboards-group')
-    await group.getByRole('button', { name: '새 화이트보드 만들기' }).click()
-    await expect(page.locator('.ink-layer')).toBeVisible()
-    const board = await page.evaluate(async courseId => (await window.bandal.invoke('canvas:list', { courseId }))[0]!, course.id)
-    const row = group.locator('.whiteboards-group__row').filter({ hasText: board.title })
-    await expect(row).toHaveAttribute('data-material-new', 'true')
-    await expect(row).toHaveAttribute('data-material-open', 'true')
-    await expect.poll(() => row.evaluate(element => {
-      const title = element.querySelector('span:not(.material-state)')!.getBoundingClientRect()
-      const state = element.querySelector('.material-state')!.getBoundingClientRect()
-      return state.left >= title.right && Math.abs(state.top + state.height / 2 - title.top - title.height / 2) < 2
-    })).toBe(true)
-    await page.evaluate(async boardId => {
+    const note = await page.evaluate(async courseId => {
+      const board = await window.bandal.invoke('canvas:create', { courseId, title: '이전할 노트' })
       const style = { color: 'ink' as const, width: 0.01, opacity: 1 }
-      await window.bandal.invoke('canvas:setPageCount', { boardId, pageCount: 3 })
-      await window.bandal.invoke('canvas:putShape', {
-        boardId, id: 'preview-text', page: 1,
-        shape: { kind: 'textbox', data: { box: { x: 0.1, y: 0.1, width: 0.8, height: 0.1 }, text: 'First page preview marker' }, style }
-      })
-      await window.bandal.invoke('canvas:putShape', {
-        boardId, id: 'preview-image', page: 1,
-        shape: { kind: 'image', data: { box: { x: 0.15, y: 0.3, width: 0.5, height: 0.35 }, image: { relPath: 'board-image.png', label: 'Attached image' } }, style }
-      })
-      await window.bandal.invoke('canvas:putShape', {
-        boardId, id: 'preview-hidden-page', page: 2,
-        shape: { kind: 'textbox', data: { box: { x: 0.1, y: 0.1, width: 0.8, height: 0.1 }, text: 'Second page must stay hidden' }, style }
-      })
-    }, board.id)
-    const tab = page.locator('.workspace-tab').filter({ has: page.locator('.workspace-tab__title', { hasText: board.title }) })
-    await tab.locator('.workspace-tab__close').click()
-    await expect(tab).toHaveCount(0)
-    await expect(row).not.toHaveAttribute('data-material-open', 'true')
+      await window.bandal.invoke('canvas:setPageCount', { boardId: board.id, pageCount: 3 })
+      await window.bandal.invoke('canvas:setBackground', { boardId: board.id, background: 'lines', surface: 'dark' })
+      for (const [id, page, text] of [['preview-text', 1, 'First page preview marker'], ['preview-hidden-page', 2, 'Second page must stay hidden']] as const) {
+        await window.bandal.invoke('canvas:putShape', { boardId: board.id, id, page,
+          shape: { kind: 'textbox', data: { box: { x: 0.1, y: 0.1, width: 0.8, height: 0.1 }, text }, style } })
+      }
+      await window.bandal.invoke('canvas:putShape', { boardId: board.id, id: 'preview-image', page: 1,
+        shape: { kind: 'image', data: { box: { x: 0.15, y: 0.3, width: 0.5, height: 0.35 }, image: { relPath: 'board-image.png', label: 'Attached image' } }, style } })
+      const result = await window.bandal.invoke('pdfNotes:migrateLegacy', { courseId })
+      return result.migrated.find(item => item.boardId === board.id)!
+    }, course.id)
+    expect(note).toBeTruthy()
+    await page.getByRole('button', { name: '자료 새로고침' }).click()
+    const row = page.locator(`[data-material-path="${note.relPath}"]`)
+    await expect(row).toBeVisible()
     await expect(row).toHaveAttribute('data-material-new', 'true')
-    // The list still holds the board's original metadata. The real hover IPC
-    // must supply the paper settings and page count that changed afterwards.
-    await page.evaluate(boardId => window.bandal.invoke('canvas:setBackground', { boardId, background: 'lines', surface: 'light' }), board.id)
     const before = await page.locator('.workspace-tab').count()
     const card = await showPreview(bandal, row)
-    await expect(card.getByRole('img', { name: '화이트보드 첫 페이지' })).toBeVisible()
+    await expect(card.getByRole('img', { name: '노트 첫 페이지' })).toBeVisible()
     await expect(card).toContainText('First page preview marker')
     await expect(card).not.toContainText('Second page must stay hidden')
     await expect(card).toContainText('1 / 3쪽')
-    await expect(card.locator('.material-preview-content__board')).toHaveAttribute('data-surface', 'light')
-    await expect(card.locator('.material-preview-content__board')).toHaveAttribute('data-background', 'lines')
+    await expect(card.locator('.material-preview-content__board')).toHaveAttribute('data-surface', 'dark')
     await expect(card.locator('svg image')).toHaveAttribute('href', /^data:image\//)
     expect(await page.locator('.workspace-tab').count()).toBe(before)
     await expect(row).not.toHaveAttribute('data-material-open', 'true')
-    await info.attach('whiteboard-material-preview', { body: await page.screenshot({ path: info.outputPath('whiteboard-material-preview.png') }), contentType: 'image/png' })
+    await info.attach('note-material-preview', { body: await page.screenshot({ path: info.outputPath('note-material-preview.png') }), contentType: 'image/png' })
     await row.click()
     await expect(card).toHaveCount(0)
     await expect(row).toHaveAttribute('data-material-open', 'true')
-    await expect(row).toHaveAttribute('data-material-new', 'true')
+    await expect(page.locator('.pdf-page').first()).toBeVisible()
   } finally { await bandal.close() }
 })

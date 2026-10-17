@@ -185,7 +185,7 @@ function MaterialHoverCard({ hover: { target, anchor }, id, open }: { hover: Hov
   const path = target.node?.relPath
   const size = metadata?.size ?? target.node?.size
   const mtime = metadata?.mtime ?? target.node?.mtime ?? (target.board ? Date.parse(target.board.updatedAt) : undefined)
-  const type = target.board ? '화이트보드' : (name.includes('.') ? name.split('.').at(-1)!.toUpperCase() : '파일')
+  const type = target.board ? '노트' : (name.includes('.') ? name.split('.').at(-1)!.toUpperCase() : '파일')
   useLayoutEffect(() => {
     const element = ref.current
     if (!element) return

@@ -3,7 +3,7 @@
 // The SQLite module must use that Electron ABI, never a system Node binding.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),vm=require('node:vm'),os=require('node:os'),{createRequire}=require('node:module')
 const canonical=value=>JSON.stringify(value,(_k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v)
-const hash=file=>{const h=crypto.createHash('sha256'),fd=fs.openSync(file,'r'),b=Buffer.alloc(1024*1024);try{for(;;){const n=fs.readSync(fd,b,0,b.length,null);if(!n)break;h.update(b.subarray(0,n))}}finally{fs.closeSync(fd)}return h.digest('hex')}
+const rawHash=file=>{const h=crypto.createHash('sha256'),fd=fs.openSync(file,'r'),b=Buffer.alloc(1024*1024);try{for(;;){const n=fs.readSync(fd,b,0,b.length,null);if(!n)break;h.update(b.subarray(0,n))}}finally{fs.closeSync(fd)}return h.digest('hex')}
 function nearest(file){let cursor=path.resolve(file),suffix=[];while(!fs.existsSync(cursor)){suffix.unshift(path.basename(cursor));const next=path.dirname(cursor);if(next===cursor)throw new Error('No existing path ancestor');cursor=next}return path.join(fs.realpathSync(cursor),...suffix)}
 async function run(input){
   if(!input||!['export','import','conflicts','restoreConflict'].includes(input.action))throw new Error('Unknown projector action')
@@ -12,6 +12,9 @@ async function run(input){
   if(typeof appVersion!=='string'||!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(appVersion))throw new Error('Desktop package version is unavailable')
   const SQLite=moduleRequire(input.sqliteModule||'better-sqlite3'),database=new SQLite(input.database)
   database.pragma('busy_timeout = 5000')
+  database.exec('CREATE TABLE IF NOT EXISTS desktop_file_hash_cache(path TEXT PRIMARY KEY,signature TEXT NOT NULL,sha TEXT NOT NULL)')
+  const signature=file=>{const s=fs.statSync(file,{bigint:true});return [s.dev,s.ino,s.size,s.mtimeNs,s.ctimeNs].join(':')}
+  const hash=file=>{const key=fs.realpathSync(file),before=signature(key),cached=database.prepare('SELECT signature,sha FROM desktop_file_hash_cache WHERE path=?').get(key);if(cached?.signature===before)return cached.sha;const sha=rawHash(key);if(signature(key)!==before)throw new Error('File changed while hashing');database.prepare('INSERT INTO desktop_file_hash_cache VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET signature=excluded.signature,sha=excluded.sha').run(key,before,sha);return sha}
   const userData=path.dirname(path.resolve(input.database)),exchange=path.resolve(input.exchange),temp=path.join(exchange,'projector-temp')
   fs.mkdirSync(temp,{recursive:true});fs.mkdirSync(input.courseRoot,{recursive:true})
   const roots=[userData,exchange,input.courseRoot,...database.prepare('SELECT folder_path FROM courses').all().map(r=>r.folder_path)].map(nearest)

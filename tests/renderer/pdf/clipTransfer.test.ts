@@ -87,3 +87,12 @@ describe('clip pageAspect round trip', () => {
     expect(readBandalClipDragData(reader)).toBeNull()
   })
 })
+
+test('keeps immutable clip source identity and revision through drag serialization',()=>{
+  const pinned={...source,materialID:'source-id',documentRevision:'a'.repeat(64),documentByteCount:1234}
+  const values=new Map<string,string>()
+  writeBandalClipDragData({effectAllowed:'copy',setData:(type,value)=>values.set(type,value)},pinned)
+  expect(readBandalClipDragData({getData:type=>values.get(type)??''})).toEqual(pinned)
+  expect(isDrawingClipSource({...pinned,documentRevision:'../invalid'})).toBe(false)
+  expect(isDrawingClipSource({...pinned,documentByteCount:-1})).toBe(false)
+})

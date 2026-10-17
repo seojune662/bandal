@@ -1,8 +1,12 @@
+import { resolvePdfClipSource, isReferencedClipRevision } from '../features/pdf/pdfClipSource'
+import { createPdfNotesService } from '../features/pdf/pdfNotes'
+import { createProfileManager } from '../features/account/profileManager'
 import { installIPadCompanion } from '../features/ipadSync/runtime'
 import { createStudyMarketClient } from '../features/studyMarket/client'
 import { createStudyMarketBundles } from '../features/studyMarket/bundles'
 import { registerStudyMarketHandlers } from './studyMarketHandlers'
 import { assertAppRendererSender } from './appRendererSender'
+import { createWorkspaceTransitions } from './workspaceTransition'
 import { forgetGoogleAccountNavigation } from '../features/browser/googleAccountNavigation'
 import { createLearningRepo, normalizeLearningDraft } from '../features/learning'
 import { createLearningPathOutbox } from '../features/learning/learningPathOutbox'
@@ -152,7 +156,7 @@ import { createModelManager } from '../features/recordings/modelManager'
 import { createRecordingService } from '../features/recordings/recordingService'
 import { speechModel } from '../features/recordings/modelCatalog'
 import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
-import { createBoundPDFRepositories, createPDFDocumentBindings } from '../features/pdf/pdfDocumentBinding'
+import { createBoundPDFRepositories, createPDFDocumentBindings, retryPDFMutation } from '../features/pdf/pdfDocumentBinding'
 import { createPDFOriginalPreserver, createPDFRevisionReader } from '../features/pdf/pdfOriginals'
 import { createPdfExporter } from '../features/pdf'
 import { createBoardRepo } from '../features/board'
@@ -292,6 +296,12 @@ export interface RegisterHandlersDeps {
  * context, then rethrows so the renderer receives a rejected promise.
  */
 const registered = new Set<IpcChannel>()
+let localAccessAllowed: () => boolean = () => false
+let profileBusy: () => boolean = () => false
+let transitionCommitting: () => boolean = () => false
+let localContentChanged: () => void = () => {}
+const beforeLogin = (channel: string): boolean => channel.startsWith('auth:') || channel.startsWith('profile:') || channel.startsWith('update:') || ['workspace:transitionReady', 'settings:get', 'window:getState', 'app:diagnostics', 'app:openLogs', 'feedback:send'].includes(channel)
+const changesSyncContent = (channel: string): boolean => /^(courses|courseGroups|materials|notes|annotations|drawings|pdfNotes|pdf|canvas):/.test(channel) && /:(create|write|update|delete|remove|rename|move|reorder|restructure|migrateLegacy|import|restore|set)/.test(channel)
 
 /**
  * Boot-time guard: every contract channel must have a handler.
@@ -318,9 +328,13 @@ function handle<K extends IpcChannel>(
   registered.add(channel)
   ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
     assertAppRendererSender(_event)
+    if (transitionCommitting() && !['workspace:transitionReady', 'auth:getState', 'settings:get', 'window:getState', 'runtime:syncState', 'update:status', 'app:diagnostics', 'app:openLogs'].includes(channel)) throw new Error('자료 저장과 계정 전환이 진행 중입니다. 잠시 후 다시 시도해 주세요.')
+    if (!beforeLogin(channel) && (!localAccessAllowed() || profileBusy())) throw new Error(profileBusy() ? '자료 백업 중입니다. 잠시 후 다시 시도해 주세요.' : 'login-required')
     const start = performance.now()
     try {
-      return await fn(req, _event)
+      const result = await fn(req, _event)
+      if (changesSyncContent(channel)) localContentChanged()
+      return result
     } catch (error) {
       if (channel === 'browser:pageAction') console.error('[ipc] Browser action failed')
       else console.error(`[ipc] ${channel} failed:`, error)
@@ -411,7 +425,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const pdfPath = (courseId: string, relPath: string): string => materialsRepo.absolutePathFor(courseId, relPath)
   const pdfBindings = createPDFDocumentBindings(db, (courseId, relPath) => pdfRevision(pdfPath(courseId, relPath)),
     createPDFOriginalPreserver(join(deps.userDataPath, 'PDFOriginals'), pdfPath, pdfRevision))
-  const { annotations: annotationsRepo, drawings: drawingsRepo } = createBoundPDFRepositories(db, pdfBindings)
+  const materialPathLock = createMaterialPathLock(join(deps.userDataPath, 'material-path-lock.db'))
+  const { annotations: annotationsRepo, drawings: drawingsRepo } = createBoundPDFRepositories(db, pdfBindings, materialPathLock)
   const legacyPackSettlers = new Map<string, { resolve(): void; reject(error: Error): void }>()
   const legacyGuardSessions = new Map<string, string>()
   const settleStudyTurn = (info: { sessionId: string; reason: 'success' | 'error' | 'interrupted'; error?: AgentTurnFailure }): void => {
@@ -427,7 +442,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const learningCache = createLearningCache(db)
   const dictionary = createDictionaryService({ directory: app.isPackaged
     ? join(process.resourcesPath, 'dictionary') : join(__dirname, '../../resources/dictionary') })
-  const materialPathLock = createMaterialPathLock(join(deps.userDataPath, 'material-path-lock.db'))
   let learningPaths: ReturnType<typeof createLearningPathOutbox>
   const learningRepo = createLearningRepo({
     pathLock: materialPathLock, beforePathAccess: () => learningPaths.flush(),
@@ -598,8 +612,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // 여기(레포 생성 직후)에서 등록한다. registerHandlers 는 앱당 한 번 불린다.
   setMaterialMediaHandler(
     createMediaProtocolHandler({
-      absolutePathFor: (courseId, relPath) =>
-        materialsRepo.absolutePathForAsync(courseId, relPath)
+      absolutePathFor: async (courseId, relPath, revision) => {
+        if (!localAccessAllowed()) throw new Error('login-required')
+        if (!revision) return materialsRepo.absolutePathForAsync(courseId, relPath)
+        try { await materialsRepo.absolutePathForAsync(courseId, relPath) }
+        catch (error) { if (!isReferencedClipRevision(db, courseId, relPath, revision)) throw error }
+        if (!relPath.toLowerCase().endsWith('.pdf')) throw new Error('Invalid revision source')
+        const snapshot = join(deps.userDataPath, 'PDFOriginals', `${revision}.pdf`)
+        if (pdfRevision(snapshot) !== revision) throw new Error('PDF snapshot integrity failure')
+        return snapshot
+      }
     })
   )
 
@@ -729,11 +751,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return result
   })
   handle('links:updatePageNote', (req) => {
-    return materialLinksRepo.updateMetadata(
-      req.courseId,
-      req.id,
-      req.metadata
-    )
+    const update = async () => {
+      if (req.pageNoteSource) pdfBindings.check({ courseId: req.courseId, ...req.pageNoteSource })
+      return materialLinksRepo.updateMetadata(req.courseId, req.id, req.metadata)
+    }
+    return req.pageNoteSource ? withMaterialLock(update) : update()
   })
   handle('links:listFor', (req) =>
     materialLinksRepo.listFor(req.courseId, req.relPath)
@@ -860,14 +882,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // 무효화한다 (materialsRepo 변이는 스스로 무효화한다).
   handle('notes:read', (req) => notesRepo.read(req))
   handle('notes:write', (req) => {
-    const result = notesRepo.write(req)
-    materialsRepo.invalidateTree(req.courseId)
-    note(req.courseId, 'note-edited', `필기를 수정했습니다: ${req.relPath}`, req.relPath)
-    emitPluginEvent('note:saved', {
-      courseId: req.courseId,
-      relPath: req.relPath
-    })
-    return result
+    const write = async () => {
+      if (req.pageNoteSource) pdfBindings.check({ courseId: req.courseId, ...req.pageNoteSource })
+      const result = notesRepo.write(req)
+      materialsRepo.invalidateTree(req.courseId)
+      note(req.courseId, 'note-edited', `필기를 수정했습니다: ${req.relPath}`, req.relPath)
+      emitPluginEvent('note:saved', { courseId: req.courseId, relPath: req.relPath })
+      return result
+    }
+    return req.pageNoteSource ? withMaterialLock(write) : write()
   })
   handle('notes:rename', async (req) => {
     const result = await notesRepo.rename(req)
@@ -892,8 +915,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   // -- annotations ----------------------------------------------------------
   handle('annotations:listForFile', (req) => annotationsRepo.listForFile(req))
-  handle('annotations:create', (req) => {
-    const result = annotationsRepo.create(req)
+  handle('annotations:create', async (req) => {
+    const result = await retryPDFMutation(() => annotationsRepo.create(req))
     // The quote is the single best signal of what the student found important.
     note(
       req.courseId,
@@ -903,19 +926,32 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     )
     return result
   })
-  handle('annotations:update', (req) => annotationsRepo.update(req))
-  handle('annotations:delete', (req) => annotationsRepo.softDelete(req))
+  handle('annotations:update', (req) => retryPDFMutation(() => annotationsRepo.update(req)))
+  handle('annotations:delete', (req) => retryPDFMutation(() => annotationsRepo.softDelete(req)))
 
   // -- pdf drawings (M9: free-form markup, kept apart from text highlights) --
   handle('drawings:listForFile', (req) =>
-    drawingsRepo.listForFile(req.courseId, req.relPath)
+    drawingsRepo.listForFile(req.courseId, req.relPath, req.documentRevision)
   )
-  handle('drawings:create', (req) => drawingsRepo.create(req))
-  handle('drawings:update', (req) => drawingsRepo.update(req))
-  handle('drawings:delete', (req) => {
-    drawingsRepo.softDelete(req.ids)
+  handle('drawings:create', (req) => retryPDFMutation(() => drawingsRepo.create(req)))
+  handle('drawings:update', (req) => retryPDFMutation(() => drawingsRepo.update(req)))
+  handle('drawings:delete', async (req) => {
+    await retryPDFMutation(() => drawingsRepo.softDelete(req.ids, req.documentRevision))
     return OK
   })
+
+  const pdfNotes = createPdfNotesService({ db, courses: coursesRepo, materials: materialsRepo, notes: notesRepo,
+    links: materialLinksRepo, pdfBindings, userDataPath: deps.userDataPath, changed: courseId => broadcast('materials:changed', { courseId }) })
+  const withMaterialLock = async <T>(action: () => Promise<T>): Promise<T> => {
+    const release = materialPathLock.tryAcquire()
+    if (!release) throw new Error('자료 동기화 중입니다. 잠시 후 다시 시도해 주세요.')
+    try { return await action() } finally { release() }
+  }
+  handle('pdfNotes:create', req => withMaterialLock(() => pdfNotes.create(req)))
+  handle('pdfNotes:info', async req => { const info = await pdfNotes.info(req); pdfBindings.check({ ...req, documentRevision: info.documentRevision }); return info })
+  handle('pdf:restructure', req => withMaterialLock(() => pdfNotes.restructure(req)))
+  handle('pdfNotes:migrateLegacy', req => withMaterialLock(() => pdfNotes.migrateLegacy(req)))
+  handle('pdfNotes:migrationStatus', req => pdfNotes.migrationStatus(req))
 
   // -- media progress (M18: 영상 이어보기) ----------------------------------
   const mediaProgressRepo = createMediaProgressRepo(db)
@@ -986,6 +1022,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   // Export burns markup into a NEW file — the source pdf is never written to.
   const pdfExporter = createPdfExporter({
+    resolveClipSource: (courseId, source) => resolvePdfClipSource(deps.userDataPath, coursesRepo.getFolder(courseId), source),
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
     listDrawings: (courseId, relPath) =>
       drawingsRepo.listForFile(courseId, relPath),
@@ -3050,6 +3087,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('canvas:setBackground', (req) => canvasRepo.setBackground(req))
   handle('canvas:setPageCount', (req) => canvasRepo.setPageCount(req))
   const boardPdfExporter = createBoardPdfExporter({
+    resolveClipSource: (courseId, source) => resolvePdfClipSource(deps.userDataPath, coursesRepo.getFolder(courseId), source),
     openBoard: (boardId) => canvasRepo.open(boardId),
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
   })
@@ -3569,11 +3607,34 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('layout:save', (req) => layoutRepo.save(req.courseId, req.layout))
   handle('layout:saveMany', (req) => layoutRepo.saveMany(req.layouts))
 
-  const account = createAccountRuntime(state => broadcast('auth:changed', state))
+  const transitions = createWorkspaceTransitions(() => BrowserWindow.getAllWindows().flatMap(win => {
+    const contents = win.webContents
+    try {
+      assertAppRendererSender({ sender: contents, senderFrame: contents.mainFrame })
+      if (!new URL(contents.getURL()).pathname.endsWith('/index.html')) return []
+    } catch { return [] }
+    return [{ id: contents.id,
+      prepare: (requestId: string) => contents.send('workspace:prepareTransition', { requestId }),
+      release: (requestId: string) => { if (!contents.isDestroyed()) contents.send('workspace:releaseTransition', { requestId }) },
+      onUnavailable: (listener: () => void) => {
+        contents.on('destroyed', listener); contents.on('render-process-gone', listener); contents.on('did-navigate', listener)
+        return () => { contents.off('destroyed', listener); contents.off('render-process-gone', listener); contents.off('did-navigate', listener) }
+      }
+    }]
+  }))
+  transitionCommitting = transitions.committing
+  handle('workspace:transitionReady', (req, event) => {
+    if (!req || typeof req.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(req.requestId) || typeof req.ok !== 'boolean') throw new Error('저장 응답이 올바르지 않습니다.')
+    return { ok: transitions.acknowledge(event.sender.id, req.requestId, req.ok) }
+  })
+  const account = createAccountRuntime(state => { broadcast('auth:changed', state); if (state.phase === 'signed-in' && state.localAccess?.allowed) ipadCompanion.resume() })
+  localAccessAllowed = () => account.auth().getState().localAccess?.allowed === true
   const ipadCompanion = installIPadCompanion({
+    canAccess: () => localAccessAllowed() && !profileBusy(),
+    profileBusy: () => profileBusy(),
     db,
     userDataPath: deps.userDataPath ?? app.getPath('userData'),
-    getClient: () => account.getClient(),
+    getClient: () => localAccessAllowed() && account.auth().userId() === account.auth().getState().localAccess?.boundUserID ? account.getClient() : null,
     changed: courseIds => {
       broadcast('courses:changed', {})
       broadcast('board:changed', { courseId: null })
@@ -3584,6 +3645,35 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
   })
   app.on('will-quit', () => ipadCompanion.dispose())
+  localContentChanged = () => ipadCompanion.localChanged()
+  const profiles = createProfileManager({ db, root: deps.userDataPath, baseRoot: process.env['BANDAL_PROFILE_BASE_ROOT'] ?? deps.userDataPath,
+    pause: () => ipadCompanion.pauseAndDrain(), resume: () => ipadCompanion.resume(), relaunch: () => { app.relaunch(); app.quit() },
+    chooseDestination: async () => {
+      const result = await dialog.showSaveDialog({ title: '반달 전체 자료 백업', defaultPath: `반달 백업 ${new Date().toISOString().replace(/[:.]/g, '-')}.bandalbackup`, buttonLabel: '백업' })
+      return result.canceled ? null : result.filePath ?? null
+    } })
+  profileBusy = profiles.busy
+  handle('profile:backup', () => transitions.run(() => profiles.backup()))
+  handle('profile:new', () => transitions.run(() => profiles.newProfile(), result => result.ok))
+  handle('runtime:syncState', () => ipadCompanion.state())
+  handle('runtime:syncSetEnabled', async req => { await ipadCompanion.setEnabled(req.enabled); return ipadCompanion.state() })
+  handle('runtime:syncNow', async () => { await ipadCompanion.synchronize(true); return ipadCompanion.state() })
+  handle('runtime:syncConflicts', () => ipadCompanion.conflicts())
+  handle('runtime:syncResolveConflict', req => ipadCompanion.resolveConflict(req.id, req.choice))
+  const billingState = async () => {
+    const client = account.getClient()
+    if (!client || !account.auth().userId()) throw new Error('login-required')
+    const [subscription, sync] = await Promise.all([client.rpc('bandal_subscription_status'), client.rpc('bandal_sync_status')])
+    if (subscription.error || sync.error) throw new Error('구독 상태를 불러오지 못했습니다. 다시 시도해 주세요.')
+    return { provider: 'paddle' as const, subscription: subscription.data, sync: sync.data }
+  }
+  handle('billing:getState', billingState)
+  handle('billing:refresh', billingState)
+  const applePurchaseUnavailable = (): never => { throw new Error('Apple 구독 구매와 복원은 iPad 앱에서 이용해 주세요.') }
+  handle('billing:prepareApple', applePurchaseUnavailable)
+  handle('billing:purchase', applePurchaseUnavailable)
+  handle('billing:restore', applePurchaseUnavailable)
+  handle('billing:manageApple', async () => { await shell.openExternal('https://apps.apple.com/account/subscriptions'); return OK })
 
 
   // Give queued IPC one turn of the event loop before the process goes away.
@@ -3605,11 +3695,49 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // auth
   handle('auth:getState', () => account.auth().getState())
   handle('auth:signIn', (req) => account.auth().signIn(req.provider))
-  handle('auth:signOut', async () => {
-    ipadCompanion.pause()
-    await account.auth().signOut()
-    return OK
-  })
+  handle('auth:confirmProfile', req => account.auth().confirmProfile(req.userID))
+  handle('auth:linkProvider', req => account.auth().linkProvider(req.provider))
+  handle('auth:deleteAccount', req => transitions.run(async () => {
+    if (req.confirm !== true) throw new Error('계정 삭제 확인이 필요합니다.')
+    const client = account.getClient()
+    if (!client || !account.auth().userId()) throw new Error('login-required')
+    const deletion = account.auth().beginAccountDeletion()
+    let requested = false
+    try {
+      await ipadCompanion.pauseAndDrain()
+      requested = true
+      const result = await client.functions.invoke('account-delete', { body: { confirm: true } })
+      let body = result.data
+      let responseStatus: number | null = null
+      if (result.error && 'context' in result.error && result.error.context instanceof Response) {
+        responseStatus = result.error.context.status
+        body = await result.error.context.json().catch(() => null)
+      }
+      if (result.error || body?.ok !== true) {
+        if (responseStatus === 409 && body?.error === 'account_deletion_pending_transactions') {
+          deletion.cancel()
+          const pending = body.pendingTransactions ?? {}
+          const count = (items: unknown) => Array.isArray(items) ? items.reduce((sum, item) => sum + (Number.isSafeInteger(item?.count) && item.count >= 0 ? item.count : 0), 0) : 0
+          const balance = Number.isSafeInteger(pending.unsettledBalance) ? pending.unsettledBalance : 0
+          throw new Error(`진행 중인 거래 ${count(pending.orders)}건·환불/회수 검토 ${count(pending.cases)}건·정산 ${count(pending.payouts)}건과 미정산 잔액 ${balance.toLocaleString()}원을 먼저 정리해 주세요. 완료된 거래는 개인정보를 제거해 보관합니다.`)
+        }
+        if (responseStatus === 401 && ['reauthentication_required', 'sign_in_required'].includes(body?.error)) deletion.cancel()
+        if (body?.error === 'account_deletion_storage_pending' || body?.error === 'account_deletion_in_progress') throw new Error('계정 자료 삭제가 진행 중입니다. 잠시 후 다시 시도하면 남은 삭제를 계속합니다.')
+        throw new Error('다시 로그인한 뒤 계정 삭제를 시도해 주세요. 계정 삭제와 구독 해지는 별개입니다.')
+      }
+      await account.auth().signOut()
+      return body
+    } catch (error) {
+      if (!requested) deletion.cancel()
+      else deletion.uncertain()
+      if (account.auth().getState().localAccess?.allowed) ipadCompanion.resume()
+      throw error
+    }
+  }))
+  handle('auth:signOut', () => transitions.run(async () => {
+    try { await ipadCompanion.pauseAndDrain(); await account.auth().signOut(); return OK }
+    finally { if (account.auth().getState().localAccess?.allowed) ipadCompanion.resume() }
+  }))
   handle('auth:setNickname', (req) => account.auth().setNickname(req.nickname))
   // -- auto update ----------------------------------------------------------
   // Constructed eagerly (unlike account authentication): it owns the periodic check, and
@@ -3620,6 +3748,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   onBrowserQuitCancelled(() => {
     quitDrain.reset()
     updater.cancelInstall()
+    profiles.cancelSwitch()
+    transitions.release()
+    if (localAccessAllowed()) ipadCompanion.resume()
   })
   app.on('will-quit', () => {
     updater.dispose()
@@ -3628,7 +3759,14 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('update:status', () => updater.status())
   handle('update:check', () => updater.check())
   handle('update:download', () => updater.download())
-  handle('update:install', () => ({ ok: updater.install() }))
+  handle('update:install', () => transitions.run(async () => {
+    try {
+      await ipadCompanion.pauseAndDrain()
+      const ok = updater.install()
+      if (!ok && localAccessAllowed()) ipadCompanion.resume()
+      return { ok }
+    } catch (error) { if (localAccessAllowed()) ipadCompanion.resume(); throw error }
+  }, result => result.ok))
 
   // -- feedback -------------------------------------------------------------
   // Uses the account runtime's lazy client so boot stays offline and feedback

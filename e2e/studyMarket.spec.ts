@@ -21,7 +21,9 @@ async function installMarketService(bandal: BandalApp): Promise<void> {
     const base = { id: 'listing-one', versionId: 'version-one', universityId: 'snu', course, sellerId: 'another-student', sellerName: '공부하는 달', title: '미시경제 중간고사 요약', description: '핵심 개념과 직접 정리한 연습문제를 한곳에 모았어요.', price: 2000, professor: '김교수', semester: '2026년 2학기', status: 'published', files: [file], previewUrls: [], createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }
     const probe = { calls: [] as any[], workspace: null as any, drafts: [] as any[], purchases: [] as any[], paid: false, corrupt: true, opened: '', uploads: {} as Record<string, number>, nextUpload: 0 }
     ;(globalThis as any).__studyMarketFixture = probe
-    const auth = { phase: 'signed-in', profile: { id: 'market-user', nickname: '마켓학생', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: 'student@example.test', avatarUrl: null, online: true, errorCode: null }
+    const userId = '11111111-1111-4111-8111-111111111111'
+    const auth = { phase: 'signed-in', profile: { id: userId, nickname: '마켓학생', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: 'student@example.test', avatarUrl: null, online: true, errorCode: null,
+      localAccess: { allowed: true, requiresLogin: false, boundUserID: userId, profileID: '22222222-2222-4222-8222-222222222222' } }
     ipcMain.removeHandler('auth:getState'); ipcMain.handle('auth:getState', () => auth)
     const sync = (ipcMain as any)._invokeHandlers.get('agent:syncWorkspace')
     ipcMain.removeHandler('agent:syncWorkspace'); ipcMain.handle('agent:syncWorkspace', (event, input) => { probe.workspace = input; return sync(event, input) })
@@ -42,7 +44,7 @@ async function installMarketService(bandal: BandalApp): Promise<void> {
         if (action === 'listing') return json(base)
         if (action === 'dashboard') return json({ configured: true, tradingEnabled: true, signedIn: true, operator: false, seller: { status: 'ready', displayName: '마켓학생' }, listings: probe.drafts, purchases: probe.purchases, payouts: [], salesCount: 0, pendingAmount: 0, paidAmount: 0, notice: '' })
         if (action === 'saveDraft') {
-          const draft = { ...base, ...req, course, id: 'own-listing', versionId: 'own-version', sellerId: 'market-user', sellerName: '마켓학생', status: 'draft', previewUrls: [] }
+          const draft = { ...base, ...req, course, id: 'own-listing', versionId: 'own-version', sellerId: userId, sellerName: '마켓학생', status: 'draft', previewUrls: [] }
           probe.drafts = [draft]; return json(draft)
         }
         if (action === 'uploadGrant') return json({ url: `${root}/storage/v1/object/upload`, token: 'fixture-upload', bucket: 'study-market', objectPath: req.fileId, resumableUrl: `${root}/storage/v1/upload/resumable` })

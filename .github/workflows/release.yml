@@ -247,6 +247,7 @@ jobs:
       - name: Assert required app configuration was inlined
         env:
           MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
           MAIN_VITE_GMAIL_CLIENT_ID: ${{ secrets.MAIN_VITE_GMAIL_CLIENT_ID }}
         run: |
           # Exact match against the secret, not a /supabase\.co/ substring.
@@ -263,6 +264,15 @@ jobs:
             const s = require('fs').readFileSync('out/main/index.js','utf8');
             if (!s.includes(url)) {
               console.error('::error::the configured Supabase URL is not in out/main/index.js - check the env block on the pnpm build step.');
+              process.exit(1);
+            }
+            const publishableKey = (process.env.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY || '').trim();
+            if (publishableKey === '') {
+              console.error('::error::secret MAIN_VITE_SUPABASE_PUBLISHABLE_KEY is empty - required account login would be unavailable.');
+              process.exit(1);
+            }
+            if (!s.includes(publishableKey)) {
+              console.error('::error::the configured Supabase publishable key is not in out/main/index.js - check the env block on the pnpm build step.');
               process.exit(1);
             }
             const gmailClientId = (process.env.MAIN_VITE_GMAIL_CLIENT_ID || '').trim();

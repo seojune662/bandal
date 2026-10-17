@@ -156,7 +156,7 @@ test('imports Safari export through the real dialog with scoped bookmarks and id
       await window.bandal.invoke('settings:set', { browser: { ...settings.browser, homePage } })
     }, previewUrl)
     await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
-    await page.getByRole('option', { name: '새 브라우저 탭', exact: false }).click()
+    await page.getByRole('option', { name: /^브라우저(?:\s|$)/ }).click()
     const browser = page.locator('.browser-panel:visible')
     await expect(browser).toBeVisible()
     await expect(browser.getByRole('button', { name: '브라우저 프로필', exact: true })).toContainText('기본')

@@ -12,8 +12,9 @@
 
 import { expect, test } from '@playwright/test'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { createPdfNote } from './helpers/pdfNotes'
 
-test.describe('whiteboard', () => {
+test.describe('editable PDF note objects', () => {
   let bandal: BandalApp
 
   test.beforeAll(async () => {
@@ -27,14 +28,14 @@ test.describe('whiteboard', () => {
   test('the text tool opens an editable box and keeps what is typed', async () => {
     const { page } = bandal
     await createCourse(page, '알고리즘')
-    await page
-      .locator('.whiteboards-group')
-      .getByRole('button', { name: '새 화이트보드 만들기' })
-      .click()
+    await createPdfNote(page, '텍스트 필기 검증')
 
-    const surface = page.locator('.ink-layer')
+    const surface = page.locator('.pdf-page[data-pdf-page="1"]:visible .ink-layer')
     await expect(surface).toBeVisible()
-    await page.getByRole('button', { name: /텍스트/ }).first().click()
+    if (!await page.getByRole('button', { name: '텍스트', exact: true }).isVisible()) {
+      await page.getByRole('button', { name: '주석 도구', exact: true }).click()
+    }
+    await page.getByRole('button', { name: '텍스트', exact: true }).click()
 
     const bounds = await surface.boundingBox()
     expect(bounds).not.toBeNull()
@@ -59,7 +60,7 @@ test.describe('whiteboard', () => {
 
   test('an empty box is discarded instead of leaving an invisible shape behind', async () => {
     const { page } = bandal
-    const surface = page.locator('.ink-layer')
+    const surface = page.locator('.pdf-page[data-pdf-page="1"]:visible .ink-layer')
     const bounds = await surface.boundingBox()
     const before = await page.locator('.ink-layer__textbox').count()
 
@@ -68,11 +69,11 @@ test.describe('whiteboard', () => {
     await page.keyboard.press('Escape')
 
     // An empty text box renders as nothing but still catches the eraser and
-    // clutters the board, so it must never be stored.
+    // clutters the note, so it must never be stored.
     await expect(page.locator('.ink-layer__textbox')).toHaveCount(before)
   })
 
-  test('the format bar recolors a committed whiteboard textbox', async () => {
+  test('the format bar recolors a committed PDF note textbox', async () => {
     const { page } = bandal
     const committed = page.locator('.ink-layer__textbox-object', {
       hasText: '중간고사 범위'

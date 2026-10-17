@@ -1,11 +1,22 @@
 // @vitest-environment jsdom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 const ipc = vi.hoisted(() => ({ invoke: vi.fn(), onPush: vi.fn(() => () => {}) }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ipc)
 import { AccountPanel } from '../../../src/renderer/src/features/settings/AccountPanel'
 import { AccountAvatar } from '../../../src/renderer/src/features/account/AccountAvatar'
+
+const billing = { provider: 'paddle', subscription: { active: false, sources: [] }, sync: {} }
+const sync = { phase: 'idle', enabled: false, pending: 0, conflicts: 0 }
+beforeEach(() => {
+  ipc.invoke.mockReset()
+  ipc.invoke.mockImplementation(async (channel: string) => {
+    if (channel === 'billing:getState') return billing
+    if (channel === 'runtime:syncState') return sync
+    return { phase: 'signed-out', profile: null }
+  })
+})
 
 test('provider photos fall back on failure and retry when the account photo changes', async () => {
   const element = document.createElement('div')
@@ -29,7 +40,11 @@ test('provider photos fall back on failure and retry when the account photo chan
 
 
 test('account settings retain nickname editing without custom avatar controls', async () => {
-  ipc.invoke.mockResolvedValue({ phase: 'signed-in', profile: { id: 'one', nickname: 'learner', avatarColor: 'blue', avatarEmoji: '⭐' }, email: 'one@example.test', avatarUrl: 'https://lh3.googleusercontent.com/photo', online: true, errorCode: null })
+  ipc.invoke.mockImplementation(async (channel: string) => {
+    if (channel === 'billing:getState') return billing
+    if (channel === 'runtime:syncState') return sync
+    return { phase: 'signed-in', profile: { id: 'one', nickname: 'learner', avatarColor: 'blue', avatarEmoji: '⭐' }, email: 'one@example.test', avatarUrl: 'https://lh3.googleusercontent.com/photo', online: true, errorCode: null }
+  })
   const element = document.createElement('div')
   document.body.append(element)
   const root = createRoot(element)

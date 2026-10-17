@@ -54,7 +54,7 @@ test('four panes with both sidebars open keep 32px tabs and all actions reachabl
     await expect(list.getByRole('button', { name: '2×2 4분할', exact: true })).toBeVisible()
     await list.getByRole('button', { name: '새 탭 열기', exact: true }).click()
     await expect(list).toBeHidden()
-    await page.locator('.new-tab-menu').getByRole('option').filter({ hasText: '새 마크다운' }).first().click()
+    await page.locator('.new-tab-menu').getByRole('option', { name: '마크다운', exact: true }).click()
     await expect(first.locator('.dv-tab')).toHaveCount(6)
     await expect(first.locator('.dv-active-tab')).toBeVisible()
     expect((await first.locator('.dv-active-tab').boundingBox())!.width).toBeGreaterThanOrEqual(31.9)

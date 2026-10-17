@@ -3,6 +3,7 @@ import { readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PDFDocument, rgb } from 'pdf-lib'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { createPdfNote } from './helpers/pdfNotes'
 
 async function pixels(page: Page, png: string): Promise<{ corner: number[]; marker: number[]; highlight: number[]; image: number[]; textPixels: number; textBounds: number[] }> {
   return page.evaluate(async (base64) => {
@@ -200,7 +201,7 @@ test.describe('page image clipboard', () => {
     expect((await copy(second, false)).png === original).toBe(true)
   })
 
-  test('the native clipboard image pastes into a note, PDF and whiteboard', async () => {
+  test('the native clipboard image pastes into Markdown, a PDF and a new pen note', async () => {
     const { page } = bandal
     await copy(await jump(2), true)
     await page.locator('[data-material-path="paste.md"]').click()
@@ -215,11 +216,11 @@ test.describe('page image clipboard', () => {
     await first.click({ position: { x: 100, y: 100 } })
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+v' : 'Control+v')
     await expect(first.locator('.ink-layer__image-el')).toBeVisible()
-    await page.locator('.whiteboards-group').getByRole('button', { name: '새 화이트보드 만들기' }).click()
-    const board = page.locator('.canvas-tab__surface:visible')
-    await expect(board).toBeVisible()
-    await board.click({ position: { x: 150, y: 150 } })
+    await createPdfNote(page, '붙여넣은 페이지 이미지')
+    const penNote = page.locator('.pdf-page[data-pdf-page="1"]:visible')
+    await expect(penNote).toBeVisible()
+    await penNote.click({ position: { x: 150, y: 150 } })
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+v' : 'Control+v')
-    await expect(board.locator('.ink-layer__image-el')).toBeVisible()
+    await expect(penNote.locator('.ink-layer__image-el')).toBeVisible()
   })
 })

@@ -160,16 +160,16 @@
               result += "\uFFFD";
               continue;
             }
-            let value = first & (n === 3 ? 7 : n === 2 ? 15 : 31), valid2 = true;
+            let value = first & (n === 3 ? 7 : n === 2 ? 15 : 31), valid3 = true;
             for (let j = 0; j < n; j++) {
               const byte = bytes[i + j];
               if ((byte & 192) !== 128) {
-                valid2 = false;
+                valid3 = false;
                 break;
               }
               value = value << 6 | byte & 63;
             }
-            if (!valid2 || value > 1114111 || value >= 55296 && value <= 57343 || value < (n === 1 ? 128 : n === 2 ? 2048 : 65536)) {
+            if (!valid3 || value > 1114111 || value >= 55296 && value <= 57343 || value < (n === 1 ? 128 : n === 2 ? 2048 : 65536)) {
               result += "\uFFFD";
               continue;
             }
@@ -26340,9 +26340,9 @@
   }
   function parse_ImData(blob) {
     var cf = blob.read_shift(2);
-    var env5 = blob.read_shift(2);
+    var env4 = blob.read_shift(2);
     var lcb = blob.read_shift(4);
-    var o = { fmt: cf, env: env5, len: lcb, data: blob.slice(blob.l, blob.l + lcb) };
+    var o = { fmt: cf, env: env4, len: lcb, data: blob.slice(blob.l, blob.l + lcb) };
     blob.l += lcb;
     return o;
   }
@@ -26781,23 +26781,23 @@
     o.Flags = blob.read_shift(4) & 63;
     blob.l += 4;
     o.AlgID = blob.read_shift(4);
-    var valid2 = false;
+    var valid3 = false;
     switch (o.AlgID) {
       case 26126:
       case 26127:
       case 26128:
-        valid2 = o.Flags == 36;
+        valid3 = o.Flags == 36;
         break;
       case 26625:
-        valid2 = o.Flags == 4;
+        valid3 = o.Flags == 4;
         break;
       case 0:
-        valid2 = o.Flags == 16 || o.Flags == 4 || o.Flags == 36;
+        valid3 = o.Flags == 16 || o.Flags == 4 || o.Flags == 36;
         break;
       default:
         throw "Unrecognized encryption algorithm: " + o.AlgID;
     }
-    if (!valid2) throw new Error("Encryption Flags/AlgID mismatch");
+    if (!valid3) throw new Error("Encryption Flags/AlgID mismatch");
     o.AlgIDHash = blob.read_shift(4);
     o.KeySize = blob.read_shift(4);
     o.ProviderType = blob.read_shift(4);
@@ -27140,10 +27140,10 @@
     return char2width(px2char(width2px(collw)));
   }
   function find_mdw_colw(collw) {
-    var delta = Math.abs(collw - cycle_width(collw)), _MDW = MDW;
-    if (delta > 5e-3) {
-      for (MDW = MIN_MDW; MDW < MAX_MDW; ++MDW) if (Math.abs(collw - cycle_width(collw)) <= delta) {
-        delta = Math.abs(collw - cycle_width(collw));
+    var delta2 = Math.abs(collw - cycle_width(collw)), _MDW = MDW;
+    if (delta2 > 5e-3) {
+      for (MDW = MIN_MDW; MDW < MAX_MDW; ++MDW) if (Math.abs(collw - cycle_width(collw)) <= delta2) {
+        delta2 = Math.abs(collw - cycle_width(collw));
         _MDW = MDW;
       }
     }
@@ -29340,15 +29340,15 @@
   function parse_ms_xml() {
     return { "!type": "macro" };
   }
-  function shift_formula_str(f, delta) {
+  function shift_formula_str(f, delta2) {
     return f.replace(crefregex, function($0, $1, $2, $3, $4, $5) {
-      return $1 + ($2 == "$" ? $2 + $3 : encode_col(decode_col($3) + delta.c)) + ($4 == "$" ? $4 + $5 : encode_row(decode_row($5) + delta.r));
+      return $1 + ($2 == "$" ? $2 + $3 : encode_col(decode_col($3) + delta2.c)) + ($4 == "$" ? $4 + $5 : encode_row(decode_row($5) + delta2.r));
     });
   }
   function shift_formula_xlsx(f, range3, cell) {
     var r = decode_range(range3), s = r.s, c = decode_cell(cell);
-    var delta = { r: c.r - s.r, c: c.c - s.c };
-    return shift_formula_str(f, delta);
+    var delta2 = { r: c.r - s.r, c: c.c - s.c };
+    return shift_formula_str(f, delta2);
   }
   function fuzzyfmla(f) {
     if (f.length == 1) return false;
@@ -47846,16 +47846,16 @@
                         throw "Unrecognized QPW cell type " + (flags2 & 31);
                     }
                     if (fmtidx != -1 && (FMTS[fmtidx - 1] || {}).z) cell.z = FMTS[fmtidx - 1].z;
-                    var delta = 0;
+                    var delta2 = 0;
                     if (flags2 & 32) switch (flags2 & 31) {
                       case 2:
-                        delta = p.read_shift(2);
+                        delta2 = p.read_shift(2);
                         break;
                       case 3:
-                        delta = p.read_shift(2, "i");
+                        delta2 = p.read_shift(2, "i");
                         break;
                       case 7:
-                        delta = p.read_shift(2);
+                        delta2 = p.read_shift(2);
                         break;
                       default:
                         throw "Unsupported delta for QPW cell type " + (flags2 & 31);
@@ -47876,14 +47876,14 @@
                     while (mul-- > 0 && cnt >= 0) {
                       if (flags2 & 32) switch (flags2 & 31) {
                         case 2:
-                          cell = { t: "n", v: cell.v + delta & 65535 };
+                          cell = { t: "n", v: cell.v + delta2 & 65535 };
                           break;
                         case 3:
-                          cell = { t: "n", v: cell.v + delta & 65535 };
+                          cell = { t: "n", v: cell.v + delta2 & 65535 };
                           if (cell.v > 32767) cell.v -= 65536;
                           break;
                         case 7:
-                          cell = { t: "s", v: SST[type = type + delta >>> 0] };
+                          cell = { t: "s", v: SST[type = type + delta2 >>> 0] };
                           break;
                         default:
                           throw "Cannot apply delta for QPW cell type " + (flags2 & 31);
@@ -83732,6 +83732,516 @@
     }
   });
 
+  // DesktopRuntime/backend/shims/fs.ts
+  init_native();
+  init_buffer();
+
+  // DesktopRuntime/backend/shims/fs-promises.ts
+  var fs_promises_exports = {};
+  __export(fs_promises_exports, {
+    copyFile: () => copyFile,
+    lstat: () => lstat,
+    mkdir: () => mkdir,
+    mkdtemp: () => mkdtemp,
+    open: () => open,
+    opendir: () => opendir,
+    readFile: () => readFile,
+    readdir: () => readdir,
+    realpath: () => realpath,
+    rename: () => rename,
+    rm: () => rm,
+    stat: () => stat,
+    unlink: () => unlink,
+    writeFile: () => writeFile
+  });
+
+  // DesktopRuntime/backend/shims/crypto.ts
+  init_native();
+  init_buffer();
+  var randomUUID = () => native("crypto.randomUUID");
+  var randomBytes = (length2) => Buffer2.from(native("crypto.randomBytes", { length: length2 }), "base64");
+  function randomInt(max2) {
+    if (!Number.isSafeInteger(max2) || max2 <= 0 || max2 > 4294967296) throw new RangeError("Invalid randomInt bound");
+    const limit = Math.floor(4294967296 / max2) * max2;
+    let value;
+    do {
+      value = randomBytes(4).readUInt32LE(0);
+    } while (value >= limit);
+    return value % max2;
+  }
+  function createHash(algorithm) {
+    if (algorithm !== "sha256") throw new Error(`Unsupported hash algorithm: ${algorithm}`);
+    const id2 = native("crypto.hashCreate", { algorithm });
+    let finalized = false;
+    const hash3 = {
+      update(value, encoding = "utf8") {
+        if (finalized) throw new Error("Hash has already been finalized");
+        const bytes = typeof value === "string" ? Buffer2.from(value, encoding) : value;
+        for (let offset = 0; offset < bytes.length; offset += 256 * 1024) native("crypto.hashUpdate", { id: id2, data: Buffer2.from(bytes.subarray(offset, offset + 256 * 1024)).toString("base64") });
+        return hash3;
+      },
+      digest(encoding) {
+        if (finalized) throw new Error("Hash has already been finalized");
+        const hex = native("crypto.hashDigest", { id: id2 });
+        finalized = true;
+        const bytes = Buffer2.from(hex, "hex");
+        return encoding ? bytes.toString(encoding) : bytes;
+      }
+    };
+    return hash3;
+  }
+
+  // DesktopRuntime/backend/shims/fs-promises.ts
+  var copyFile = async (from, to, mode) => copyFileSync(from, to, mode);
+  var mkdtemp = async (prefix2) => {
+    for (let i = 0; i < 10; i++) {
+      const path = prefix2 + randomBytes(6).toString("hex");
+      try {
+        mkdirSync(path);
+        return path;
+      } catch (error2) {
+        if (error2.code !== "EEXIST") throw error2;
+      }
+    }
+    throw new Error("Unable to create temporary directory");
+  };
+  var readFile = async (path, options) => readFileSync(path, options);
+  var writeFile = async (path, data2, options) => writeFileSync(path, data2, options);
+  var mkdir = async (path, options) => mkdirSync(path, options);
+  var readdir = async (path, options) => readdirSync(path, options);
+  var rename = async (from, to) => renameSync(from, to);
+  var rm = async (path, options) => rmSync(path, options);
+  var unlink = async (path) => unlinkSync(path);
+  var stat = async (path, options) => statSync(path, options);
+  var lstat = async (path, options) => lstatSync(path, options);
+  var realpath = async (path) => realpathSync(path);
+  async function opendir(path) {
+    const values2 = readdirSync(path, { withFileTypes: true });
+    let index = 0, closed = false;
+    return { read: async () => {
+      if (closed) throw new Error("Directory closed");
+      return values2[index++] ?? null;
+    }, close: async () => {
+      closed = true;
+    } };
+  }
+  async function open(path, flags2, mode) {
+    const fd = openSync(path, flags2, mode);
+    let closed = false;
+    const check = () => {
+      if (closed) throw new Error("File closed");
+    };
+    return {
+      fd,
+      writeFile: async (value, encoding) => {
+        check();
+        writeFileSync(fd, value, encoding);
+      },
+      stat: async (options) => {
+        check();
+        return fstatSync(fd, options);
+      },
+      read: async (buffer2, offset = 0, length2 = buffer2.length - offset, position = null) => {
+        check();
+        return { bytesRead: readSync(fd, buffer2, offset, length2, position), buffer: buffer2 };
+      },
+      createReadStream: (options = {}) => {
+        check();
+        const stream2 = createReadStream(path, { ...options, fd });
+        if (options.autoClose !== false) {
+          const original = stream2[Symbol.asyncIterator].bind(stream2);
+          stream2[Symbol.asyncIterator] = async function* () {
+            try {
+              yield* original();
+            } finally {
+              closed = true;
+            }
+          };
+        }
+        return stream2;
+      },
+      sync: async () => {
+        if (closed) throw new Error("File closed");
+        fsyncSync(fd);
+      },
+      close: async () => {
+        if (!closed) {
+          closed = true;
+          closeSync(fd);
+        }
+      }
+    };
+  }
+
+  // DesktopRuntime/backend/shims/fs.ts
+  var constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, COPYFILE_EXCL: 1, O_RDONLY: 0, O_NOFOLLOW: env2().fsConstants?.O_NOFOLLOW ?? 256 };
+  function entry(value) {
+    return { ...value, isFile: () => value.isFile === true, isDirectory: () => value.isDirectory === true, isSymbolicLink: () => value.isSymbolicLink === true };
+  }
+  function statValue(value, options) {
+    return {
+      ...entry(value),
+      mtime: new Date(value.mtimeMs),
+      ctime: new Date(value.ctimeMs ?? value.mtimeMs),
+      birthtime: new Date(value.birthtimeMs ?? value.mtimeMs),
+      ...options?.bigint ? { size: BigInt(value.size), ...value.dev !== void 0 ? { dev: BigInt(value.dev) } : {}, ...value.ino !== void 0 ? { ino: BigInt(value.ino) } : {}, ...value.ctimeNs !== void 0 ? { ctimeNs: BigInt(value.ctimeNs) } : {}, mtimeNs: BigInt(value.mtimeNs ?? Math.round(value.mtimeMs * 1e6)), mtimeMs: BigInt(Math.floor(value.mtimeMs)) } : {}
+    };
+  }
+  var statSync = (path, options) => statValue(native("fs.stat", { path, followSymlinks: true }), options);
+  var lstatSync = (path, options) => statValue(native("fs.stat", { path, followSymlinks: false }), options);
+  var fstatSync = (fd, options) => statValue(native("fs.fstat", { fd }), options);
+  var existsSync = (path) => native("fs.exists", { path });
+  var realpathSync = Object.assign((path) => native("fs.realpath", { path }), { native: (path) => native("fs.realpath", { path }) });
+  function readdirSync(path, options) {
+    const values2 = native("fs.readdir", { path });
+    return options?.withFileTypes ? values2.map(entry) : values2.map((value) => value.name);
+  }
+  function readFileSync(path, encoding) {
+    const name7 = typeof encoding === "string" ? encoding : encoding?.encoding;
+    if (name7 === "utf8" || name7 === "utf-8") return native("fs.readFile", { path, encoding: "utf8" });
+    const bytes = Buffer2.from(native("fs.readFile", { path, encoding: "base64" }), "base64");
+    return name7 ? bytes.toString(name7) : bytes;
+  }
+  function writeFileSync(path, data2, options) {
+    const bytes = typeof data2 === "string" ? Buffer2.from(data2, typeof options === "string" ? options : options?.encoding ?? "utf8") : Buffer2.from(data2);
+    if (typeof path === "number") {
+      let offset = 0;
+      while (offset < bytes.length) {
+        const count = writeSync(path, bytes, offset, bytes.length - offset);
+        if (!count) throw new Error("Unable to complete file write");
+        offset += count;
+      }
+      return;
+    }
+    native("fs.writeFile", { path, data: bytes.toString("base64"), encoding: "base64", flag: options?.flag ?? "w", mode: options?.mode ?? 438 });
+  }
+  var mkdirSync = (path, options) => {
+    native("fs.mkdir", { path, recursive: options?.recursive === true, mode: options?.mode });
+  };
+  var renameSync = (from, to) => {
+    native("fs.rename", { from, to });
+  };
+  var rmSync = (path, options) => {
+    native("fs.remove", { path, recursive: options?.recursive === true, force: options?.force === true });
+  };
+  var rmdirSync = (path) => {
+    native("fs.remove", { path, recursive: false, force: false });
+  };
+  var unlinkSync = (path) => {
+    native("fs.remove", { path, recursive: false, force: false });
+  };
+  var copyFileSync = (from, to, mode = 0) => {
+    native("fs.copy", { from, to, recursive: false, overwrite: (mode & constants.COPYFILE_EXCL) === 0 });
+  };
+  var cpSync = (from, to, options) => {
+    native("fs.copy", { from, to, recursive: options?.recursive === true, overwrite: options?.force !== false });
+  };
+  var accessSync = (path, mode = 0) => {
+    native("fs.access", { path, mode });
+  };
+  var chmodSync = (path, mode) => {
+    native("fs.chmod", { path, mode });
+  };
+  var openSync = (path, flags2, mode = 438) => native("fs.open", { path, flags: flags2, mode });
+  var closeSync = (fd) => {
+    native("fs.close", { fd });
+  };
+  var fsyncSync = (fd) => {
+    native("fs.fsync", { fd });
+  };
+  var ftruncateSync = (fd, length2 = 0) => {
+    native("fs.ftruncate", { fd, length: length2 });
+  };
+  function writeSync(fd, buffer2, offset = 0, length2 = buffer2.length - offset, position = null) {
+    return native("fs.write", { fd, data: Buffer2.from(buffer2.subarray(offset, offset + length2)).toString("base64"), position });
+  }
+  function readSync(fd, buffer2, offset = 0, length2 = buffer2.length - offset, position = null) {
+    if (!Number.isInteger(offset) || !Number.isInteger(length2) || offset < 0 || length2 < 0 || offset + length2 > buffer2.length || position !== null && (!Number.isSafeInteger(position) || position < 0)) throw new RangeError("Invalid file read range");
+    const bytes = Buffer2.from(native("fs.read", { fd, length: length2, position }), "base64");
+    buffer2.set(bytes, offset);
+    return bytes.length;
+  }
+  function createReadStream(path, options = {}) {
+    let fd = options.fd, closed = false, started = false, destroyed = false;
+    const autoClose = options.autoClose !== false, highWaterMark = options.highWaterMark ?? 64 * 1024;
+    if (!Number.isInteger(highWaterMark) || highWaterMark < 1 || highWaterMark > 256 * 1024) throw new RangeError("Invalid stream chunk size");
+    if (options.start !== void 0 && (!Number.isSafeInteger(options.start) || options.start < 0)) throw new RangeError("Invalid stream start");
+    if (options.end !== void 0 && (!Number.isSafeInteger(options.end) || options.end < (options.start ?? 0))) throw new RangeError("Invalid stream end");
+    const close = () => {
+      if (!closed && fd !== void 0 && autoClose) {
+        closed = true;
+        closeSync(fd);
+      }
+    };
+    return { destroy() {
+      destroyed = true;
+      close();
+    }, async *[Symbol.asyncIterator]() {
+      if (started) throw new Error("File stream has already been consumed");
+      started = true;
+      if (destroyed) return;
+      fd ?? (fd = openSync(path, options.flags ?? "r"));
+      let position = options.start ?? null, consumed = 0;
+      try {
+        while (!destroyed) {
+          const remaining = options.end === void 0 ? Infinity : options.end - (options.start ?? 0) - consumed + 1;
+          if (remaining <= 0) break;
+          const buffer2 = Buffer2.alloc(Math.min(highWaterMark, remaining)), read3 = readSync(fd, buffer2, 0, buffer2.length, position);
+          if (!read3) break;
+          consumed += read3;
+          if (position !== null) position += read3;
+          yield buffer2.subarray(0, read3);
+        }
+      } finally {
+        close();
+      }
+    } };
+  }
+
+  // DesktopRuntime/backend/shims/path.ts
+  var sep = "/";
+  function isAbsolute(value) {
+    return value.startsWith("/");
+  }
+  function normalize(value) {
+    const absolute = isAbsolute(value), parts = [];
+    for (const item of value.split("/")) {
+      if (!item || item === ".") continue;
+      if (item === "..") {
+        if (parts.length && parts[parts.length - 1] !== "..") parts.pop();
+        else if (!absolute) parts.push("..");
+      } else parts.push(item);
+    }
+    const result = (absolute ? "/" : "") + parts.join("/");
+    return (result || ".") + (value.endsWith("/") && result && result !== "/" ? "/" : "");
+  }
+  function join(...values2) {
+    return normalize(values2.filter(Boolean).join("/"));
+  }
+  function resolve(...values2) {
+    let result = "";
+    for (let i = values2.length - 1; i >= 0; i--) {
+      const value = values2[i];
+      if (!value) continue;
+      result = value + "/" + result;
+      if (isAbsolute(value)) break;
+    }
+    if (!isAbsolute(result)) result = "/" + result;
+    return normalize(result).replace(/\/$/, "") || "/";
+  }
+  function dirname(value) {
+    const without = value.replace(/\/+$/, "");
+    const index = without.lastIndexOf("/");
+    return index < 0 ? "." : index === 0 ? "/" : without.slice(0, index);
+  }
+  function basename(value, suffix = "") {
+    const name7 = value.replace(/\/+$/, "").split("/").pop() ?? "";
+    return suffix && name7.endsWith(suffix) ? name7.slice(0, -suffix.length) : name7;
+  }
+  function extname(value) {
+    const name7 = basename(value), index = name7.lastIndexOf(".");
+    return index <= 0 || name7 === ".." ? "" : name7.slice(index);
+  }
+  function relative(from, to) {
+    const a = resolve(from).split("/").filter(Boolean), b = resolve(to).split("/").filter(Boolean);
+    let i = 0;
+    while (i < a.length && a[i] === b[i]) i++;
+    return [...a.slice(i).map(() => ".."), ...b.slice(i)].join("/");
+  }
+  var posix = { sep, isAbsolute, normalize, join, resolve, dirname, basename, extname, relative };
+
+  // DesktopRuntime/upstream/src/main/db/errors.ts
+  var ValidationError = class extends Error {
+    constructor(message) {
+      super(`[validation] ${message}`);
+      this.name = "ValidationError";
+    }
+  };
+  var NotFoundError = class extends Error {
+    constructor(entity, id2) {
+      super(`[not-found] ${entity} "${id2}" does not exist`);
+      this.name = "NotFoundError";
+    }
+  };
+  var PathTraversalError = class extends Error {
+    constructor(relPath2) {
+      super(`[path-traversal] "${relPath2}" escapes the course folder`);
+      this.name = "PathTraversalError";
+    }
+  };
+  var ConflictError = class extends Error {
+    constructor(message) {
+      super(`[conflict] ${message}`);
+      this.name = "ConflictError";
+    }
+  };
+
+  // DesktopRuntime/upstream/src/main/db/validate.ts
+  function requireNonEmptyString(value, field) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new ValidationError(`${field} must be a non-empty string`);
+    }
+    return value;
+  }
+  function requireId(value, field) {
+    const id2 = requireNonEmptyString(value, field);
+    if (/[\u0000-\u001f]/.test(id2)) {
+      throw new ValidationError(`${field} contains control characters`);
+    }
+    return id2.trim();
+  }
+  function requireInt(value, field, min) {
+    if (typeof value !== "number" || !Number.isInteger(value) || value < min) {
+      throw new ValidationError(`${field} must be an integer >= ${min}`);
+    }
+    return value;
+  }
+  function resolveInside(rootDir, relPath2, options = {}) {
+    if (typeof relPath2 !== "string") {
+      throw new ValidationError("relPath must be a string");
+    }
+    if (relPath2.includes("\0")) {
+      throw new PathTraversalError(relPath2);
+    }
+    if (relPath2 === "") {
+      if (options.allowRoot === true) {
+        return resolve(rootDir);
+      }
+      throw new ValidationError("relPath must be a non-empty string");
+    }
+    if (isAbsolute(relPath2)) {
+      throw new PathTraversalError(relPath2);
+    }
+    const root = resolve(rootDir);
+    const target = resolve(root, relPath2);
+    const rel = relative(root, target);
+    if (rel === "" && options.allowRoot !== true) {
+      throw new PathTraversalError(relPath2);
+    }
+    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+      throw new PathTraversalError(relPath2);
+    }
+    return target;
+  }
+  function assertRealInside(rootDir, absPath) {
+    if (!isAbsolute(absPath)) {
+      throw new ValidationError("absPath must be absolute");
+    }
+    let canonicalRoot;
+    try {
+      canonicalRoot = realpathSync.native(rootDir);
+    } catch {
+      throw new ValidationError("course root must exist and be resolvable");
+    }
+    let existingAncestor = absPath;
+    while (!existsSync(existingAncestor)) {
+      const parent = dirname(existingAncestor);
+      if (parent === existingAncestor) {
+        throw new ValidationError("path must have a resolvable ancestor");
+      }
+      existingAncestor = parent;
+    }
+    let canonicalAncestor;
+    try {
+      canonicalAncestor = realpathSync.native(existingAncestor);
+    } catch {
+      throw new ValidationError("path must have a resolvable ancestor");
+    }
+    const rel = relative(canonicalRoot, canonicalAncestor);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      throw new ValidationError("path resolves outside the course folder");
+    }
+    return absPath;
+  }
+  function resolveInsideReal(rootDir, relPath2) {
+    return assertRealInside(rootDir, resolveInside(rootDir, relPath2));
+  }
+  function nowIso() {
+    return (/* @__PURE__ */ new Date()).toISOString();
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/pdfOriginals.ts
+  function pdfFileRevision(path) {
+    const descriptor = openSync(path, "r");
+    try {
+      return hashDescriptor(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+  }
+  function hashDescriptor(descriptor) {
+    const hash3 = createHash("sha256"), buffer2 = new Uint8Array(256 * 1024);
+    for (let offset = 0; ; ) {
+      const length2 = readSync(descriptor, buffer2, 0, buffer2.length, offset);
+      if (!length2) break;
+      hash3.update(buffer2.subarray(0, length2));
+      offset += length2;
+    }
+    return hash3.digest("hex");
+  }
+  function createPDFOriginalPreserver(directory2, pathFor, revisionAt = pdfFileRevision) {
+    const verified = /* @__PURE__ */ new Set();
+    return (courseId2, relPath2, revision) => {
+      if (verified.has(revision)) return;
+      const target = join(directory2, `${revision}.pdf`);
+      mkdirSync(directory2, { recursive: true });
+      if (existsSync(target)) {
+        if (revisionAt(target) !== revision) throw new Error("Preserved PDF original failed its integrity check");
+      } else {
+        const temporary = join(directory2, `${revision}.${randomUUID()}.tmp`);
+        try {
+          copyFileSync(pathFor(courseId2, relPath2), temporary);
+          if (revisionAt(temporary) !== revision) throw new Error("PDF changed while preserving its original; no ink was applied");
+          chmodSync(temporary, 384);
+          const descriptor = openSync(temporary, "r+");
+          try {
+            fsyncSync(descriptor);
+          } finally {
+            closeSync(descriptor);
+          }
+          renameSync(temporary, target);
+        } finally {
+          if (existsSync(temporary)) rmSync(temporary, { force: true });
+        }
+      }
+      verified.add(revision);
+    };
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/pdfClipSource.ts
+  function resolvePdfClipSource(userDataPath, courseFolder, source) {
+    if (source.documentRevision === void 0) return resolveInsideReal(courseFolder, source.relPath);
+    if (!/^[a-f0-9]{64}$/.test(source.documentRevision)) throw new Error("Invalid clipped PDF revision");
+    const path = join(userDataPath, "PDFOriginals", `${source.documentRevision}.pdf`);
+    if (!existsSync(path) || pdfFileRevision(path) !== source.documentRevision) throw new Error("\uBCF4\uAD00\uB41C \uD074\uB9BD PDF \uC6D0\uBCF8\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+    return path;
+  }
+  function pinPdfClipSources(db, courseId2, relPath2, revision, byteCount) {
+    const material = db.prepare("SELECT material_id FROM pdf_document_aliases WHERE course_id=? AND rel_path=?").get(courseId2, relPath2);
+    const pdfRows = db.prepare("SELECT id,data_json FROM pdf_drawings WHERE course_id=? AND kind='clip'").all(courseId2);
+    const boardRows = db.prepare("SELECT s.id,s.data_json FROM whiteboard_local_shapes s JOIN whiteboards b ON b.id=s.board_id WHERE b.course_id=? AND s.kind='clip'").all(courseId2);
+    for (const [table11, rows] of [["pdf_drawings", pdfRows], ["whiteboard_local_shapes", boardRows]]) for (const row of rows) {
+      const data2 = JSON.parse(row.data_json), clip2 = data2.clip;
+      if (!clip2 || clip2.documentRevision || clip2.relPath !== relPath2) continue;
+      clip2.documentRevision = revision;
+      clip2.documentByteCount = byteCount;
+      if (material) clip2.materialID = material.material_id;
+      db.prepare(`UPDATE ${table11} SET data_json=? WHERE id=?`).run(JSON.stringify(data2), row.id);
+    }
+  }
+  function isReferencedClipRevision(db, courseId2, relPath2, revision) {
+    if (!/^[a-f0-9]{64}$/.test(revision)) return false;
+    const rows = [...db.prepare("SELECT data_json FROM pdf_drawings WHERE course_id=? AND kind='clip'").all(courseId2), ...db.prepare("SELECT s.data_json FROM whiteboard_local_shapes s JOIN whiteboards b ON b.id=s.board_id WHERE b.course_id=? AND s.kind='clip'").all(courseId2)];
+    return rows.some((row) => {
+      try {
+        const clip2 = JSON.parse(row.data_json).clip;
+        return clip2?.relPath === relPath2 && clip2.documentRevision === revision;
+      } catch {
+        return false;
+      }
+    });
+  }
+
   // DesktopRuntime/backend/globals.ts
   init_native();
   init_buffer();
@@ -84069,440 +84579,12 @@
   // DesktopRuntime/backend/index.ts
   init_buffer();
 
-  // DesktopRuntime/backend/shims/fs.ts
-  init_native();
-  init_buffer();
-
-  // DesktopRuntime/backend/shims/fs-promises.ts
-  var fs_promises_exports = {};
-  __export(fs_promises_exports, {
-    copyFile: () => copyFile,
-    lstat: () => lstat,
-    mkdir: () => mkdir,
-    mkdtemp: () => mkdtemp,
-    open: () => open,
-    opendir: () => opendir,
-    readFile: () => readFile,
-    readdir: () => readdir,
-    realpath: () => realpath,
-    rename: () => rename,
-    rm: () => rm,
-    stat: () => stat,
-    unlink: () => unlink,
-    writeFile: () => writeFile
-  });
-
-  // DesktopRuntime/backend/shims/crypto.ts
-  init_native();
-  init_buffer();
-  var randomUUID = () => native("crypto.randomUUID");
-  var randomBytes = (length2) => Buffer2.from(native("crypto.randomBytes", { length: length2 }), "base64");
-  function randomInt(max2) {
-    if (!Number.isSafeInteger(max2) || max2 <= 0 || max2 > 4294967296) throw new RangeError("Invalid randomInt bound");
-    const limit = Math.floor(4294967296 / max2) * max2;
-    let value;
-    do {
-      value = randomBytes(4).readUInt32LE(0);
-    } while (value >= limit);
-    return value % max2;
-  }
-  function createHash(algorithm) {
-    if (algorithm !== "sha256") throw new Error(`Unsupported hash algorithm: ${algorithm}`);
-    const id2 = native("crypto.hashCreate", { algorithm });
-    let finalized = false;
-    const hash3 = {
-      update(value, encoding = "utf8") {
-        if (finalized) throw new Error("Hash has already been finalized");
-        const bytes = typeof value === "string" ? Buffer2.from(value, encoding) : value;
-        for (let offset = 0; offset < bytes.length; offset += 256 * 1024) native("crypto.hashUpdate", { id: id2, data: Buffer2.from(bytes.subarray(offset, offset + 256 * 1024)).toString("base64") });
-        return hash3;
-      },
-      digest(encoding) {
-        if (finalized) throw new Error("Hash has already been finalized");
-        const hex = native("crypto.hashDigest", { id: id2 });
-        finalized = true;
-        const bytes = Buffer2.from(hex, "hex");
-        return encoding ? bytes.toString(encoding) : bytes;
-      }
-    };
-    return hash3;
-  }
-
-  // DesktopRuntime/backend/shims/fs-promises.ts
-  var copyFile = async (from, to, mode) => copyFileSync(from, to, mode);
-  var mkdtemp = async (prefix2) => {
-    for (let i = 0; i < 10; i++) {
-      const path = prefix2 + randomBytes(6).toString("hex");
-      try {
-        mkdirSync(path);
-        return path;
-      } catch (error2) {
-        if (error2.code !== "EEXIST") throw error2;
-      }
-    }
-    throw new Error("Unable to create temporary directory");
-  };
-  var readFile = async (path, options) => readFileSync(path, options);
-  var writeFile = async (path, data2, options) => writeFileSync(path, data2, options);
-  var mkdir = async (path, options) => mkdirSync(path, options);
-  var readdir = async (path, options) => readdirSync(path, options);
-  var rename = async (from, to) => renameSync(from, to);
-  var rm = async (path, options) => rmSync(path, options);
-  var unlink = async (path) => unlinkSync(path);
-  var stat = async (path, options) => statSync(path, options);
-  var lstat = async (path, options) => lstatSync(path, options);
-  var realpath = async (path) => realpathSync(path);
-  async function opendir(path) {
-    const values2 = readdirSync(path, { withFileTypes: true });
-    let index = 0, closed = false;
-    return { read: async () => {
-      if (closed) throw new Error("Directory closed");
-      return values2[index++] ?? null;
-    }, close: async () => {
-      closed = true;
-    } };
-  }
-  async function open(path, flags2, mode) {
-    const fd = openSync(path, flags2, mode);
-    let closed = false;
-    const check = () => {
-      if (closed) throw new Error("File closed");
-    };
-    return {
-      fd,
-      writeFile: async (value, encoding) => {
-        check();
-        writeFileSync(fd, value, encoding);
-      },
-      stat: async (options) => {
-        check();
-        return fstatSync(fd, options);
-      },
-      read: async (buffer2, offset = 0, length2 = buffer2.length - offset, position = null) => {
-        check();
-        return { bytesRead: readSync(fd, buffer2, offset, length2, position), buffer: buffer2 };
-      },
-      createReadStream: (options = {}) => {
-        check();
-        const stream2 = createReadStream(path, { ...options, fd });
-        if (options.autoClose !== false) {
-          const original = stream2[Symbol.asyncIterator].bind(stream2);
-          stream2[Symbol.asyncIterator] = async function* () {
-            try {
-              yield* original();
-            } finally {
-              closed = true;
-            }
-          };
-        }
-        return stream2;
-      },
-      sync: async () => {
-        if (closed) throw new Error("File closed");
-        fsyncSync(fd);
-      },
-      close: async () => {
-        if (!closed) {
-          closed = true;
-          closeSync(fd);
-        }
-      }
-    };
-  }
-
-  // DesktopRuntime/backend/shims/fs.ts
-  var constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, COPYFILE_EXCL: 1, O_RDONLY: 0, O_NOFOLLOW: env2().fsConstants?.O_NOFOLLOW ?? 256 };
-  function entry(value) {
-    return { ...value, isFile: () => value.isFile === true, isDirectory: () => value.isDirectory === true, isSymbolicLink: () => value.isSymbolicLink === true };
-  }
-  function statValue(value, options) {
-    return {
-      ...entry(value),
-      mtime: new Date(value.mtimeMs),
-      ctime: new Date(value.ctimeMs ?? value.mtimeMs),
-      birthtime: new Date(value.birthtimeMs ?? value.mtimeMs),
-      ...options?.bigint ? { size: BigInt(value.size), ...value.dev !== void 0 ? { dev: BigInt(value.dev) } : {}, ...value.ino !== void 0 ? { ino: BigInt(value.ino) } : {}, ...value.ctimeNs !== void 0 ? { ctimeNs: BigInt(value.ctimeNs) } : {}, mtimeNs: BigInt(value.mtimeNs ?? Math.round(value.mtimeMs * 1e6)), mtimeMs: BigInt(Math.floor(value.mtimeMs)) } : {}
-    };
-  }
-  var statSync = (path, options) => statValue(native("fs.stat", { path, followSymlinks: true }), options);
-  var lstatSync = (path, options) => statValue(native("fs.stat", { path, followSymlinks: false }), options);
-  var fstatSync = (fd, options) => statValue(native("fs.fstat", { fd }), options);
-  var existsSync = (path) => native("fs.exists", { path });
-  var realpathSync = Object.assign((path) => native("fs.realpath", { path }), { native: (path) => native("fs.realpath", { path }) });
-  function readdirSync(path, options) {
-    const values2 = native("fs.readdir", { path });
-    return options?.withFileTypes ? values2.map(entry) : values2.map((value) => value.name);
-  }
-  function readFileSync(path, encoding) {
-    const name7 = typeof encoding === "string" ? encoding : encoding?.encoding;
-    if (name7 === "utf8" || name7 === "utf-8") return native("fs.readFile", { path, encoding: "utf8" });
-    const bytes = Buffer2.from(native("fs.readFile", { path, encoding: "base64" }), "base64");
-    return name7 ? bytes.toString(name7) : bytes;
-  }
-  function writeFileSync(path, data2, options) {
-    const bytes = typeof data2 === "string" ? Buffer2.from(data2, typeof options === "string" ? options : options?.encoding ?? "utf8") : Buffer2.from(data2);
-    if (typeof path === "number") {
-      let offset = 0;
-      while (offset < bytes.length) {
-        const count = writeSync(path, bytes, offset, bytes.length - offset);
-        if (!count) throw new Error("Unable to complete file write");
-        offset += count;
-      }
-      return;
-    }
-    native("fs.writeFile", { path, data: bytes.toString("base64"), encoding: "base64", flag: options?.flag ?? "w", mode: options?.mode ?? 438 });
-  }
-  var mkdirSync = (path, options) => {
-    native("fs.mkdir", { path, recursive: options?.recursive === true, mode: options?.mode });
-  };
-  var renameSync = (from, to) => {
-    native("fs.rename", { from, to });
-  };
-  var rmSync = (path, options) => {
-    native("fs.remove", { path, recursive: options?.recursive === true, force: options?.force === true });
-  };
-  var rmdirSync = (path) => {
-    native("fs.remove", { path, recursive: false, force: false });
-  };
-  var unlinkSync = (path) => {
-    native("fs.remove", { path, recursive: false, force: false });
-  };
-  var copyFileSync = (from, to, mode = 0) => {
-    native("fs.copy", { from, to, recursive: false, overwrite: (mode & constants.COPYFILE_EXCL) === 0 });
-  };
-  var cpSync = (from, to, options) => {
-    native("fs.copy", { from, to, recursive: options?.recursive === true, overwrite: options?.force !== false });
-  };
-  var accessSync = (path, mode = 0) => {
-    native("fs.access", { path, mode });
-  };
-  var chmodSync = (path, mode) => {
-    native("fs.chmod", { path, mode });
-  };
-  var openSync = (path, flags2, mode = 438) => native("fs.open", { path, flags: flags2, mode });
-  var closeSync = (fd) => {
-    native("fs.close", { fd });
-  };
-  var fsyncSync = (fd) => {
-    native("fs.fsync", { fd });
-  };
-  var ftruncateSync = (fd, length2 = 0) => {
-    native("fs.ftruncate", { fd, length: length2 });
-  };
-  function writeSync(fd, buffer2, offset = 0, length2 = buffer2.length - offset, position = null) {
-    return native("fs.write", { fd, data: Buffer2.from(buffer2.subarray(offset, offset + length2)).toString("base64"), position });
-  }
-  function readSync(fd, buffer2, offset = 0, length2 = buffer2.length - offset, position = null) {
-    if (!Number.isInteger(offset) || !Number.isInteger(length2) || offset < 0 || length2 < 0 || offset + length2 > buffer2.length || position !== null && (!Number.isSafeInteger(position) || position < 0)) throw new RangeError("Invalid file read range");
-    const bytes = Buffer2.from(native("fs.read", { fd, length: length2, position }), "base64");
-    buffer2.set(bytes, offset);
-    return bytes.length;
-  }
-  function createReadStream(path, options = {}) {
-    let fd = options.fd, closed = false, started = false, destroyed = false;
-    const autoClose = options.autoClose !== false, highWaterMark = options.highWaterMark ?? 64 * 1024;
-    if (!Number.isInteger(highWaterMark) || highWaterMark < 1 || highWaterMark > 256 * 1024) throw new RangeError("Invalid stream chunk size");
-    if (options.start !== void 0 && (!Number.isSafeInteger(options.start) || options.start < 0)) throw new RangeError("Invalid stream start");
-    if (options.end !== void 0 && (!Number.isSafeInteger(options.end) || options.end < (options.start ?? 0))) throw new RangeError("Invalid stream end");
-    const close = () => {
-      if (!closed && fd !== void 0 && autoClose) {
-        closed = true;
-        closeSync(fd);
-      }
-    };
-    return { destroy() {
-      destroyed = true;
-      close();
-    }, async *[Symbol.asyncIterator]() {
-      if (started) throw new Error("File stream has already been consumed");
-      started = true;
-      if (destroyed) return;
-      fd ?? (fd = openSync(path, options.flags ?? "r"));
-      let position = options.start ?? null, consumed = 0;
-      try {
-        while (!destroyed) {
-          const remaining = options.end === void 0 ? Infinity : options.end - (options.start ?? 0) - consumed + 1;
-          if (remaining <= 0) break;
-          const buffer2 = Buffer2.alloc(Math.min(highWaterMark, remaining)), read3 = readSync(fd, buffer2, 0, buffer2.length, position);
-          if (!read3) break;
-          consumed += read3;
-          if (position !== null) position += read3;
-          yield buffer2.subarray(0, read3);
-        }
-      } finally {
-        close();
-      }
-    } };
-  }
-
-  // DesktopRuntime/backend/shims/path.ts
-  var sep = "/";
-  function isAbsolute(value) {
-    return value.startsWith("/");
-  }
-  function normalize(value) {
-    const absolute = isAbsolute(value), parts = [];
-    for (const item of value.split("/")) {
-      if (!item || item === ".") continue;
-      if (item === "..") {
-        if (parts.length && parts[parts.length - 1] !== "..") parts.pop();
-        else if (!absolute) parts.push("..");
-      } else parts.push(item);
-    }
-    const result = (absolute ? "/" : "") + parts.join("/");
-    return (result || ".") + (value.endsWith("/") && result && result !== "/" ? "/" : "");
-  }
-  function join(...values2) {
-    return normalize(values2.filter(Boolean).join("/"));
-  }
-  function resolve(...values2) {
-    let result = "";
-    for (let i = values2.length - 1; i >= 0; i--) {
-      const value = values2[i];
-      if (!value) continue;
-      result = value + "/" + result;
-      if (isAbsolute(value)) break;
-    }
-    if (!isAbsolute(result)) result = "/" + result;
-    return normalize(result).replace(/\/$/, "") || "/";
-  }
-  function dirname(value) {
-    const without = value.replace(/\/+$/, "");
-    const index = without.lastIndexOf("/");
-    return index < 0 ? "." : index === 0 ? "/" : without.slice(0, index);
-  }
-  function basename(value, suffix = "") {
-    const name7 = value.replace(/\/+$/, "").split("/").pop() ?? "";
-    return suffix && name7.endsWith(suffix) ? name7.slice(0, -suffix.length) : name7;
-  }
-  function extname(value) {
-    const name7 = basename(value), index = name7.lastIndexOf(".");
-    return index <= 0 || name7 === ".." ? "" : name7.slice(index);
-  }
-  function relative(from, to) {
-    const a = resolve(from).split("/").filter(Boolean), b = resolve(to).split("/").filter(Boolean);
-    let i = 0;
-    while (i < a.length && a[i] === b[i]) i++;
-    return [...a.slice(i).map(() => ".."), ...b.slice(i)].join("/");
-  }
-  var posix = { sep, isAbsolute, normalize, join, resolve, dirname, basename, extname, relative };
-
   // DesktopRuntime/upstream/src/shared/types/aiAccess.ts
   var DEFAULT_AI_ACCESS = { mode: "full", scope: { course: true, browser: true, screen: false } };
   function parseAiAccess(value) {
     if (!value || typeof value !== "object") return structuredClone(DEFAULT_AI_ACCESS);
     const v = value;
     return { mode: v.mode === "ask" || v.mode === "full" ? v.mode : "auto", scope: { course: v.scope?.course !== false, browser: v.scope?.browser === true, screen: v.scope?.screen === true } };
-  }
-
-  // DesktopRuntime/upstream/src/main/db/errors.ts
-  var ValidationError = class extends Error {
-    constructor(message) {
-      super(`[validation] ${message}`);
-      this.name = "ValidationError";
-    }
-  };
-  var NotFoundError = class extends Error {
-    constructor(entity, id2) {
-      super(`[not-found] ${entity} "${id2}" does not exist`);
-      this.name = "NotFoundError";
-    }
-  };
-  var PathTraversalError = class extends Error {
-    constructor(relPath2) {
-      super(`[path-traversal] "${relPath2}" escapes the course folder`);
-      this.name = "PathTraversalError";
-    }
-  };
-  var ConflictError = class extends Error {
-    constructor(message) {
-      super(`[conflict] ${message}`);
-      this.name = "ConflictError";
-    }
-  };
-
-  // DesktopRuntime/upstream/src/main/db/validate.ts
-  function requireNonEmptyString(value, field) {
-    if (typeof value !== "string" || value.trim().length === 0) {
-      throw new ValidationError(`${field} must be a non-empty string`);
-    }
-    return value;
-  }
-  function requireId(value, field) {
-    const id2 = requireNonEmptyString(value, field);
-    if (/[\u0000-\u001f]/.test(id2)) {
-      throw new ValidationError(`${field} contains control characters`);
-    }
-    return id2.trim();
-  }
-  function requireInt(value, field, min) {
-    if (typeof value !== "number" || !Number.isInteger(value) || value < min) {
-      throw new ValidationError(`${field} must be an integer >= ${min}`);
-    }
-    return value;
-  }
-  function resolveInside(rootDir, relPath2, options = {}) {
-    if (typeof relPath2 !== "string") {
-      throw new ValidationError("relPath must be a string");
-    }
-    if (relPath2.includes("\0")) {
-      throw new PathTraversalError(relPath2);
-    }
-    if (relPath2 === "") {
-      if (options.allowRoot === true) {
-        return resolve(rootDir);
-      }
-      throw new ValidationError("relPath must be a non-empty string");
-    }
-    if (isAbsolute(relPath2)) {
-      throw new PathTraversalError(relPath2);
-    }
-    const root = resolve(rootDir);
-    const target = resolve(root, relPath2);
-    const rel = relative(root, target);
-    if (rel === "" && options.allowRoot !== true) {
-      throw new PathTraversalError(relPath2);
-    }
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
-      throw new PathTraversalError(relPath2);
-    }
-    return target;
-  }
-  function assertRealInside(rootDir, absPath) {
-    if (!isAbsolute(absPath)) {
-      throw new ValidationError("absPath must be absolute");
-    }
-    let canonicalRoot;
-    try {
-      canonicalRoot = realpathSync.native(rootDir);
-    } catch {
-      throw new ValidationError("course root must exist and be resolvable");
-    }
-    let existingAncestor = absPath;
-    while (!existsSync(existingAncestor)) {
-      const parent = dirname(existingAncestor);
-      if (parent === existingAncestor) {
-        throw new ValidationError("path must have a resolvable ancestor");
-      }
-      existingAncestor = parent;
-    }
-    let canonicalAncestor;
-    try {
-      canonicalAncestor = realpathSync.native(existingAncestor);
-    } catch {
-      throw new ValidationError("path must have a resolvable ancestor");
-    }
-    const rel = relative(canonicalRoot, canonicalAncestor);
-    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-      throw new ValidationError("path resolves outside the course folder");
-    }
-    return absPath;
-  }
-  function resolveInsideReal(rootDir, relPath2) {
-    return assertRealInside(rootDir, resolveInside(rootDir, relPath2));
-  }
-  function nowIso() {
-    return (/* @__PURE__ */ new Date()).toISOString();
   }
 
   // DesktopRuntime/upstream/src/main/features/agent/chatRepo.ts
@@ -85916,6 +85998,8 @@
     recordingSidebarOpen: true,
     recordingFollowTranscript: true,
     recordingPlaybackRate: 1,
+    notePaper: "lines",
+    noteOrientation: "portrait",
     whiteboardBackground: "grid",
     boardDefaultView: "calendar",
     boardHideDone: false
@@ -85935,6 +86019,8 @@
       recordingPlaybackRate: RECORDING_PLAYBACK_RATES.some(
         (rate) => rate === r.recordingPlaybackRate
       ) ? r.recordingPlaybackRate : d.recordingPlaybackRate,
+      notePaper: typeof r.notePaper === "string" && ["blank", "grid", "dots", "lines"].includes(r.notePaper) ? r.notePaper : d.notePaper,
+      noteOrientation: r.noteOrientation === "landscape" ? "landscape" : "portrait",
       whiteboardBackground: typeof r.whiteboardBackground === "string" && ["blank", "grid", "dots", "lines"].includes(r.whiteboardBackground) ? r.whiteboardBackground : d.whiteboardBackground,
       boardDefaultView: r.boardDefaultView === "board" ? "board" : "calendar",
       boardHideDone: typeof r.boardHideDone === "boolean" ? r.boardHideDone : d.boardHideDone
@@ -86124,7 +86210,7 @@
     { id: "new-browser-tab", labelKo: "\uC0C8 \uBE0C\uB77C\uC6B0\uC800 \uD0ED", labelEn: "New browser tab", defaultChord: "mod+shift+b", scope: "global", customizable: CUSTOM, guestAllowed: GUEST },
     { id: "new-ai-tab", labelKo: "\uC0C8 AI \uD0ED", labelEn: "New AI tab", defaultChord: "mod+shift+a", scope: "global", customizable: CUSTOM, guestAllowed: GUEST },
     { id: "new-recording-tab", labelKo: "\uB179\uC74C \uD0ED \uC5F4\uAE30", labelEn: "Open recording tab", defaultChord: "mod+alt+r", scope: "global", customizable: CUSTOM, guestAllowed: GUEST },
-    { id: "new-whiteboard", labelKo: "\uC0C8 \uD654\uC774\uD2B8\uBCF4\uB4DC", labelEn: "New whiteboard", defaultChord: "mod+alt+w", scope: "global", customizable: CUSTOM, guestAllowed: GUEST },
+    { id: "new-whiteboard", labelKo: "\uC0C8 \uB178\uD2B8", labelEn: "New note", defaultChord: "mod+alt+w", scope: "global", customizable: CUSTOM, guestAllowed: GUEST },
     { id: "open-study-board", labelKo: "\uD559\uC5C5 \uBCF4\uB4DC \uD0ED \uC5F4\uAE30", labelEn: "Open study board tab", defaultChord: "mod+alt+d", scope: "global", customizable: CUSTOM, guestAllowed: GUEST },
     { id: "close-tab", labelKo: "\uD0ED \uB2EB\uAE30", labelEn: "Close tab", defaultChord: "mod+w", scope: "global", customizable: CUSTOM, guestAllowed: GUEST },
     { id: "quick-search", labelKo: "\uBE60\uB978 \uD30C\uC77C \uAC80\uC0C9", labelEn: "Quick file search", defaultChord: "mod+p", scope: "global", customizable: CUSTOM, guestAllowed: HOST_ONLY },
@@ -88386,11 +88472,11 @@ ${sections.join("\n\n")}${appendixSection}
   function protectedPDFs(folder) {
     const files = [];
     let visited = 0;
-    function walk(relativePath2, depth) {
+    function walk(relativePath3, depth) {
       if (depth > 64) throw new ValidationError("Material move is too deep to journal safely");
-      for (const entry2 of readdirSync(join(folder, relativePath2), { withFileTypes: true })) {
+      for (const entry2 of readdirSync(join(folder, relativePath3), { withFileTypes: true })) {
         if (++visited > 1e5) throw new ValidationError("Material move is too large to journal safely");
-        const child = relativePath2 ? `${relativePath2}/${entry2.name}` : entry2.name;
+        const child = relativePath3 ? `${relativePath3}/${entry2.name}` : entry2.name;
         if (entry2.isDirectory()) walk(child, depth + 1);
         else if (entry2.isFile() && /\.pdf$/i.test(entry2.name)) files.push({ relativePath: child, identity: identity(join(folder, child)) });
       }
@@ -88982,8 +89068,8 @@ ${sections.join("\n\n")}${appendixSection}
         try {
           if (!row) return null;
           const value = JSON.parse(row.tree);
-          const valid2 = (nodes, depth = 0) => depth <= MATERIAL_SCAN_MAX_DEPTH + 1 && Array.isArray(nodes) && nodes.length <= MATERIAL_SCAN_MAX_ENTRIES + 1 && nodes.every((node) => node !== null && typeof node === "object" && typeof node.relPath === "string" && typeof node.name === "string" && typeof node.kind === "string" && (node.kind !== "dir" || valid2(node.children ?? [], depth + 1)));
-          return valid2(value) ? addedState.decorate(id2, value) : null;
+          const valid3 = (nodes, depth = 0) => depth <= MATERIAL_SCAN_MAX_DEPTH + 1 && Array.isArray(nodes) && nodes.length <= MATERIAL_SCAN_MAX_ENTRIES + 1 && nodes.every((node) => node !== null && typeof node === "object" && typeof node.relPath === "string" && typeof node.name === "string" && typeof node.kind === "string" && (node.kind !== "dir" || valid3(node.children ?? [], depth + 1)));
+          return valid3(value) ? addedState.decorate(id2, value) : null;
         } catch {
           return null;
         }
@@ -95268,7 +95354,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   function normalizeTextRuns(text, runs) {
     if (runs === void 0 || text.length === 0) return [];
-    const valid2 = runs.filter(
+    const valid3 = runs.filter(
       (run) => Number.isInteger(run.from) && Number.isInteger(run.to) && run.from >= 0 && run.to > run.from && run.from < text.length
     ).map((run) => ({
       from: run.from,
@@ -95276,7 +95362,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       style: { ...run.style }
     })).sort((left, right) => left.from - right.from || left.to - right.to);
     const normalized = [];
-    for (const run of valid2) {
+    for (const run of valid3) {
       const previous = normalized.at(-1);
       const from = previous === void 0 ? run.from : Math.max(previous.to, run.from);
       if (run.to <= from || Object.keys(run.style).length === 0) continue;
@@ -95381,6 +95467,22 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       page: clip2.page,
       label: clip2.label
     };
+    if (clip2.materialID !== void 0) {
+      if (typeof clip2.materialID !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(clip2.materialID)) throw new ValidationError("Invalid clip materialID");
+      result.materialID = clip2.materialID;
+    }
+    if (clip2.documentRevision !== void 0) {
+      if (typeof clip2.documentRevision !== "string" || !/^[a-f0-9]{64}$/.test(clip2.documentRevision)) throw new ValidationError("Invalid clip documentRevision");
+      result.documentRevision = clip2.documentRevision;
+    }
+    if (clip2.documentByteCount !== void 0) {
+      if (!Number.isSafeInteger(clip2.documentByteCount) || clip2.documentByteCount <= 0) throw new ValidationError("Invalid clip documentByteCount");
+      result.documentByteCount = clip2.documentByteCount;
+    }
+    if (clip2.pageAspect !== void 0) {
+      if (!Number.isFinite(clip2.pageAspect) || clip2.pageAspect <= 0) throw new ValidationError("Invalid clip pageAspect");
+      result.pageAspect = clip2.pageAspect;
+    }
     if (clip2.crop !== void 0) result.crop = assertBox(clip2.crop, "data.clip.crop");
     return result;
   }
@@ -95483,7 +95585,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     const result = {};
     if (candidate.inkVersion !== void 0) {
-      if (candidate.inkVersion !== 2 && candidate.inkVersion !== 3 && candidate.inkVersion !== 4 || kind !== "ink" && kind !== "highlighter") throw new ValidationError("Unsupported ink renderer version");
+      if (candidate.inkVersion !== 2 && candidate.inkVersion !== 3 && candidate.inkVersion !== 4 && candidate.inkVersion !== 5 || kind !== "ink" && kind !== "highlighter") throw new ValidationError("Unsupported ink renderer version");
       result.inkVersion = candidate.inkVersion;
     }
     if (points !== void 0) result.points = points;
@@ -97941,12 +98043,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     LEGACY_VOCAB_CHAIN_EN
   ];
   function nativePack(pack, experience) {
-    const recipe = experience === "article-vocabulary" ? "\uC0AC\uC6A9\uC790\uAC00 \uC815\uD55C \uAD00\uC2EC \uC8FC\uC81C\uC640 \uC9C1\uC811 \uCCB4\uD06C\uD55C \uB2E8\uC5B4\uB97C \uBC14\uD0D5\uC73C\uB85C \uC9E7\uC740 \uC601\uC5B4 \uAE30\uC0AC\uB97C \uCC3E\uC544\uB77C. \uD604\uC7AC \uC81C\uACF5\uC790\uC758 \uC6F9 \uAC80\uC0C9 \uB3C4\uAD6C\uB97C \uC0AC\uC6A9\uD558\uACE0, \uC5C6\uC73C\uBA74 \uBC18\uB2EC \uBE0C\uB77C\uC6B0\uC800\uC5D0\uC11C \uAC80\uC0C9\uD558\uB77C. \uD6C4\uBCF4 \uAE30\uC0AC \uBCF8\uBB38\uC740 learning_verify_article\uB85C \uD655\uC778\uD558\uACE0, \uC2E4\uC81C \uB4F1\uC7A5 \uB2E8\uC5B4\uC640 \uCD9C\uCC98\uAC00 \uD655\uC778\uB41C \uACB0\uACFC\uB9CC learning_submit_result\uB85C \uC81C\uCD9C\uD558\uB77C. \uC0AC\uC6A9\uC790\uAC00 \uBAA8\uB974\uB294 \uB2E8\uC5B4\uB97C \uC784\uC758\uB85C \uCD94\uAC00\uD558\uAC70\uB098 \uC6D0\uBB38\uC744 \uC9C0\uC5B4\uB0B4\uC9C0 \uB9C8\uB77C." : experience === "quiz" ? "\uC790\uB8CC\uC5D0 \uADFC\uAC70\uD55C \uAC1D\uAD00\uC2DD\uACFC \uB2E8\uB2F5\uD615 \uD034\uC988\uB97C \uC0DD\uC131\uD558\uB77C. \uAC01 \uBB38\uC81C\uC758 \uC815\uB2F5, \uD574\uC124, \uCD9C\uCC98 \uADFC\uAC70\uB97C \uD568\uAED8 \uAD6C\uC870\uD654\uD558\uC5EC learning_submit_result\uB85C \uC81C\uCD9C\uD558\uB77C. \uC790\uB8CC\uC5D0\uC11C \uD655\uC778\uD558\uC9C0 \uBABB\uD55C \uC0AC\uC2E4\uB85C \uBB38\uC81C\uB97C \uB9CC\uB4E4\uC9C0 \uB9C8\uB77C." : "\uC790\uB8CC\uC5D0 \uADFC\uAC70\uD55C \uD50C\uB798\uC2DC\uCE74\uB4DC\uB97C \uC0DD\uC131\uD558\uB77C. \uD55C \uCE74\uB4DC\uC5D0\uC11C \uD55C \uAC1C\uB150\uC744 \uBB3B\uACE0, \uC55E\uBA74 \uC9C8\uBB38\uACFC \uB4B7\uBA74 \uB2F5, \uCD9C\uCC98 \uADFC\uAC70\uB97C \uD568\uAED8 \uAD6C\uC870\uD654\uD558\uC5EC learning_submit_result\uB85C \uC81C\uCD9C\uD558\uB77C. \uC911\uBCF5 \uCE74\uB4DC\uB97C \uB9CC\uB4E4\uC9C0 \uB9C8\uB77C.";
+    const recipe2 = experience === "article-vocabulary" ? "\uC0AC\uC6A9\uC790\uAC00 \uC815\uD55C \uAD00\uC2EC \uC8FC\uC81C\uC640 \uC9C1\uC811 \uCCB4\uD06C\uD55C \uB2E8\uC5B4\uB97C \uBC14\uD0D5\uC73C\uB85C \uC9E7\uC740 \uC601\uC5B4 \uAE30\uC0AC\uB97C \uCC3E\uC544\uB77C. \uD604\uC7AC \uC81C\uACF5\uC790\uC758 \uC6F9 \uAC80\uC0C9 \uB3C4\uAD6C\uB97C \uC0AC\uC6A9\uD558\uACE0, \uC5C6\uC73C\uBA74 \uBC18\uB2EC \uBE0C\uB77C\uC6B0\uC800\uC5D0\uC11C \uAC80\uC0C9\uD558\uB77C. \uD6C4\uBCF4 \uAE30\uC0AC \uBCF8\uBB38\uC740 learning_verify_article\uB85C \uD655\uC778\uD558\uACE0, \uC2E4\uC81C \uB4F1\uC7A5 \uB2E8\uC5B4\uC640 \uCD9C\uCC98\uAC00 \uD655\uC778\uB41C \uACB0\uACFC\uB9CC learning_submit_result\uB85C \uC81C\uCD9C\uD558\uB77C. \uC0AC\uC6A9\uC790\uAC00 \uBAA8\uB974\uB294 \uB2E8\uC5B4\uB97C \uC784\uC758\uB85C \uCD94\uAC00\uD558\uAC70\uB098 \uC6D0\uBB38\uC744 \uC9C0\uC5B4\uB0B4\uC9C0 \uB9C8\uB77C." : experience === "quiz" ? "\uC790\uB8CC\uC5D0 \uADFC\uAC70\uD55C \uAC1D\uAD00\uC2DD\uACFC \uB2E8\uB2F5\uD615 \uD034\uC988\uB97C \uC0DD\uC131\uD558\uB77C. \uAC01 \uBB38\uC81C\uC758 \uC815\uB2F5, \uD574\uC124, \uCD9C\uCC98 \uADFC\uAC70\uB97C \uD568\uAED8 \uAD6C\uC870\uD654\uD558\uC5EC learning_submit_result\uB85C \uC81C\uCD9C\uD558\uB77C. \uC790\uB8CC\uC5D0\uC11C \uD655\uC778\uD558\uC9C0 \uBABB\uD55C \uC0AC\uC2E4\uB85C \uBB38\uC81C\uB97C \uB9CC\uB4E4\uC9C0 \uB9C8\uB77C." : "\uC790\uB8CC\uC5D0 \uADFC\uAC70\uD55C \uD50C\uB798\uC2DC\uCE74\uB4DC\uB97C \uC0DD\uC131\uD558\uB77C. \uD55C \uCE74\uB4DC\uC5D0\uC11C \uD55C \uAC1C\uB150\uC744 \uBB3B\uACE0, \uC55E\uBA74 \uC9C8\uBB38\uACFC \uB4B7\uBA74 \uB2F5, \uCD9C\uCC98 \uADFC\uAC70\uB97C \uD568\uAED8 \uAD6C\uC870\uD654\uD558\uC5EC learning_submit_result\uB85C \uC81C\uCD9C\uD558\uB77C. \uC911\uBCF5 \uCE74\uB4DC\uB97C \uB9CC\uB4E4\uC9C0 \uB9C8\uB77C.";
     return {
       ...pack,
       schemaVersion: WORKFLOW_PACK_SCHEMA_VERSION,
       experience,
-      recipe,
+      recipe: recipe2,
       ...experience === "article-vocabulary" ? { name: "\uC601\uC5B4 \uC774\uC5B4\uC77D\uAE30", description: "\uAD00\uC2EC \uC788\uB294 \uC601\uC5B4 \uAE00\uC744 \uC77D\uACE0 \uD45C\uD604\uC744 \uBAA8\uC544 \uB2E4\uC74C \uAE00\uC5D0\uC11C \uB2E4\uC2DC \uB9CC\uB098\uC694.", followUp: { label: "\uB2E4\uC74C \uAE30\uC0AC \uCC3E\uAE30", recipe: "\uD604\uC7AC \uD559\uC2B5 \uD504\uB85C\uC81D\uD2B8\uC758 \uC0AC\uC6A9\uC790 \uC120\uD0DD \uB2E8\uC5B4\uC640 \uC77D\uC740 \uAE30\uC0AC \uAE30\uB85D\uC744 \uC774\uC5B4\uBC1B\uC544 \uB2E4\uC74C \uAE30\uC0AC\uB97C \uCC3E\uC544\uB77C. \uBCF8\uBB38\uC774 \uD655\uC778\uB41C \uC0C8 \uAE30\uC0AC\uB9CC \uC81C\uCD9C\uD558\uB77C." } } : {},
       allowedTools: experience === "article-vocabulary" ? ["learning_verify_article", "learning_submit_result", "browser_open", "browser_snapshot", "browser_read"] : ["read_material", "list_materials", "learning_submit_result"]
     };
@@ -98160,12 +98262,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       return null;
     }
     const label = requiredString(value["label"], "followUp.label", warnings);
-    const recipe = sanitizeRecipe(value["recipe"], "followUp.recipe", warnings);
-    if (label === null || recipe === null) {
+    const recipe2 = sanitizeRecipe(value["recipe"], "followUp.recipe", warnings);
+    if (label === null || recipe2 === null) {
       warnings.push("followUp was dropped because it is invalid.");
       return null;
     }
-    return { label, recipe };
+    return { label, recipe: recipe2 };
   }
   function sanitizeWorkflowPack(raw) {
     const warnings = [];
@@ -98194,7 +98296,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const locale = raw["locale"] === "ko-KR" || raw["locale"] === "en-US" ? raw["locale"] : null;
     if (locale === null) warnings.push('locale must be "ko-KR" or "en-US".');
     const worksOn = sanitizeScopes(raw["worksOn"], warnings);
-    const recipe = sanitizeRecipe(raw["recipe"], "recipe", warnings);
+    const recipe2 = sanitizeRecipe(raw["recipe"], "recipe", warnings);
     const allowedTools = sanitizeAllowedTools(raw["allowedTools"], warnings);
     const usesWeb = typeof raw["usesWeb"] === "boolean" ? raw["usesWeb"] : null;
     if (usesWeb === null) warnings.push("usesWeb must be a boolean.");
@@ -98202,7 +98304,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     if (outputs === null) warnings.push("outputs must be an object.");
     const dir = sanitizeOutputDirectory(outputs?.["dir"], warnings);
     const primary = requiredString(outputs?.["primary"], "outputs.primary", warnings);
-    if (id2 === null || rawName === null || description === null || author === null || version4 === null || locale === null || worksOn === null || recipe === null || allowedTools === null || usesWeb === null || dir === null || primary === null) {
+    if (id2 === null || rawName === null || description === null || author === null || version4 === null || locale === null || worksOn === null || recipe2 === null || allowedTools === null || usesWeb === null || dir === null || primary === null) {
       return { pack: null, warnings };
     }
     const name7 = truncateCharacters2(rawName, MAX_NAME_LENGTH);
@@ -98218,7 +98320,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       version: version4,
       locale,
       worksOn,
-      recipe,
+      recipe: recipe2,
       allowedTools,
       usesWeb,
       outputs: { dir, primary }
@@ -110075,7 +110177,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var borderWidth = (_a3 = bs === null || bs === void 0 ? void 0 : bs.getWidth()) !== null && _a3 !== void 0 ? _a3 : 0;
     var rotation = reduceRotation(ap === null || ap === void 0 ? void 0 : ap.getRotation());
     var _d = adjustDimsForRotation(rectangle, rotation), width = _d.width, height = _d.height;
-    var rotate2 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
+    var rotate3 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
     var black = rgb(0, 0, 0);
     var borderColor = (_b = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBorderColor())) !== null && _b !== void 0 ? _b : black;
     var normalBackgroundColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBackgroundColor());
@@ -110098,12 +110200,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
     return {
       normal: {
-        on: __spreadArrays(rotate2, drawCheckBox(__assign(__assign({}, options), { color: normalBackgroundColor, filled: true }))),
-        off: __spreadArrays(rotate2, drawCheckBox(__assign(__assign({}, options), { color: normalBackgroundColor, filled: false })))
+        on: __spreadArrays(rotate3, drawCheckBox(__assign(__assign({}, options), { color: normalBackgroundColor, filled: true }))),
+        off: __spreadArrays(rotate3, drawCheckBox(__assign(__assign({}, options), { color: normalBackgroundColor, filled: false })))
       },
       down: {
-        on: __spreadArrays(rotate2, drawCheckBox(__assign(__assign({}, options), { color: downBackgroundColor, filled: true }))),
-        off: __spreadArrays(rotate2, drawCheckBox(__assign(__assign({}, options), { color: downBackgroundColor, filled: false })))
+        on: __spreadArrays(rotate3, drawCheckBox(__assign(__assign({}, options), { color: downBackgroundColor, filled: true }))),
+        off: __spreadArrays(rotate3, drawCheckBox(__assign(__assign({}, options), { color: downBackgroundColor, filled: false })))
       }
     };
   };
@@ -110117,7 +110219,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var borderWidth = (_a3 = bs === null || bs === void 0 ? void 0 : bs.getWidth()) !== null && _a3 !== void 0 ? _a3 : 0;
     var rotation = reduceRotation(ap === null || ap === void 0 ? void 0 : ap.getRotation());
     var _d = adjustDimsForRotation(rectangle, rotation), width = _d.width, height = _d.height;
-    var rotate2 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
+    var rotate3 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
     var black = rgb(0, 0, 0);
     var borderColor = (_b = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBorderColor())) !== null && _b !== void 0 ? _b : black;
     var normalBackgroundColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBackgroundColor());
@@ -110139,12 +110241,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
     return {
       normal: {
-        on: __spreadArrays(rotate2, drawRadioButton(__assign(__assign({}, options), { color: normalBackgroundColor, filled: true }))),
-        off: __spreadArrays(rotate2, drawRadioButton(__assign(__assign({}, options), { color: normalBackgroundColor, filled: false })))
+        on: __spreadArrays(rotate3, drawRadioButton(__assign(__assign({}, options), { color: normalBackgroundColor, filled: true }))),
+        off: __spreadArrays(rotate3, drawRadioButton(__assign(__assign({}, options), { color: normalBackgroundColor, filled: false })))
       },
       down: {
-        on: __spreadArrays(rotate2, drawRadioButton(__assign(__assign({}, options), { color: downBackgroundColor, filled: true }))),
-        off: __spreadArrays(rotate2, drawRadioButton(__assign(__assign({}, options), { color: downBackgroundColor, filled: false })))
+        on: __spreadArrays(rotate3, drawRadioButton(__assign(__assign({}, options), { color: downBackgroundColor, filled: true }))),
+        off: __spreadArrays(rotate3, drawRadioButton(__assign(__assign({}, options), { color: downBackgroundColor, filled: false })))
       }
     };
   };
@@ -110163,7 +110265,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var borderWidth = (_d = bs === null || bs === void 0 ? void 0 : bs.getWidth()) !== null && _d !== void 0 ? _d : 0;
     var rotation = reduceRotation(ap === null || ap === void 0 ? void 0 : ap.getRotation());
     var _f = adjustDimsForRotation(rectangle, rotation), width = _f.width, height = _f.height;
-    var rotate2 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
+    var rotate3 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
     var black = rgb(0, 0, 0);
     var borderColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBorderColor());
     var normalBackgroundColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBackgroundColor());
@@ -110205,8 +110307,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       fontSize
     };
     return {
-      normal: __spreadArrays(rotate2, drawButton(__assign(__assign({}, options), { color: normalBackgroundColor, textLines: [normalLayout.line] }))),
-      down: __spreadArrays(rotate2, drawButton(__assign(__assign({}, options), { color: downBackgroundColor, textLines: [downLayout.line] })))
+      normal: __spreadArrays(rotate3, drawButton(__assign(__assign({}, options), { color: normalBackgroundColor, textLines: [normalLayout.line] }))),
+      down: __spreadArrays(rotate3, drawButton(__assign(__assign({}, options), { color: downBackgroundColor, textLines: [downLayout.line] })))
     };
   };
   var defaultTextFieldAppearanceProvider = function(textField, widget, font) {
@@ -110222,7 +110324,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var borderWidth = (_b = bs === null || bs === void 0 ? void 0 : bs.getWidth()) !== null && _b !== void 0 ? _b : 0;
     var rotation = reduceRotation(ap === null || ap === void 0 ? void 0 : ap.getRotation());
     var _e = adjustDimsForRotation(rectangle, rotation), width = _e.width, height = _e.height;
-    var rotate2 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
+    var rotate3 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
     var black = rgb(0, 0, 0);
     var borderColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBorderColor());
     var normalBackgroundColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBackgroundColor());
@@ -110283,7 +110385,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       textLines,
       padding
     };
-    return __spreadArrays(rotate2, drawTextField(options));
+    return __spreadArrays(rotate3, drawTextField(options));
   };
   var defaultDropdownAppearanceProvider = function(dropdown, widget, font) {
     var _a3, _b, _c;
@@ -110298,7 +110400,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var borderWidth = (_b = bs === null || bs === void 0 ? void 0 : bs.getWidth()) !== null && _b !== void 0 ? _b : 0;
     var rotation = reduceRotation(ap === null || ap === void 0 ? void 0 : ap.getRotation());
     var _d = adjustDimsForRotation(rectangle, rotation), width = _d.width, height = _d.height;
-    var rotate2 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
+    var rotate3 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
     var black = rgb(0, 0, 0);
     var borderColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBorderColor());
     var normalBackgroundColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBackgroundColor());
@@ -110335,7 +110437,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       textLines: [line],
       padding
     };
-    return __spreadArrays(rotate2, drawTextField(options));
+    return __spreadArrays(rotate3, drawTextField(options));
   };
   var defaultOptionListAppearanceProvider = function(optionList, widget, font) {
     var _a3, _b;
@@ -110349,7 +110451,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var borderWidth = (_a3 = bs === null || bs === void 0 ? void 0 : bs.getWidth()) !== null && _a3 !== void 0 ? _a3 : 0;
     var rotation = reduceRotation(ap === null || ap === void 0 ? void 0 : ap.getRotation());
     var _c = adjustDimsForRotation(rectangle, rotation), width = _c.width, height = _c.height;
-    var rotate2 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
+    var rotate3 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
     var black = rgb(0, 0, 0);
     var borderColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBorderColor());
     var normalBackgroundColor = componentsToColor(ap === null || ap === void 0 ? void 0 : ap.getBackgroundColor());
@@ -110389,7 +110491,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     } else {
       updateDefaultAppearance(optionList.acroField, textColor, font, fontSize);
     }
-    return __spreadArrays(rotate2, drawOptionList({
+    return __spreadArrays(rotate3, drawOptionList({
       x: 0 + borderWidth / 2,
       y: 0 + borderWidth / 2,
       width: width - borderWidth,
@@ -110776,7 +110878,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         var bs = widget.getBorderStyle();
         var borderWidth = (_b = bs === null || bs === void 0 ? void 0 : bs.getWidth()) !== null && _b !== void 0 ? _b : 0;
         var rotation = reduceRotation(ap === null || ap === void 0 ? void 0 : ap.getRotation());
-        var rotate2 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
+        var rotate3 = rotateInPlace(__assign(__assign({}, rectangle), { rotation }));
         var adj = adjustDimsForRotation(rectangle, rotation);
         var imageDims = image.scaleToFit(adj.width - borderWidth * 2, adj.height - borderWidth * 2);
         var options = {
@@ -110797,7 +110899,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           options.y = adj.height - borderWidth - imageDims.height;
         }
         var imageName = this.doc.context.addRandomSuffix("Image", 10);
-        var appearance = __spreadArrays(rotate2, drawImage(imageName, options));
+        var appearance = __spreadArrays(rotate3, drawImage(imageName, options));
         var Resources = { XObject: (_a3 = {}, _a3[imageName] = image.ref, _a3) };
         var stream2 = context2.formXObject(appearance, {
           Resources,
@@ -113752,8 +113854,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const result = [filtered];
     for (let i = 1; i < points.length; i++) {
       const point2 = points[i], previous = points[i - 1];
-      const delta = Number.isFinite(point2.t) && Number.isFinite(previous.t) ? Math.max(0, Math.min(32, point2.t - previous.t)) : 4;
-      const alpha = -Math.expm1(-delta / 24);
+      const delta2 = Number.isFinite(point2.t) && Number.isFinite(previous.t) ? Math.max(0, Math.min(32, point2.t - previous.t)) : 4;
+      const alpha = -Math.expm1(-delta2 / 24);
       filtered += alpha * (Math.max(0, Math.min(1, point2.p)) - filtered);
       result.push(filtered);
     }
@@ -113912,6 +114014,183 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const paths = [];
     for (const polygon of strokePolygonIteratorV4(points, width, aspect, highlighter)) {
       paths.push(polygon.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x * scaleX} ${y * scaleY}`).join(" ") + " Z");
+    }
+    return paths.join(" ");
+  }
+
+  // DesktopRuntime/upstream/src/shared/inkV5.ts
+  var INK_V5_TAIL_SEGMENTS = 16;
+  var clamp = (value) => Math.max(0, Math.min(1, value));
+  var smoothstep = (value) => {
+    const t = clamp(value);
+    return t * t * (3 - 2 * t);
+  };
+  var valid2 = (points, width, aspect) => Number.isFinite(width) && width > 0 && Number.isFinite(aspect) && aspect > 0 && points.every((point2) => [point2.x, point2.y, point2.y * aspect, point2.p].every(Number.isFinite));
+  var delta = (before, after) => before.t !== void 0 && after.t !== void 0 && Number.isFinite(before.t) && Number.isFinite(after.t) ? after.t - before.t : NaN;
+  function filteredPressureV5(points, index) {
+    let age = 0, sum2 = 0, weights = 0;
+    for (let cursor = index; cursor >= 0 && cursor > index - 4; cursor--) {
+      const point2 = points[cursor];
+      if (cursor < index) {
+        const dt = delta(point2, points[cursor + 1]);
+        age += Number.isFinite(dt) && dt > 0 ? Math.min(32, dt) : 4;
+      }
+      if (age > 24) break;
+      const weight = Math.exp(-age / 8);
+      sum2 += clamp(point2.p) * weight;
+      weights += weight;
+    }
+    return weights > 0 ? sum2 / weights : 0;
+  }
+  function cumulativeTravelV5(points, aspect) {
+    if (!Number.isFinite(aspect) || aspect <= 0) return [];
+    const result = [];
+    for (let index = 0; index < points.length; index++) {
+      const point2 = points[index], previous = points[index - 1];
+      const next = previous ? result[index - 1] + Math.hypot(point2.x - previous.x, (point2.y - previous.y) * aspect) : 0;
+      if (!Number.isFinite(next)) return [];
+      result.push(next);
+    }
+    return result;
+  }
+  function baseDiameterFactorV5(points, pressureIndex, arrivalIndex, aspect) {
+    const point2 = points[arrivalIndex], previous = points[arrivalIndex - 1];
+    const dt = previous ? delta(previous, point2) : NaN;
+    const speed = previous && Number.isFinite(dt) && dt > 0 && dt <= 64 ? Math.min(3, Math.max(0, Math.hypot(point2.x - previous.x, (point2.y - previous.y) * aspect) * 1e3 / dt)) : 0;
+    return (0.24 + 0.68 * Math.pow(filteredPressureV5(points, pressureIndex), 0.8)) * (1 - 0.12 * clamp(speed / 0.8));
+  }
+  function startGainV5(travel, width) {
+    return 0.75 + 0.25 * smoothstep(travel / (1.2 * width));
+  }
+  function endLengthV5(cumulative, width) {
+    const last2 = cumulative.length - 1, start = Math.max(0, last2 - INK_V5_TAIL_SEGMENTS);
+    return last2 < 0 ? 0 : Math.min(2.2 * width, 0.28 * cumulative[last2], cumulative[last2] - cumulative[start]);
+  }
+  function endGainV5(travel, cumulative, width) {
+    const length2 = endLengthV5(cumulative, width);
+    if (!(length2 > 0)) return 1;
+    const strength = smoothstep(length2 / (0.75 * width));
+    return 1 - 0.68 * strength * (1 - smoothstep((cumulative.at(-1) - travel) / length2));
+  }
+  var InkProfileBuilderV5 = class {
+    constructor(width, aspect, highlighter) {
+      this.width = width;
+      this.aspect = aspect;
+      __publicField(this, "profile");
+      __publicField(this, "count", 0);
+      this.profile = { points: [], baseFactors: [], travel: [], factors: [], sourceRanges: [], sampleTimes: [], highlighter };
+    }
+    update(raw) {
+      if (raw.length < this.count) throw new Error("V5 profile measured samples must be append-only");
+      const p = this.profile, oldCount = p.points.length;
+      for (let i = this.count; i < raw.length; i++) {
+        const point2 = raw[i], previous = p.points.at(-1);
+        if (!p.highlighter && previous && point2.x === previous.x && point2.y === previous.y) {
+          const group = p.points.length - 1, range3 = p.sourceRanges[group];
+          range3[1] = i;
+          p.points[group] = { ...point2 };
+          p.baseFactors[group] = baseDiameterFactorV5(raw, i, range3[0], this.aspect);
+        } else {
+          const group = p.points.length;
+          p.points.push({ ...point2 });
+          p.sourceRanges.push([i, i]);
+          p.sampleTimes.push(group);
+          p.travel.push(previous ? p.travel[group - 1] + Math.hypot(point2.x - previous.x, (point2.y - previous.y) * this.aspect) : 0);
+          p.baseFactors.push(p.highlighter ? 1 : baseDiameterFactorV5(raw, i, i, this.aspect));
+        }
+      }
+      for (let i = Math.max(0, oldCount - 1 - INK_V5_TAIL_SEGMENTS); i < p.points.length; i++) {
+        p.factors[i] = p.highlighter ? 1 : p.baseFactors[i] * startGainV5(p.travel[i], this.width) * endGainV5(p.travel[i], p.travel, this.width);
+      }
+      this.count = raw.length;
+      return p;
+    }
+  };
+  function renderProfileV5(points, width, aspect, highlighter) {
+    const builder = new InkProfileBuilderV5(width, aspect, highlighter);
+    if (!valid2(points, width, aspect) || cumulativeTravelV5(points, aspect).length !== points.length) return builder.profile;
+    return builder.update(points);
+  }
+  function segmentSamplesV5(profile, index, width, aspect) {
+    const original = segmentSamplesV4(profile.points, index, width, aspect, profile.sampleTimes);
+    if (!original.length) return [];
+    const first = profile.points[index], last2 = profile.points[index + 1];
+    const start = profile.travel[index], distance = profile.travel[index + 1] - start;
+    const times = original.map((sample) => sample.p - index);
+    if (!profile.highlighter && distance > 0) {
+      const endLength = endLengthV5(profile.travel, width), total = profile.travel.at(-1);
+      for (let step = 0; step < 8; step++) {
+        for (const travel of [1.2 * width * (step + 1) / 8, total - endLength + endLength * step / 8]) {
+          const t = (travel - start) / distance;
+          if (t > 0 && t < 1) times.push(t);
+        }
+      }
+    }
+    times.sort((a, b) => a - b);
+    const unique = times.filter((t, i) => i === 0 || t !== times[i - 1]);
+    let cursor = 1;
+    return unique.map((t) => {
+      while (cursor < original.length - 1 && original[cursor].p - index < t) cursor++;
+      const after = original[cursor], before = original[cursor - 1];
+      let x, y;
+      if (t === 0) {
+        x = first.x;
+        y = first.y;
+      } else if (t === 1) {
+        x = last2.x;
+        y = last2.y;
+      } else if (t === after.p - index) {
+        x = after.x;
+        y = after.y;
+      } else {
+        const local = (t - (before.p - index)) / (after.p - before.p);
+        x = before.x + (after.x - before.x) * local;
+        y = before.y + (after.y - before.y) * local;
+      }
+      const base = profile.baseFactors[index] + (profile.baseFactors[index + 1] - profile.baseFactors[index]) * t;
+      const travel = start + distance * t;
+      const factor = t === 0 ? profile.factors[index] : t === 1 ? profile.factors[index + 1] : profile.highlighter ? 1 : base * startGainV5(travel, width) * endGainV5(travel, profile.travel, width);
+      return { x, y, factor };
+    });
+  }
+  function* segmentPolygonsV5(samples, width, aspect, includeFirst = true) {
+    if (!(Number.isFinite(width) && width > 0 && Number.isFinite(aspect) && aspect > 0) || !samples.every((point2) => [point2.x, point2.y, point2.y * aspect, point2.factor].every(Number.isFinite) && point2.factor >= 0)) return;
+    for (let index = 0; index < samples.length; index++) {
+      const point2 = samples[index], r = width * point2.factor / 2, previous = samples[index - 1];
+      if (previous) {
+        const before = width * previous.factor / 2, dx = point2.x - previous.x, dy = (point2.y - previous.y) * aspect;
+        const distance = Math.hypot(dx, dy), difference = before - r;
+        if (Number.isFinite(distance) && distance > Math.abs(difference) && distance > 1e-12) {
+          const ux = dx / distance, uy = dy / distance, along = difference / distance;
+          const across = Math.sqrt(Math.max(0, 1 - along * along));
+          const lowX = ux * along + uy * across, lowY = uy * along - ux * across;
+          const highX = ux * along - uy * across, highY = uy * along + ux * across;
+          yield [
+            [previous.x + lowX * before, previous.y + lowY * before / aspect],
+            [point2.x + lowX * r, point2.y + lowY * r / aspect],
+            [point2.x + highX * r, point2.y + highY * r / aspect],
+            [previous.x + highX * before, previous.y + highY * before / aspect]
+          ];
+        }
+      }
+      if (index > 0 || includeFirst) yield Array.from({ length: INK_V3_CIRCLE_SEGMENTS }, (_2, step) => {
+        const angle = step * 2 * Math.PI / INK_V3_CIRCLE_SEGMENTS;
+        return [point2.x + r * Math.cos(angle), point2.y + r * Math.sin(angle) / aspect];
+      });
+    }
+  }
+  function* strokePolygonIteratorV5(points, width, aspect, highlighter) {
+    const profile = renderProfileV5(points, width, aspect, highlighter), first = profile.points[0];
+    if (!first) return;
+    yield* segmentPolygonsV5([{ x: first.x, y: first.y, factor: profile.factors[0] }], width, aspect);
+    for (let index = 0; index + 1 < profile.points.length; index++) {
+      yield* segmentPolygonsV5(segmentSamplesV5(profile, index, width, aspect), width, aspect, false);
+    }
+  }
+  function strokePathV5(points, width, aspect, highlighter, scaleX = 1, scaleY = 1) {
+    const paths = [];
+    for (const polygon of strokePolygonIteratorV5(points, width, aspect, highlighter)) {
+      paths.push(polygon.map(([x, y], index) => `${index === 0 ? "M" : "L"} ${x * scaleX} ${y * scaleY}`).join(" ") + " Z");
     }
     return paths.join(" ");
   }
@@ -117298,7 +117577,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     nextTick(cb, er);
   }
   function validChunk(stream2, state, chunk, cb) {
-    var valid2 = true;
+    var valid3 = true;
     var er = false;
     if (chunk === null) {
       er = new TypeError("May not write null values to stream");
@@ -117308,9 +117587,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     if (er) {
       stream2.emit("error", er);
       nextTick(cb, er);
-      valid2 = false;
+      valid3 = false;
     }
-    return valid2;
+    return valid3;
   }
   Writable.prototype.write = function(chunk, encoding, cb) {
     var state = this._writableState;
@@ -134196,16 +134475,16 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             var end = cmap2.endCode.get(_i);
             var start = cmap2.startCode.get(_i);
             var rangeOffset = cmap2.idRangeOffset.get(_i);
-            var delta = cmap2.idDelta.get(_i);
+            var delta2 = cmap2.idDelta.get(_i);
             for (var c = start; c <= end; c++) {
               var g = 0;
               if (rangeOffset === 0) {
-                g = c + delta;
+                g = c + delta2;
               } else {
                 var index = rangeOffset / 2 + (c - start) - (cmap2.segCount - _i);
                 g = cmap2.glyphIndexArray.get(index) || 0;
                 if (g !== 0) {
-                  g += delta;
+                  g += delta2;
                 }
               }
               if (g === gid) {
@@ -134369,13 +134648,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var clcidx = new Uint8Array([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
   var code_tree = new Tree();
   var lengths = new Uint8Array(288 + 32);
-  function tinf_build_bits_base(bits3, base, delta, first) {
+  function tinf_build_bits_base(bits3, base, delta2, first) {
     var i, sum2;
-    for (i = 0; i < delta; ++i) {
+    for (i = 0; i < delta2; ++i) {
       bits3[i] = 0;
     }
-    for (i = 0; i < 30 - delta; ++i) {
-      bits3[i + delta] = i / delta | 0;
+    for (i = 0; i < 30 - delta2; ++i) {
+      bits3[i + delta2] = i / delta2 | 0;
     }
     for (sum2 = first, i = 0; i < 30; ++i) {
       base[i] = sum2;
@@ -139848,7 +140127,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto.translate = function translate2(x, y) {
       return this.transform(1, 0, 0, 1, x, y);
     };
-    _proto.rotate = function rotate2(angle) {
+    _proto.rotate = function rotate3(angle) {
       var cos2 = Math.cos(angle);
       var sin2 = Math.sin(angle);
       return this.transform(cos2, sin2, -sin2, cos2, 0, 0);
@@ -140666,12 +140945,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
                 var blendVector = variationProcessor.getBlendVector(vstore, vsindex);
                 var numBlends = stack.pop();
                 var numOperands = numBlends * blendVector.length;
-                var delta = stack.length - numOperands;
-                var base = delta - numBlends;
+                var delta2 = stack.length - numOperands;
+                var base = delta2 - numBlends;
                 for (var i = 0; i < numBlends; i++) {
                   var sum2 = stack[base + i];
                   for (var j = 0; j < blendVector.length; j++) {
-                    sum2 += blendVector[j] * stack[delta++];
+                    sum2 += blendVector[j] * stack[delta2++];
                   }
                   stack[base + i] = sum2;
                 }
@@ -142676,13 +142955,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var clcidx$1 = new Uint8Array([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
   var code_tree$1 = new Tree$1();
   var lengths$1 = new Uint8Array(288 + 32);
-  function tinf_build_bits_base$1(bits3, base, delta, first) {
+  function tinf_build_bits_base$1(bits3, base, delta2, first) {
     var i, sum2;
-    for (i = 0; i < delta; ++i) {
+    for (i = 0; i < delta2; ++i) {
       bits3[i] = 0;
     }
-    for (i = 0; i < 30 - delta; ++i) {
-      bits3[i + delta] = i / delta | 0;
+    for (i = 0; i < 30 - delta2; ++i) {
+      bits3[i + delta2] = i / delta2 | 0;
     }
     for (sum2 = first, i = 0; i < 30; ++i) {
       base[i] = sum2;
@@ -146464,8 +146743,144 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
   }
 
+  // DesktopRuntime/upstream/src/main/features/canvas/boardMediaPdf.ts
+  function clipPdfBounds(page, crop) {
+    const box2 = page.getCropBox();
+    const rotation = (page.getRotation().angle % 360 + 360) % 360;
+    let x = crop.x, y = 1 - crop.y - crop.height, width = crop.width, height = crop.height;
+    if (rotation === 90) {
+      x = crop.y;
+      y = crop.x;
+      width = crop.height;
+      height = crop.width;
+    } else if (rotation === 180) {
+      x = 1 - crop.x - crop.width;
+      y = crop.y;
+    } else if (rotation === 270) {
+      x = 1 - crop.y - crop.height;
+      y = 1 - crop.x - crop.width;
+      width = crop.height;
+      height = crop.width;
+    }
+    return {
+      rotation,
+      bounds: {
+        left: box2.x + x * box2.width,
+        bottom: box2.y + y * box2.height,
+        right: box2.x + (x + width) * box2.width,
+        top: box2.y + (y + height) * box2.height
+      }
+    };
+  }
+  function createBoardMediaRenderer(pdf, folder, resolveClip) {
+    const documents = /* @__PURE__ */ new Map();
+    const images = /* @__PURE__ */ new Map();
+    const clips = /* @__PURE__ */ new Map();
+    return async (page, shape2, size = page.getSize()) => {
+      const box2 = shape2.data.box;
+      if (box2 === void 0) throw new Error("\uC0AC\uC9C4 \uB610\uB294 \uD074\uB9BD\uC758 \uC704\uCE58\uB97C \uC77D\uC9C0 \uBABB\uD588\uC5B4\uC694.");
+      const { width: pageWidth, height: pageHeight } = size;
+      const x = box2.x * pageWidth, y = (1 - box2.y - box2.height) * pageHeight;
+      const width = box2.width * pageWidth, height = box2.height * pageHeight;
+      const opacity = shape2.style.opacity;
+      if (shape2.kind === "image") {
+        const source2 = shape2.data.image;
+        if (source2 === void 0) throw new Error("\uC0AC\uC9C4\uC758 \uC6D0\uBCF8 \uACBD\uB85C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.");
+        let image = images.get(source2.relPath);
+        if (image === void 0) {
+          image = (async () => {
+            const bytes = await readFile(resolveInsideReal(folder, source2.relPath));
+            if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return pdf.embedPng(bytes);
+            if (bytes[0] === 255 && bytes[1] === 216) return pdf.embedJpg(bytes);
+            const { nativeImage: nativeImage2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
+            const converted = nativeImage2.createFromBuffer(bytes);
+            if (converted.isEmpty()) throw new Error("\uC0AC\uC9C4 \uD615\uC2DD\uC744 \uC77D\uC9C0 \uBABB\uD588\uC5B4\uC694.");
+            return pdf.embedPng(converted.toPNG());
+          })();
+          images.set(source2.relPath, image);
+        }
+        try {
+          page.drawImage(await image, { x, y, width, height, opacity });
+        } catch (cause) {
+          throw new Error(`\uC0AC\uC9C4 \u201C${source2.label}\u201D\uC744 \uB0B4\uBCF4\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694. \uC6D0\uBCF8 \uD30C\uC77C\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.`, { cause });
+        }
+        return;
+      }
+      const source = shape2.data.clip;
+      if (source === void 0) throw new Error("\uD074\uB9BD\uC758 \uC6D0\uBCF8 \uACBD\uB85C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.");
+      const documentKey = JSON.stringify([source.relPath, source.documentRevision]);
+      const key4 = JSON.stringify([documentKey, source.page, source.crop]);
+      let clip2 = clips.get(key4);
+      if (clip2 === void 0) {
+        clip2 = (async () => {
+          let document2 = documents.get(documentKey);
+          if (document2 === void 0) {
+            if (source.documentRevision && !resolveClip) throw new Error("Pinned PDF clip resolver is unavailable");
+            document2 = readFile(resolveClip ? resolveClip(source) : resolveInsideReal(folder, source.relPath)).then((bytes) => PDFDocument_default.load(bytes));
+            documents.set(documentKey, document2);
+          }
+          const sourcePage = (await document2).getPages()[source.page - 1];
+          if (sourcePage === void 0) throw new Error("\uD074\uB9BD\uC758 \uC6D0\uBCF8 \uD398\uC774\uC9C0\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.");
+          const { bounds, rotation } = clipPdfBounds(sourcePage, source.crop ?? { x: 0, y: 0, width: 1, height: 1 });
+          return { page: await pdf.embedPage(sourcePage, bounds), rotation };
+        })();
+        clips.set(key4, clip2);
+      }
+      try {
+        const embedded = await clip2;
+        const rotation = embedded.rotation;
+        page.drawPage(embedded.page, {
+          x: x + (rotation === 180 || rotation === 270 ? width : 0),
+          y: y + (rotation === 90 || rotation === 180 ? height : 0),
+          width: rotation === 90 || rotation === 270 ? height : width,
+          height: rotation === 90 || rotation === 270 ? width : height,
+          rotate: degrees(-rotation),
+          opacity
+        });
+      } catch (cause) {
+        throw new Error(`\uD074\uB9BD \u201C${source.label}\u201D\uC744 \uB0B4\uBCF4\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694. \uC6D0\uBCF8 PDF\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.`, { cause });
+      }
+    };
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/notePaper.ts
+  var PAPERS = ["blank", "lines", "grid", "dots"];
+  var RULE_SPACING = 28;
+  var WHITE = rgb(1, 1, 1);
+  var RULING = rgb(0.82, 0.84, 0.88);
+  function noteSize(orientation) {
+    const [width, height] = PageSizes.A4;
+    return orientation === "landscape" ? [height, width] : [width, height];
+  }
+  function drawPaper(page, paper, surface = "light") {
+    const color = surface === "dark" ? rgb(0.045, 0.065, 0.115) : WHITE;
+    const ruling = surface === "dark" ? rgb(0.2, 0.25, 0.36) : RULING;
+    const { width, height } = page.getSize();
+    page.drawRectangle({ x: 0, y: 0, width, height, color });
+    if (paper === "blank") return;
+    if (paper === "dots") {
+      for (let x = RULE_SPACING; x < width; x += RULE_SPACING) for (let y = RULE_SPACING; y < height; y += RULE_SPACING) page.drawCircle({ x, y, size: 0.85, color: ruling, opacity: 0.72 });
+      return;
+    }
+    for (let y = RULE_SPACING; y < height; y += RULE_SPACING) page.drawLine({ start: { x: 0, y }, end: { x: width, y }, thickness: 0.55, color: ruling, opacity: 0.68 });
+    if (paper === "lines") return;
+    for (let x = RULE_SPACING; x < width; x += RULE_SPACING) page.drawLine({ start: { x, y: 0 }, end: { x, y: height }, thickness: 0.55, color: ruling, opacity: 0.68 });
+  }
+  function setPaper(pdf, paper, orientation, surface = "light") {
+    pdf.setKeywords(["bandal-note", `paper=${paper}`, `orientation=${orientation}`, `surface=${surface}`]);
+  }
+  function readPaper(pdf) {
+    const keywords = pdf.getKeywords() ?? "";
+    if (!keywords.includes("bandal-note")) return null;
+    const match = /paper=(blank|lines|grid|dots)/.exec(keywords);
+    return match?.[1] ?? "blank";
+  }
+  function readSurface(pdf) {
+    return /(?:^|[ ,;])surface=dark(?:$|[ ,;])/.test(pdf.getKeywords() ?? "") ? "dark" : "light";
+  }
+
   // DesktopRuntime/upstream/src/main/features/textboxPdfLayout.ts
-  function clamp(value, min, max2) {
+  function clamp2(value, min, max2) {
     return Math.min(max2, Math.max(min, value));
   }
   function faceOfTextStyle(style) {
@@ -146500,7 +146915,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   function layoutTextboxLines(options) {
     const { text, style, fonts, surfaceWidthPt, maxWidth } = options;
     const normalizedRuns = normalizeTextRuns(text, options.textRuns);
-    const baseFontSize = clamp(
+    const baseFontSize = clamp2(
       textBoxFontPx(surfaceWidthPt, style.fontScale, style.fontSizePt, surfaceWidthPt),
       TEXT_EXPORT_FONT_PT.min,
       TEXT_EXPORT_FONT_PT.max
@@ -146529,7 +146944,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       const effectiveStyle = inline !== void 0 && inline.from <= offset ? { ...style, ...inline.style } : style;
       const selectedFont = fontFor(fonts, effectiveStyle);
       if (selectedFont !== null) {
-        const fontSize = effectiveStyle.fontSizePt === void 0 ? baseFontSize : clamp(effectiveStyle.fontSizePt, TEXT_EXPORT_FONT_PT.min, TEXT_EXPORT_FONT_PT.max);
+        const fontSize = effectiveStyle.fontSizePt === void 0 ? baseFontSize : clamp2(effectiveStyle.fontSizePt, TEXT_EXPORT_FONT_PT.min, TEXT_EXPORT_FONT_PT.max);
         const display = character === "	" ? "    " : encodableText(selectedFont.metrics, character);
         const glyphWidth = selectedFont.metrics.widthOfTextAtSize(display, fontSize);
         if (current.width > 0 && current.width + glyphWidth > maxWidth) finishLine();
@@ -146582,7 +146997,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var TEXT_UNDERLINE_OFFSET_EM = -0.1;
   var TEXT_STRIKE_OFFSET_EM = 0.3;
   var TEXT_ALIGN_FACTORS = { left: 0, center: 0.5, right: 1 };
-  function clamp2(value, min, max2) {
+  function clamp3(value, min, max2) {
     return Math.min(max2, Math.max(min, value));
   }
   function hasGlyphs(text) {
@@ -146597,6 +147012,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     blue: rgb(0.08, 0.38, 0.88),
     violet: rgb(0.49, 0.21, 0.82)
   };
+  var DARK_DRAWING_COLORS = { ink: rgb(0.94, 0.96, 0.99), red: rgb(1, 0.48, 0.5), orange: rgb(1, 0.68, 0.32), yellow: rgb(1, 0.88, 0.34), green: rgb(0.46, 0.88, 0.6), blue: rgb(0.46, 0.72, 1), violet: rgb(0.78, 0.62, 1) };
   var HIGHLIGHT_COLORS = {
     yellow: rgb(0.98, 0.83, 0.18),
     green: rgb(0.3, 0.78, 0.4),
@@ -146636,15 +147052,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         throw new ValidationError("PDF page rotation must be a multiple of 90 degrees");
     }
   }
-  function drawInk(page, drawing, width, height) {
+  function drawInk(page, drawing, width, height, palette = DRAWING_COLORS2) {
     const points = drawing.data.points ?? [];
     if (points.length === 0) return;
-    const color = DRAWING_COLORS2[drawing.style.color];
+    const color = palette[drawing.style.color];
     const baseThickness = drawing.style.width * width;
     const opacity = drawing.kind === "highlighter" ? Math.min(drawing.style.opacity, 0.38) : drawing.style.opacity;
-    const blendMode = drawing.kind === "highlighter" ? BlendMode.Multiply : BlendMode.Normal;
-    if (drawing.data.inkVersion === 2 || drawing.data.inkVersion === 3 || drawing.data.inkVersion === 4) {
-      const renderPath = drawing.data.inkVersion === 4 ? strokePathV4 : drawing.data.inkVersion === 3 ? strokePathV3 : strokePathV2;
+    const blendMode = drawing.kind === "highlighter" ? palette === DARK_DRAWING_COLORS ? BlendMode.Screen : BlendMode.Multiply : BlendMode.Normal;
+    if (drawing.data.inkVersion === 2 || drawing.data.inkVersion === 3 || drawing.data.inkVersion === 4 || drawing.data.inkVersion === 5) {
+      const renderPath = drawing.data.inkVersion === 5 ? strokePathV5 : drawing.data.inkVersion === 4 ? strokePathV4 : drawing.data.inkVersion === 3 ? strokePathV3 : strokePathV2;
       const path = renderPath(points, drawing.style.width, height / width, drawing.kind === "highlighter", width, height);
       if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode });
       return;
@@ -146677,8 +147093,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       });
     }
   }
-  function drawBoxShape(page, drawing, box2, width, height) {
-    const color = DRAWING_COLORS2[drawing.style.color];
+  function drawBoxShape(page, drawing, box2, width, height, palette = DRAWING_COLORS2) {
+    const color = palette[drawing.style.color];
     const borderWidth = Math.max(drawing.style.width * width, 0.25);
     const x = box2.x * width;
     const boxWidth = box2.width * width;
@@ -146706,7 +147122,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       });
     }
   }
-  function drawStraightLine(page, drawing, width, height) {
+  function drawStraightLine(page, drawing, width, height, palette = DRAWING_COLORS2) {
     const points = linePoints(drawing);
     if (points === null) return;
     const start = pdfPoint(points[0], width, height);
@@ -146714,7 +147130,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const thickness = Math.max(drawing.style.width * width, 0.25);
     const options = {
       thickness,
-      color: DRAWING_COLORS2[drawing.style.color],
+      color: palette[drawing.style.color],
       opacity: drawing.style.opacity,
       lineCap: LineCapStyle.Round
     };
@@ -146748,9 +147164,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       });
     }
   }
-  function drawTextbox(page, drawing, box2, fonts, width, height) {
+  function drawTextbox(page, drawing, box2, fonts, width, height, palette = DRAWING_COLORS2) {
     const style = drawing.style;
-    const fontSize = clamp2(
+    const fontSize = clamp3(
       textBoxFontPx(width, style.fontScale, style.fontSizePt, width),
       TEXT_EXPORT_FONT_PT.min,
       TEXT_EXPORT_FONT_PT.max
@@ -146769,7 +147185,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         y: bottom,
         width: boxWidth,
         height: boxHeight,
-        color: DRAWING_COLORS2[style.fill],
+        color: palette[style.fill],
         opacity: TEXT_FILL_OPACITY
       });
     }
@@ -146793,7 +147209,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       if (y < bottom) break;
       let x = left + inset + Math.max(0, maxWidth - line.width) * alignFactor;
       for (const run of line.runs) {
-        const runColor = DRAWING_COLORS2[run.style.color];
+        const runColor = palette[run.style.color];
         drawPdfText(page, run.text, run.font, {
           x,
           y,
@@ -146886,6 +147302,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     async function annotateDocument(pdf, input) {
       const { courseId: courseId2, relPath: relPath2 } = input;
       const pages = pdf.getPages();
+      const palette = readSurface(pdf) === "dark" ? DARK_DRAWING_COLORS : DRAWING_COLORS2;
+      const renderMedia = createBoardMediaRenderer(pdf, deps.getCourseFolder(courseId2), deps.resolveClipSource ? (source) => deps.resolveClipSource(courseId2, source) : void 0);
       const annotations = deps.listAnnotations(courseId2, relPath2);
       const drawings = deps.listDrawings(courseId2, relPath2);
       const textboxes = drawings.filter((drawing) => drawing.kind === "textbox");
@@ -146908,22 +147326,17 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...matrix));
         try {
           if (drawing.kind === "ink" || drawing.kind === "highlighter") {
-            drawInk(page, drawing, width, height);
+            drawInk(page, drawing, width, height, palette);
           } else if (drawing.kind === "rect" || drawing.kind === "ellipse") {
             if (drawing.data.box !== void 0) {
-              drawBoxShape(page, drawing, drawing.data.box, width, height);
+              drawBoxShape(page, drawing, drawing.data.box, width, height, palette);
             }
           } else if (drawing.kind === "line" || drawing.kind === "arrow") {
-            drawStraightLine(page, drawing, width, height);
-          } else if (drawing.kind === "image" && drawing.data.image && drawing.data.box) {
-            const canonicalImage = resolveInsideReal(deps.getCourseFolder(courseId2), drawing.data.image.relPath);
-            const { nativeImage: nativeImage2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
-            const png = nativeImage2.createFromBuffer(await readFile(canonicalImage)).toPNG();
-            const image = await pdf.embedPng(png);
-            const box2 = drawing.data.box;
-            page.drawImage(image, { x: box2.x * width, y: (1 - box2.y - box2.height) * height, width: box2.width * width, height: box2.height * height, opacity: drawing.style.opacity });
+            drawStraightLine(page, drawing, width, height, palette);
+          } else if (drawing.kind === "image" || drawing.kind === "clip") {
+            await renderMedia(page, drawing, { width, height });
           } else if (drawing.kind === "textbox" && fonts !== null && drawing.data.box !== void 0) {
-            drawTextbox(page, drawing, drawing.data.box, fonts, width, height);
+            drawTextbox(page, drawing, drawing.data.box, fonts, width, height, palette);
           }
         } finally {
           page.pushOperators(popGraphicsState());
@@ -146962,106 +147375,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/canvas/boardMediaPdf.ts
-  function clipPdfBounds(page, crop) {
-    const box2 = page.getCropBox();
-    const rotation = (page.getRotation().angle % 360 + 360) % 360;
-    let x = crop.x, y = 1 - crop.y - crop.height, width = crop.width, height = crop.height;
-    if (rotation === 90) {
-      x = crop.y;
-      y = crop.x;
-      width = crop.height;
-      height = crop.width;
-    } else if (rotation === 180) {
-      x = 1 - crop.x - crop.width;
-      y = crop.y;
-    } else if (rotation === 270) {
-      x = 1 - crop.y - crop.height;
-      y = 1 - crop.x - crop.width;
-      width = crop.height;
-      height = crop.width;
-    }
-    return {
-      rotation,
-      bounds: {
-        left: box2.x + x * box2.width,
-        bottom: box2.y + y * box2.height,
-        right: box2.x + (x + width) * box2.width,
-        top: box2.y + (y + height) * box2.height
-      }
-    };
-  }
-  function createBoardMediaRenderer(pdf, folder) {
-    const documents = /* @__PURE__ */ new Map();
-    const images = /* @__PURE__ */ new Map();
-    const clips = /* @__PURE__ */ new Map();
-    return async (page, shape2) => {
-      const box2 = shape2.data.box;
-      if (box2 === void 0) throw new Error("\uC0AC\uC9C4 \uB610\uB294 \uD074\uB9BD\uC758 \uC704\uCE58\uB97C \uC77D\uC9C0 \uBABB\uD588\uC5B4\uC694.");
-      const { width: pageWidth, height: pageHeight } = page.getSize();
-      const x = box2.x * pageWidth, y = (1 - box2.y - box2.height) * pageHeight;
-      const width = box2.width * pageWidth, height = box2.height * pageHeight;
-      const opacity = shape2.style.opacity;
-      if (shape2.kind === "image") {
-        const source2 = shape2.data.image;
-        if (source2 === void 0) throw new Error("\uC0AC\uC9C4\uC758 \uC6D0\uBCF8 \uACBD\uB85C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.");
-        let image = images.get(source2.relPath);
-        if (image === void 0) {
-          image = (async () => {
-            const bytes = await readFile(resolveInsideReal(folder, source2.relPath));
-            if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return pdf.embedPng(bytes);
-            if (bytes[0] === 255 && bytes[1] === 216) return pdf.embedJpg(bytes);
-            const { nativeImage: nativeImage2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
-            const converted = nativeImage2.createFromBuffer(bytes);
-            if (converted.isEmpty()) throw new Error("\uC0AC\uC9C4 \uD615\uC2DD\uC744 \uC77D\uC9C0 \uBABB\uD588\uC5B4\uC694.");
-            return pdf.embedPng(converted.toPNG());
-          })();
-          images.set(source2.relPath, image);
-        }
-        try {
-          page.drawImage(await image, { x, y, width, height, opacity });
-        } catch (cause) {
-          throw new Error(`\uC0AC\uC9C4 \u201C${source2.label}\u201D\uC744 \uB0B4\uBCF4\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694. \uC6D0\uBCF8 \uD30C\uC77C\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.`, { cause });
-        }
-        return;
-      }
-      const source = shape2.data.clip;
-      if (source === void 0) throw new Error("\uD074\uB9BD\uC758 \uC6D0\uBCF8 \uACBD\uB85C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.");
-      const key4 = JSON.stringify([source.relPath, source.page, source.crop]);
-      let clip2 = clips.get(key4);
-      if (clip2 === void 0) {
-        clip2 = (async () => {
-          let document2 = documents.get(source.relPath);
-          if (document2 === void 0) {
-            document2 = readFile(resolveInsideReal(folder, source.relPath)).then((bytes) => PDFDocument_default.load(bytes));
-            documents.set(source.relPath, document2);
-          }
-          const sourcePage = (await document2).getPages()[source.page - 1];
-          if (sourcePage === void 0) throw new Error("\uD074\uB9BD\uC758 \uC6D0\uBCF8 \uD398\uC774\uC9C0\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.");
-          const { bounds, rotation } = clipPdfBounds(sourcePage, source.crop ?? { x: 0, y: 0, width: 1, height: 1 });
-          return { page: await pdf.embedPage(sourcePage, bounds), rotation };
-        })();
-        clips.set(key4, clip2);
-      }
-      try {
-        const embedded = await clip2;
-        const rotation = embedded.rotation;
-        page.drawPage(embedded.page, {
-          x: x + (rotation === 180 || rotation === 270 ? width : 0),
-          y: y + (rotation === 90 || rotation === 180 ? height : 0),
-          width: rotation === 90 || rotation === 270 ? height : width,
-          height: rotation === 90 || rotation === 270 ? width : height,
-          rotate: degrees(-rotation),
-          opacity
-        });
-      } catch (cause) {
-        throw new Error(`\uD074\uB9BD \u201C${source.label}\u201D\uC744 \uB0B4\uBCF4\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694. \uC6D0\uBCF8 PDF\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.`, { cause });
-      }
-    };
-  }
-
   // DesktopRuntime/upstream/src/main/features/canvas/exportBoardPdf.ts
-  var RULE_SPACING = 28;
+  var RULE_SPACING2 = 28;
   var TEXT_UNDERLINE_OFFSET_EM2 = -0.1;
   var TEXT_STRIKE_OFFSET_EM2 = 0.3;
   var TEXT_ALIGN_FACTORS2 = { left: 0, center: 0.5, right: 1 };
@@ -147095,7 +147410,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       marks: DARK_COLORS
     }
   };
-  function clamp3(value, min, max2) {
+  function clamp4(value, min, max2) {
     return Math.min(max2, Math.max(min, value));
   }
   function hasGlyphs2(text) {
@@ -147108,14 +147423,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     page.drawRectangle({ x: 0, y: 0, width, height, color: palette.paper });
     if (background === "blank") return;
     if (background === "dots") {
-      for (let x = RULE_SPACING; x < width; x += RULE_SPACING) {
-        for (let y = RULE_SPACING; y < height; y += RULE_SPACING) {
+      for (let x = RULE_SPACING2; x < width; x += RULE_SPACING2) {
+        for (let y = RULE_SPACING2; y < height; y += RULE_SPACING2) {
           page.drawCircle({ x, y, size: 0.85, color: palette.ruling, opacity: 0.72 });
         }
       }
       return;
     }
-    for (let y = RULE_SPACING; y < height; y += RULE_SPACING) {
+    for (let y = RULE_SPACING2; y < height; y += RULE_SPACING2) {
       page.drawLine({
         start: { x: 0, y },
         end: { x: width, y },
@@ -147125,7 +147440,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       });
     }
     if (background === "lines") return;
-    for (let x = RULE_SPACING; x < width; x += RULE_SPACING) {
+    for (let x = RULE_SPACING2; x < width; x += RULE_SPACING2) {
       page.drawLine({
         start: { x, y: 0 },
         end: { x, y: height },
@@ -147140,11 +147455,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const first = points[0];
     if (first === void 0) return;
     const baseThickness = Math.max(shape2.style.width * width, 0.25);
-    const opacity = shape2.kind === "highlighter" ? Math.min(clamp3(shape2.style.opacity, 0, 1), 0.42) : clamp3(shape2.style.opacity, 0, 1);
+    const opacity = shape2.kind === "highlighter" ? Math.min(clamp4(shape2.style.opacity, 0, 1), 0.42) : clamp4(shape2.style.opacity, 0, 1);
     const color = palette.marks[shape2.style.color];
     const blendMode = shape2.kind === "highlighter" ? surface === "dark" ? BlendMode.Screen : BlendMode.Multiply : BlendMode.Normal;
-    if (shape2.data.inkVersion === 2 || shape2.data.inkVersion === 3 || shape2.data.inkVersion === 4) {
-      const renderPath = shape2.data.inkVersion === 4 ? strokePathV4 : shape2.data.inkVersion === 3 ? strokePathV3 : strokePathV2;
+    if (shape2.data.inkVersion === 2 || shape2.data.inkVersion === 3 || shape2.data.inkVersion === 4 || shape2.data.inkVersion === 5) {
+      const renderPath = shape2.data.inkVersion === 5 ? strokePathV5 : shape2.data.inkVersion === 4 ? strokePathV4 : shape2.data.inkVersion === 3 ? strokePathV3 : strokePathV2;
       const path = renderPath(points, shape2.style.width, height / width, shape2.kind === "highlighter", width, height);
       if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode });
       return;
@@ -147192,7 +147507,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const border = {
       borderColor: palette.marks[shape2.style.color],
       borderWidth: Math.max(shape2.style.width * width, 0.25),
-      borderOpacity: clamp3(shape2.style.opacity, 0, 1)
+      borderOpacity: clamp4(shape2.style.opacity, 0, 1)
     };
     if (shape2.kind === "rect") {
       page.drawRectangle({ ...bounds, ...border });
@@ -147229,7 +147544,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const options = {
       thickness,
       color: palette.marks[shape2.style.color],
-      opacity: clamp3(shape2.style.opacity, 0, 1),
+      opacity: clamp4(shape2.style.opacity, 0, 1),
       lineCap: LineCapStyle.Round
     };
     page.drawLine({ start, end, ...options });
@@ -147266,14 +147581,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const bounds = boxOnPage(box2, width, height);
     if (bounds === null) return;
     const style = shape2.style;
-    const fontSize = clamp3(
+    const fontSize = clamp4(
       textBoxFontPx(width, style.fontScale, style.fontSizePt, width),
       TEXT_EXPORT_FONT_PT.min,
       TEXT_EXPORT_FONT_PT.max
     );
     const inset = fontSize * TEXT_BOX_PADDING_EM;
     const maxWidth = Math.max(bounds.width - 2 * inset, fontSize);
-    const opacity = clamp3(style.opacity, 0, 1);
+    const opacity = clamp4(style.opacity, 0, 1);
     if (style.fill !== void 0) {
       page.drawRectangle({
         ...bounds,
@@ -147404,7 +147719,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         const palette = BOARD_PALETTES[board.surface];
         const textboxes = shapes.filter((shape2) => shape2.kind === "textbox");
         const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null;
-        const renderMedia = createBoardMediaRenderer(pdf, courseFolder);
+        const renderMedia = createBoardMediaRenderer(pdf, courseFolder, deps.resolveClipSource ? (source) => deps.resolveClipSource(board.courseId, source) : void 0);
         for (let pageNumber = 1; pageNumber <= board.pageCount; pageNumber += 1) {
           const page = pdf.addPage(PageSizes.A4);
           const { width, height } = page.getSize();
@@ -147454,9 +147769,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       getCourseFolder: (id2) => deps.courses.getFolder(id2),
       listDrawings: (id2, path) => deps.drawings.listForFile(id2, path),
       listAnnotations: (id2, path) => deps.annotations.listForFile({ courseId: id2, relPath: path }),
+      resolveClipSource: (id2, source) => resolvePdfClipSource(env2().userDataPath, deps.courses.getFolder(id2), source),
       resolveFontPath: fontPath
     });
-    const boardExporter = createBoardPdfExporter({ openBoard: (id2) => deps.canvas.open(id2), getCourseFolder: (id2) => deps.courses.getFolder(id2), resolveFontPath: fontPath });
+    const boardExporter = createBoardPdfExporter({ openBoard: (id2) => deps.canvas.open(id2), getCourseFolder: (id2) => deps.courses.getFolder(id2), resolveClipSource: (id2, source) => resolvePdfClipSource(env2().userDataPath, deps.courses.getFolder(id2), source), resolveFontPath: fontPath });
     deps.handle("canvas:exportPdf", async (request2) => {
       const result = await boardExporter.exportBoard(request2.boardId), board = deps.canvas.open(request2.boardId).board;
       deps.materials.invalidateTree(board.courseId);
@@ -147469,6 +147785,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       const bytes = await readFile(source);
       deps.pdfBindings.check({ courseId: request2.courseId, relPath: request2.relPath, documentRevision: createHash("sha256").update(bytes).digest("hex") });
       const pdf = await PDFDocument_default.load(bytes), overlay = await PDFDocument_default.create();
+      if (pdf.getKeywords()) overlay.setKeywords([pdf.getKeywords()]);
       const sourcePages = pdf.getPages();
       for (const page of sourcePages) {
         const { width, height } = page.getCropBox(), rotation = (page.getRotation().angle % 360 + 360) % 360;
@@ -147503,6 +147820,422 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { exporter, exportAnnotated: async (request2, savePath) => {
       await writeFile(savePath, await annotatedBytes(request2));
     } };
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/noteDataArchive.ts
+  function archivePdfRows(db, materialId, revision, courseId2, relPath2) {
+    const drawings = db.prepare("SELECT * FROM pdf_drawings WHERE course_id=? AND rel_path=? ORDER BY id").all(courseId2, relPath2);
+    const annotations = db.prepare("SELECT * FROM annotations WHERE course_id=? AND rel_path=? ORDER BY id").all(courseId2, relPath2);
+    const drawingsJSON = JSON.stringify(drawings), annotationsJSON = JSON.stringify(annotations);
+    const id2 = createHash("sha256").update(JSON.stringify([materialId, revision, drawingsJSON, annotationsJSON])).digest("hex");
+    db.exec(`CREATE TABLE IF NOT EXISTS pdf_rewrite_archive_variants (
+    id TEXT PRIMARY KEY, material_id TEXT NOT NULL, revision TEXT NOT NULL,
+    drawings_json TEXT NOT NULL, annotations_json TEXT NOT NULL, created_at TEXT NOT NULL
+  )`);
+    db.prepare("INSERT OR IGNORE INTO pdf_rewrite_archive_variants(id,material_id,revision,drawings_json,annotations_json,created_at) VALUES(?,?,?,?,?,?)").run(id2, materialId, revision, drawingsJSON, annotationsJSON, (/* @__PURE__ */ new Date()).toISOString());
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/noteGeometry.ts
+  function rotate(x, y, rotation, inverse = false) {
+    switch (((inverse ? -rotation : rotation) + 360) % 360) {
+      case 0:
+        return { x, y };
+      case 90:
+        return { x: y, y: 1 - x };
+      case 180:
+        return { x: 1 - x, y: 1 - y };
+      case 270:
+        return { x: 1 - y, y: x };
+      default:
+        throw new Error("Unsupported PDF rotation");
+    }
+  }
+  function transformBox(box2, rotation, inverse = false) {
+    const a = rotate(box2.x, box2.y, rotation, inverse), b = rotate(box2.x + box2.width, box2.y + box2.height, rotation, inverse);
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
+  }
+  function transformShape(shape2, geometry, inverse = false) {
+    const result = structuredClone(shape2);
+    for (const p of result.data.points ?? []) Object.assign(p, rotate(p.x, p.y, geometry.rotation, inverse));
+    if (result.data.box) result.data.box = transformBox(result.data.box, geometry.rotation, inverse);
+    if (geometry.rotation === 90 || geometry.rotation === 270) result.style.width *= inverse ? geometry.width / geometry.height : geometry.height / geometry.width;
+    return result;
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/noteFileTransaction.ts
+  function createNoteFileTransaction(db, root) {
+    db.exec("CREATE TABLE IF NOT EXISTS pdf_note_file_commits(id TEXT PRIMARY KEY)");
+    mkdirSync(root, { recursive: true });
+    const hash3 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+    const restore = (entries) => {
+      for (const entry2 of entries) if (existsSync(entry2.target)) {
+        const current = hash3(readFileSync(entry2.target));
+        if (current !== entry2.beforeHash && current !== entry2.afterHash) throw new Error("\uB178\uD2B8 \uBCF5\uAD6C \uC911 \uC678\uBD80 \uBCC0\uACBD\uC744 \uBC1C\uACAC\uD588\uC2B5\uB2C8\uB2E4. \uC6D0\uBCF8\uACFC \uBCC0\uACBD\uBCF8\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+      }
+      for (const entry2 of entries) {
+        if (entry2.existed) writeFileAtomic(entry2.target, readFileSync(entry2.backup));
+        else rmSync(entry2.target, { force: true });
+      }
+    };
+    const recover = () => {
+      for (const entry2 of readdirSync(root, { withFileTypes: true })) {
+        if (!entry2.isDirectory()) continue;
+        const path = join(root, entry2.name, "intent.json");
+        if (!existsSync(path)) continue;
+        const intent = JSON.parse(readFileSync(path, "utf8"));
+        if (!db.prepare("SELECT id FROM pdf_note_file_commits WHERE id=?").get(intent.id)) restore(intent.entries);
+        rmSync(path);
+      }
+    };
+    const publish = (writes, commit) => {
+      const id2 = randomUUID(), directory2 = join(root, id2), intentPath = join(directory2, "intent.json");
+      mkdirSync(directory2, { recursive: true });
+      const entries = writes.map((write3, index) => {
+        const existed = existsSync(write3.target), backup = join(directory2, `${index}.original`);
+        if (existed) {
+          copyFileSync(write3.target, backup, 1);
+          const fd = openSync(backup, "r+");
+          try {
+            fsyncSync(fd);
+          } finally {
+            closeSync(fd);
+          }
+        }
+        return { target: write3.target, existed, backup, ...existed ? { beforeHash: hash3(readFileSync(backup)) } : {}, afterHash: hash3(write3.bytes) };
+      });
+      writeFileAtomic(intentPath, JSON.stringify({ id: id2, entries }));
+      let committed = false;
+      try {
+        db.transaction(() => {
+          for (const write3 of writes) {
+            mkdirSync(dirname(write3.target), { recursive: true });
+            writeFileAtomic(write3.target, write3.bytes);
+          }
+          commit();
+          db.prepare("INSERT INTO pdf_note_file_commits(id) VALUES(?)").run(id2);
+        })();
+        committed = true;
+        rmSync(intentPath);
+      } catch (error2) {
+        if (!committed) {
+          restore(entries);
+          rmSync(intentPath);
+        }
+        throw error2;
+      }
+    };
+    return Object.assign(publish, { recover });
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/legacyNoteMigration.ts
+  var LEGACY_NOTE_MIGRATION_VERSION = 1;
+  var canonicalNoteJSON = (value) => JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map((key4) => [key4, item[key4]])) : item);
+  var noteDigest = (value) => createHash("sha256").update(canonicalNoteJSON(value)).digest("hex");
+  function legacyNoteID(boardId2, suffix = "material") {
+    const hash3 = noteDigest({ version: LEGACY_NOTE_MIGRATION_VERSION, boardId: boardId2, suffix });
+    return `${hash3.slice(0, 8)}-${hash3.slice(8, 12)}-5${hash3.slice(13, 16)}-a${hash3.slice(17, 20)}-${hash3.slice(20, 32)}`;
+  }
+  function installNoteMigrationSchema(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS pdf_note_migrations (
+    source_board_id TEXT PRIMARY KEY, target_material_id TEXT NOT NULL UNIQUE,
+    course_id TEXT NOT NULL, rel_path TEXT NOT NULL, version INTEGER NOT NULL,
+    source_revision TEXT NOT NULL, original_json TEXT, created_at TEXT NOT NULL
+  )`);
+  }
+  function legacyBoardSnapshot(db, boardId2) {
+    const board = db.prepare("SELECT * FROM whiteboards WHERE id=? AND deleted_at IS NULL").get(boardId2);
+    if (!board) throw new ValidationError("\uC774\uC804 \uB178\uD2B8\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+    return { board, shapes: db.prepare("SELECT * FROM whiteboard_local_shapes WHERE board_id=? ORDER BY created_at,id").all(boardId2) };
+  }
+  function legacyBoardRevision(snapshot) {
+    const b = snapshot.board;
+    return noteDigest({ board: { id: b.id, courseId: b.course_id, title: b.title, background: b.background, surface: b.surface, pages: b.page_count }, shapes: [...snapshot.shapes].sort((a, b2) => a.id.localeCompare(b2.id)).map((s) => ({ id: s.id, kind: s.kind, page: s.page, data: JSON.parse(s.data_json), style: JSON.parse(s.style_json), deleted: !!s.deleted_at })) });
+  }
+  function createLegacyNoteMigration(deps, publish) {
+    const { db } = deps;
+    installNoteMigrationSchema(db);
+    const mapping = (row) => ({ boardId: row.source_board_id, materialId: row.target_material_id, relPath: row.rel_path, sourceRevision: row.source_revision });
+    const status = (request2 = {}) => {
+      if (request2.courseId !== void 0) requireId(request2.courseId, "courseId");
+      return db.prepare(`SELECT m.*, COALESCE(a.rel_path,m.rel_path) AS rel_path FROM pdf_note_migrations m LEFT JOIN pdf_document_aliases a ON a.material_id=m.target_material_id ${request2.courseId ? "WHERE m.course_id=?" : ""} ORDER BY m.created_at,m.source_board_id`).all(...request2.courseId ? [request2.courseId] : []).map(mapping);
+    };
+    async function migrateOne(boardId2) {
+      const old = db.prepare("SELECT * FROM pdf_note_migrations WHERE source_board_id=?").get(boardId2);
+      if (old) return status({ courseId: old.course_id }).find((row) => row.boardId === boardId2);
+      const original = legacyBoardSnapshot(db, boardId2), { board, shapes } = original;
+      const sourceRevision = legacyBoardRevision(original), materialId = legacyNoteID(boardId2);
+      const pageCount = board.page_count ?? 1;
+      if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > 2e3) throw new ValidationError("\uC774\uC804 \uB178\uD2B8\uC758 \uD398\uC774\uC9C0 \uC218\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+      for (const row of shapes) {
+        assertDrawingKind(row.kind);
+        assertDrawingData(JSON.parse(row.data_json), row.kind, { allowClip: true });
+        assertDrawingStyle(JSON.parse(row.style_json));
+        if (!Number.isInteger(row.page) || row.page < 1 || row.page > pageCount && !row.deleted_at) throw new ValidationError("\uC774\uC804 \uB178\uD2B8\uC758 \uD544\uAE30 \uD398\uC774\uC9C0\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+      }
+      const paper = board.background, surface = board.surface;
+      if (!["blank", "lines", "grid", "dots"].includes(paper) || !["dark", "light"].includes(surface)) throw new ValidationError("\uC774\uC804 \uB178\uD2B8\uC758 \uC885\uC774 \uC124\uC815\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+      const title2 = String(board.title).replace(/[/\\:*?"<>|\u0000-\u001f]/g, "").trim().slice(0, 100) || "\uB178\uD2B8";
+      const relPath2 = `\uB178\uD2B8/${title2} (${materialId}).pdf`, path = resolveInsideReal(deps.courses.getFolder(board.course_id), relPath2);
+      if (existsSync(path) || db.prepare("SELECT id FROM materials_index WHERE id=? OR (course_id=? AND rel_path=?)").get(materialId, board.course_id, relPath2)) throw new ValidationError("\uBCC0\uD658\uB41C \uB178\uD2B8\uC758 \uC800\uC7A5 \uC704\uCE58\uAC00 \uC774\uBBF8 \uC0AC\uC6A9 \uC911\uC785\uB2C8\uB2E4. \uAE30\uC874 \uD30C\uC77C\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+      const pdf = await PDFDocument_default.create();
+      pdf.setTitle(board.title);
+      pdf.setCreator("Bandal");
+      pdf.setProducer("Bandal PDF notes v1");
+      const date = /* @__PURE__ */ new Date("2000-01-01T00:00:00.000Z");
+      pdf.setCreationDate(date);
+      pdf.setModificationDate(date);
+      setPaper(pdf, paper, "portrait", surface);
+      const fingerprint2 = noteDigest({ boardId: boardId2, paper, surface, pageCount, version: 1 }).slice(0, 32);
+      pdf.context.trailerInfo.ID = pdf.context.obj([PDFHexString_default.of(fingerprint2), PDFHexString_default.of(fingerprint2)]);
+      for (let page = 0; page < pageCount; page++) drawPaper(pdf.addPage(noteSize("portrait")), paper, surface);
+      const bytes = Buffer.from(await pdf.save()), revision = createHash("sha256").update(bytes).digest("hex");
+      if (legacyBoardRevision(legacyBoardSnapshot(db, boardId2)) !== sourceRevision) throw new ValidationError("\uBCC0\uD658\uD558\uB294 \uB3D9\uC548 \uC774\uC804 \uB178\uD2B8\uAC00 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+      const preparedShapes = shapes.map((row) => {
+        if (row.kind !== "clip") return row;
+        const data2 = JSON.parse(row.data_json), clip2 = data2.clip;
+        if (!clip2 || clip2.documentRevision) return row;
+        const clipPath = resolveInsideReal(deps.courses.getFolder(board.course_id), clip2.relPath);
+        if (!existsSync(clipPath)) return row;
+        const binding2 = deps.pdfBindings.check({ courseId: board.course_id, relPath: clip2.relPath });
+        return { ...row, data_json: JSON.stringify({ ...data2, clip: { ...clip2, materialID: binding2.materialID, documentRevision: binding2.documentRevision, documentByteCount: statSync(clipPath).size } }) };
+      });
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      publish([{ target: path, bytes }], () => {
+        db.prepare("INSERT INTO materials_index(id,course_id,rel_path,kind,size,mtime,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").run(materialId, board.course_id, relPath2, "pdf", bytes.length, statSync(path).mtimeMs, board.created_at, now);
+        db.prepare("INSERT INTO pdf_document_bindings(material_id,bound_sha,evidence,legacy_unverified,created_at) VALUES(?,?,?,?,?)").run(materialId, revision, "receipt", 0, now);
+        db.prepare("INSERT INTO pdf_document_aliases(course_id,rel_path,material_id) VALUES(?,?,?)").run(board.course_id, relPath2, materialId);
+        for (const row of preparedShapes.filter((row2) => row2.page <= pageCount)) db.prepare("INSERT INTO pdf_drawings(id,course_id,rel_path,page,kind,data_json,style_json,created_at,updated_at,deleted_at) VALUES(?,?,?,?,?,?,?,?,?,?)").run(legacyNoteID(boardId2, `shape:${row.id}`), board.course_id, relPath2, row.page, row.kind, row.data_json, row.style_json, row.created_at, row.updated_at, row.deleted_at ?? null);
+        db.prepare("INSERT INTO pdf_note_migrations(source_board_id,target_material_id,course_id,rel_path,version,source_revision,original_json,created_at) VALUES(?,?,?,?,?,?,?,?)").run(boardId2, materialId, board.course_id, relPath2, 1, sourceRevision, canonicalNoteJSON(original), now);
+      });
+      if (createHash("sha256").update(readFileSync(path)).digest("hex") !== revision) throw new Error("\uBCC0\uD658\uB41C \uB178\uD2B8\uC758 \uBB34\uACB0\uC131\uC744 \uD655\uC778\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC6D0\uBCF8\uC740 \uBCF4\uC874\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.");
+      deps.materials.recordAdded(board.course_id, relPath2);
+      deps.materials.invalidateTree(board.course_id);
+      deps.changed(board.course_id);
+      return { boardId: boardId2, materialId, relPath: relPath2, sourceRevision };
+    }
+    return { status, async migrate(request2 = {}) {
+      if (request2.courseId !== void 0) requireId(request2.courseId, "courseId");
+      const rows = db.prepare(`SELECT id FROM whiteboards WHERE deleted_at IS NULL ${request2.courseId ? "AND course_id=?" : ""} ORDER BY created_at,id`).all(...request2.courseId ? [request2.courseId] : []);
+      const result = { migrated: [], failed: [] };
+      for (const row of rows) try {
+        result.migrated.push(await migrateOne(row.id));
+      } catch (error2) {
+        result.failed.push({ boardId: row.id, message: error2 instanceof Error ? error2.message : String(error2) });
+      }
+      return result;
+    } };
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/pdfNotes.ts
+  var normalizeRotation = (angle) => (Math.round(angle) % 360 + 360) % 360;
+  function relativePath(value) {
+    const path = requireNonEmptyString(value, "relPath");
+    if (path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === ".." || part === ".") || /[\u0000-\u001f]/.test(path)) throw new ValidationError("Invalid PDF relative path");
+    return path;
+  }
+  function recipe(value, pageCount) {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 2e3) throw new ValidationError("pages must list 1 to 2000 entries");
+    return value.map((entry2) => {
+      if (!entry2 || typeof entry2 !== "object") throw new ValidationError("Invalid page entry");
+      const { source, rotate: rotate3 } = entry2;
+      if (source !== null && (!Number.isInteger(source) || source < 1 || source > pageCount)) throw new ValidationError("page source is out of range");
+      if (rotate3 !== void 0 && ![0, 90, 180, 270].includes(rotate3)) throw new ValidationError("rotate must be 0, 90, 180 or 270");
+      return { source, rotate: rotate3 ?? 0 };
+    });
+  }
+  function stampIdentity(pdf) {
+    const fingerprint2 = randomUUID().replace(/-/g, "");
+    pdf.context.trailerInfo.ID = pdf.context.obj([PDFHexString_default.of(fingerprint2), PDFHexString_default.of(fingerprint2)]);
+    return fingerprint2;
+  }
+  var displayed = (g) => g.rotation === 90 || g.rotation === 270 ? { width: g.height, height: g.width } : { width: g.width, height: g.height };
+  function createPdfNotesService(deps) {
+    const { db } = deps;
+    const publish = createNoteFileTransaction(db, join(deps.userDataPath, "NoteRecovery"));
+    const legacy = createLegacyNoteMigration(deps, publish);
+    db.exec(`CREATE TABLE IF NOT EXISTS pdf_restructure_log (
+    id TEXT PRIMARY KEY, material_id TEXT NOT NULL, from_sha TEXT NOT NULL, to_sha TEXT NOT NULL, recipe_json TEXT NOT NULL, created_at TEXT NOT NULL
+  )`);
+    const copyRow = (table11, row, overrides) => {
+      const next = { ...row, ...overrides }, columns = Object.keys(next);
+      db.prepare(`INSERT INTO ${table11} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...columns.map((column) => next[column]));
+    };
+    const restructure2 = async (request2) => {
+      publish.recover();
+      const courseId2 = requireId(request2.courseId, "courseId"), relPath2 = relativePath(request2.relPath);
+      const expected = request2.expectedRevision;
+      if (typeof expected !== "string" || !/^[0-9a-f]{64}$/.test(expected)) throw new ValidationError("expectedRevision must be a SHA-256 digest");
+      const binding2 = deps.pdfBindings.check({ courseId: courseId2, relPath: relPath2, documentRevision: expected });
+      const path = resolveInsideReal(deps.courses.getFolder(courseId2), relPath2);
+      const sourceBytes = await readFile(path);
+      const source = await PDFDocument_default.load(sourceBytes);
+      const sourcePages = source.getPages(), count = sourcePages.length;
+      const entries = Array.from(recipe(request2.pages, count));
+      const geometry = sourcePages.map((page) => {
+        const crop = page.getCropBox(), rotation = normalizeRotation(page.getRotation().angle);
+        if (![0, 90, 180, 270].includes(rotation)) throw new ValidationError("PDF page rotation is unsupported");
+        return { rotation, width: crop.width, height: crop.height };
+      });
+      const output = await PDFDocument_default.create();
+      const paper = readPaper(source), surface = readSurface(source);
+      if (paper) setPaper(output, paper, geometry[0] && geometry[0].width > geometry[0].height ? "landscape" : "portrait", surface);
+      if (source.getTitle()) output.setTitle(source.getTitle());
+      const copied = await output.copyPages(source, Array.from(entries.flatMap((entry2) => entry2.source === null ? [] : [entry2.source - 1])));
+      let copyIndex = 0;
+      const next = [];
+      entries.forEach((entry2, index) => {
+        if (entry2.source !== null) {
+          const page2 = copied[copyIndex++], old = geometry[entry2.source - 1];
+          const rotation = normalizeRotation(old.rotation + (entry2.rotate ?? 0));
+          page2.setRotation(degrees(rotation));
+          output.addPage(page2);
+          next.push({ ...old, rotation });
+          return;
+        }
+        const neighbour = [...entries.slice(0, index).reverse(), ...entries.slice(index + 1)].find((item) => item.source !== null);
+        const size = neighbour ? displayed({ ...geometry[neighbour.source - 1], rotation: normalizeRotation(geometry[neighbour.source - 1].rotation + (neighbour.rotate ?? 0)) }) : { width: noteSize("portrait")[0], height: noteSize("portrait")[1] };
+        const page = output.addPage([size.width, size.height]);
+        if (paper) drawPaper(page, paper, surface);
+        next.push({ rotation: 0, width: size.width, height: size.height });
+      });
+      const fingerprint2 = stampIdentity(output);
+      const bytes = await output.save(), revision = createHash("sha256").update(Buffer.from(bytes)).digest("hex");
+      const targets = /* @__PURE__ */ new Map();
+      entries.forEach((entry2, index) => {
+        if (entry2.source !== null) targets.set(entry2.source, [...targets.get(entry2.source) ?? [], index + 1]);
+      });
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const remapTable = (table11, transform2) => {
+        const rows = db.prepare(`SELECT * FROM ${table11} WHERE course_id=? AND rel_path=?`).all(courseId2, relPath2);
+        for (const row of rows) {
+          const places = targets.get(row.page) ?? [];
+          if (!places.length) {
+            db.prepare(`UPDATE ${table11} SET deleted_at=COALESCE(deleted_at,?), updated_at=?, page=? WHERE id=?`).run(now, now, Math.min(row.page, entries.length), row.id);
+            continue;
+          }
+          const oldGeometry = geometry[row.page - 1];
+          if (!oldGeometry) throw new ValidationError("PDF \uD544\uAE30\uC758 \uAE30\uC874 \uD398\uC774\uC9C0\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+          places.forEach((page, order) => {
+            const changes = { ...transform2(row, oldGeometry, next[page - 1]), page, updated_at: now };
+            if (order === 0) {
+              const keys4 = Object.keys(changes);
+              db.prepare(`UPDATE ${table11} SET ${keys4.map((key4) => `${key4}=?`).join(",")} WHERE id=?`).run(...keys4.map((key4) => changes[key4]), row.id);
+            } else copyRow(table11, row, { ...changes, id: randomUUID(), created_at: now });
+          });
+        }
+      };
+      const writes = [{ target: path, bytes: Buffer.from(bytes) }];
+      const pageNoteUpdates = [];
+      for (const link of deps.links.listFor(courseId2, relPath2).outgoing) {
+        if (link.kind !== "pdf-page-note" || link.target.kind !== "note" || !isPdfPageNoteLinkMetadata(link.metadata)) continue;
+        let note;
+        try {
+          note = deps.notes.read(link.target.payload);
+        } catch {
+          continue;
+        }
+        const document2 = parsePdfPageNote(note.markdown);
+        if (!document2) continue;
+        const kept = new Set(entries.map((entry2) => entry2.source));
+        const removed = document2.pages.map((content, index) => ({ page: index + 1, content: content.trim() })).filter(({ page, content }) => !kept.has(page) && content.length > 0);
+        const archived = removed.length ? ["## \uC5F0\uACB0 \uC81C\uC678\uB41C \uD398\uC774\uC9C0", "", ...removed.flatMap(({ page, content }) => [`### \uAE30\uC874 PDF ${page}\uCABD`, "", content, ""])].join("\n").trim() : "";
+        const rewritten = { title: document2.title, manifest: { version: 1, source: document2.manifest.source, fingerprint: fingerprint2, pages: next.map(displayed) }, pages: entries.map((entry2) => entry2.source === null ? "" : document2.pages[entry2.source - 1] ?? ""), appendix: [document2.appendix, archived].filter(Boolean).join("\n\n") };
+        const latest = deps.notes.read(link.target.payload);
+        if (latest.mtime !== note.mtime || latest.markdown !== note.markdown) throw new ValidationError("\uC5F0\uACB0\uB41C \uB9C8\uD06C\uB2E4\uC6B4\uC774 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uD398\uC774\uC9C0 \uBCC0\uACBD\uC744 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+        writes.push({ target: resolveInsideReal(deps.courses.getFolder(courseId2), link.target.payload.relPath), bytes: Buffer.from(serializePdfPageNote(rewritten)) });
+        pageNoteUpdates.push(() => deps.links.updateMetadata(courseId2, link.id, { version: 1, syncScroll: link.metadata.syncScroll, fingerprint: fingerprint2, pageSizes: next.map(displayed) }));
+      }
+      deps.pdfBindings.check({ courseId: courseId2, relPath: relPath2, documentRevision: expected });
+      publish(writes, () => {
+        pinPdfClipSources(db, courseId2, relPath2, expected, sourceBytes.length);
+        archivePdfRows(db, binding2.materialID, expected, courseId2, relPath2);
+        db.prepare("UPDATE pdf_document_bindings SET bound_sha=?, evidence=?, legacy_unverified=0 WHERE material_id=?").run(revision, "receipt", binding2.materialID);
+        db.prepare("INSERT INTO pdf_restructure_log(id,material_id,from_sha,to_sha,recipe_json,created_at) VALUES(?,?,?,?,?,?)").run(randomUUID(), binding2.materialID, expected, revision, JSON.stringify(entries), now);
+        remapTable("pdf_drawings", (row, oldGeometry, newGeometry) => {
+          if (oldGeometry.rotation === newGeometry.rotation) return {};
+          const shape2 = transformShape(transformShape({ data: JSON.parse(row.data_json), style: JSON.parse(row.style_json) }, oldGeometry), newGeometry, true);
+          return { data_json: JSON.stringify(shape2.data), style_json: JSON.stringify(shape2.style) };
+        });
+        remapTable("annotations", (row, oldGeometry, newGeometry) => {
+          if (oldGeometry.rotation === newGeometry.rotation) return {};
+          const rects = JSON.parse(row.rects_json).map((rect) => transformBox(transformBox(rect, oldGeometry.rotation), newGeometry.rotation, true));
+          return { rects_json: JSON.stringify(rects) };
+        });
+        const view = db.prepare("SELECT page FROM pdf_view_state WHERE course_id=? AND rel_path=?").get(courseId2, relPath2);
+        if (view) db.prepare("UPDATE pdf_view_state SET page=?, updated_at=? WHERE course_id=? AND rel_path=?").run(targets.get(view.page)?.[0] ?? Math.min(view.page, entries.length), now, courseId2, relPath2);
+        for (const row of db.prepare("SELECT a.id, a.payload FROM recording_anchors a JOIN recording_sessions s ON s.id=a.session_id WHERE s.course_id=?").all(courseId2)) {
+          const anchor = JSON.parse(row.payload);
+          if (anchor.relPath !== relPath2 || typeof anchor.page !== "number") continue;
+          const page = targets.get(anchor.page)?.[0] ?? Math.min(anchor.page, entries.length);
+          if (page !== anchor.page) db.prepare("UPDATE recording_anchors SET payload=? WHERE id=?").run(JSON.stringify({ ...anchor, page }), row.id);
+        }
+        for (const update of pageNoteUpdates) update();
+      });
+      deps.pdfBindings.check({ courseId: courseId2, relPath: relPath2, documentRevision: revision });
+      deps.materials.invalidateTree(courseId2);
+      deps.changed(courseId2);
+      return { documentRevision: revision, fingerprint: fingerprint2, pageCount: entries.length, pageMap: Array.from({ length: count }, (_2, index) => targets.get(index + 1) ?? []) };
+    };
+    const NOTES_FOLDER = "\uB178\uD2B8";
+    const create2 = async (request2) => {
+      publish.recover();
+      const courseId2 = requireId(request2.courseId, "courseId");
+      const paper = request2.paper ?? "lines", orientation = request2.orientation ?? "portrait";
+      if (!PAPERS.includes(paper)) throw new ValidationError("paper must be blank, lines, grid or dots");
+      if (orientation !== "portrait" && orientation !== "landscape") throw new ValidationError("orientation must be portrait or landscape");
+      const title2 = (typeof request2.title === "string" ? request2.title : "").replace(/[/\\:*?"<>|\u0000-\u001f]/g, "").trim().slice(0, 120) || "\uB178\uD2B8";
+      const dirRelPath = NOTES_FOLDER;
+      const pdf = await PDFDocument_default.create();
+      pdf.setTitle(title2);
+      pdf.setCreator("Bandal");
+      setPaper(pdf, paper, orientation);
+      drawPaper(pdf.addPage(noteSize(orientation)), paper);
+      stampIdentity(pdf);
+      const bytes = await pdf.save();
+      const result = deps.materials.writeFile({ courseId: courseId2, dirRelPath, fileName: `${title2}.pdf`, encoding: "base64", data: Buffer.from(bytes).toString("base64"), createDirIfMissing: true });
+      deps.changed(courseId2);
+      return result;
+    };
+    return {
+      create: create2,
+      restructure: restructure2,
+      migrateLegacy: (request2 = {}) => {
+        publish.recover();
+        return legacy.migrate(request2);
+      },
+      migrationStatus: legacy.status,
+      async info(request2) {
+        const bytes = await readFile(resolveInsideReal(deps.courses.getFolder(requireId(request2.courseId, "courseId")), relativePath(request2.relPath)));
+        const pdf = await PDFDocument_default.load(bytes);
+        const first = pdf.getPages()[0];
+        const size = first ? displayed({ width: first.getWidth(), height: first.getHeight(), rotation: normalizeRotation(first.getRotation().angle) }) : void 0;
+        return { documentRevision: createHash("sha256").update(bytes).digest("hex"), paper: readPaper(pdf), surface: readSurface(pdf), orientation: size && size.width > size.height ? "landscape" : "portrait" };
+      }
+    };
+  }
+
+  // DesktopRuntime/backend/pdf-restructure.ts
+  init_native();
+  function installPdfRestructure(deps) {
+    const service = createPdfNotesService({ ...deps, userDataPath: env2().userDataPath });
+    let running2 = false;
+    const locked = (work) => async (request2) => {
+      if (running2) throw new Error("\uB178\uD2B8 \uC791\uC5C5\uC774 \uC9C4\uD589 \uC911\uC785\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+      const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
+      if (token === null) throw new Error("\uC790\uB8CC\uB97C \uBCC0\uACBD\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+      running2 = true;
+      try {
+        return await work(request2);
+      } finally {
+        running2 = false;
+        native("fs.lockRelease", { token });
+      }
+    };
+    deps.handle("pdfNotes:create", locked(service.create));
+    deps.handle("pdf:restructure", locked(service.restructure));
+    deps.handle("pdfNotes:migrateLegacy", locked(service.migrateLegacy));
+    deps.handle("pdfNotes:migrationStatus", service.migrationStatus);
+    deps.handle("pdfNotes:info", service.info);
   }
 
   // DesktopRuntime/upstream/src/main/features/account/config.ts
@@ -149293,7 +150026,7 @@ ${escapeMarkdown(annotation.comment.trim())}
       throw new TypeError("Invalid MCP server");
     }
     const args = parseStringArray(value["args"], "args");
-    const env5 = parseStringMap(value["env"], "env");
+    const env4 = parseStringMap(value["env"], "env");
     const headers = parseStringMap(value["headers"], "headers");
     const lastTest = parseLastTest(value["lastTest"]);
     const command = value["command"];
@@ -149311,7 +150044,7 @@ ${escapeMarkdown(annotation.comment.trim())}
       updatedAt: value["updatedAt"],
       ...typeof command === "string" ? { command } : {},
       ...args === void 0 ? {} : { args },
-      ...env5 === void 0 ? {} : { env: env5 },
+      ...env4 === void 0 ? {} : { env: env4 },
       ...typeof url === "string" ? { url } : {},
       ...headers === void 0 ? {} : { headers },
       ...lastTest === void 0 ? {} : { lastTest }
@@ -149352,10 +150085,10 @@ ${escapeMarkdown(annotation.comment.trim())}
     return left.transport === right.transport && left.command === right.command && left.url === right.url && leftArgs.length === rightArgs.length && leftArgs.every((argument, index) => argument === rightArgs[index]) && sameMap(left.env, right.env) && sameMap(left.headers, right.headers);
   }
   function toSummary(config2) {
-    const { env: env5, headers, ...summary } = cloneConfig(config2);
+    const { env: env4, headers, ...summary } = cloneConfig(config2);
     return {
       ...summary,
-      envKeys: Object.keys(env5 ?? {}).sort(),
+      envKeys: Object.keys(env4 ?? {}).sort(),
       headerKeys: Object.keys(headers ?? {}).sort()
     };
   }
@@ -149526,7 +150259,7 @@ ${escapeMarkdown(annotation.comment.trim())}
         }
         validateInput2(input, current, commandExists);
         const timestamp2 = now().toISOString();
-        const env5 = input.env === void 0 ? existing?.env : inputStringMap(input.env, "\uD658\uACBD \uBCC0\uC218");
+        const env4 = input.env === void 0 ? existing?.env : inputStringMap(input.env, "\uD658\uACBD \uBCC0\uC218");
         const headers = input.headers === void 0 ? existing?.headers : inputStringMap(input.headers, "HTTP \uD5E4\uB354");
         const server = {
           id: existing?.id ?? randomUUID(),
@@ -149540,7 +150273,7 @@ ${escapeMarkdown(annotation.comment.trim())}
             command: input.command,
             ...input.args === void 0 ? {} : { args: [...input.args] }
           } : { url: input.url },
-          ...env5 === void 0 ? {} : { env: env5 },
+          ...env4 === void 0 ? {} : { env: env4 },
           ...headers === void 0 ? {} : { headers }
         };
         if (existing?.lastTest !== void 0 && sameConnection(existing, server)) {
@@ -156569,9 +157302,6 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/backend/sync/index.ts
-  init_native();
-
   // DesktopRuntime/backend/sync/format.ts
   init_buffer();
   var coordinateSpace2 = "unrotated-crop-box-top-left-normalized";
@@ -156581,7 +157311,7 @@ ${contextText}
   var digest = (value) => createHash("sha256").update(canonical2(value)).digest("hex");
   var decodePage = (record2) => JSON.parse(Buffer2.from(record2.payload.data, "base64").toString());
   var encodePage = (page) => ({ materialID: page.materialID, documentRevision: page.documentRevision, page: page.page, data: Buffer2.from(canonical2(page)).toString("base64") });
-  function rotate(x, y, rotation, inverse = false) {
+  function rotate2(x, y, rotation, inverse = false) {
     switch (((inverse ? -rotation : rotation) + 360) % 360) {
       case 0:
         return { x, y };
@@ -156595,257 +157325,510 @@ ${contextText}
         throw new Error("Unsupported PDF rotation");
     }
   }
-  function transformBox(box2, rotation, inverse = false) {
-    const a = rotate(box2.x, box2.y, rotation, inverse), b = rotate(box2.x + box2.width, box2.y + box2.height, rotation, inverse);
+  function transformBox2(box2, rotation, inverse = false) {
+    const a = rotate2(box2.x, box2.y, rotation, inverse), b = rotate2(box2.x + box2.width, box2.y + box2.height, rotation, inverse);
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
   }
-  function transformShape(shape2, geometry, inverse = false) {
+  function transformShape2(shape2, geometry, inverse = false) {
     const result = structuredClone(shape2);
-    for (const p of result.data.points ?? []) Object.assign(p, rotate(p.x, p.y, geometry.rotation, inverse));
-    if (result.data.box) result.data.box = transformBox(result.data.box, geometry.rotation, inverse);
+    for (const p of result.data.points ?? []) Object.assign(p, rotate2(p.x, p.y, geometry.rotation, inverse));
+    if (result.data.box) result.data.box = transformBox2(result.data.box, geometry.rotation, inverse);
     if (geometry.rotation === 90 || geometry.rotation === 270) result.style.width *= inverse ? geometry.width / geometry.height : geometry.height / geometry.width;
     return result;
   }
 
-  // DesktopRuntime/backend/sync/export.ts
-  init_native();
-  function snapshotProjection(deps) {
-    const db = deps.db, records = [], assets = [], sources2 = /* @__PURE__ */ new Map();
-    const mapped = new Map(db.prepare("SELECT * FROM ipad_sync_projection").all().map((row) => [row.id, { ...row, payload: JSON.parse(row.payload_json), source: JSON.parse(row.source_json) }]));
-    const add2 = (id2, kind, payload, source, deleted = false) => {
-      const old = mapped.get(id2), merged = { ...old?.payload ?? {}, ...payload };
-      records.push({ id: id2, kind, payload: merged, deleted, formatVersion: 1 });
-      sources2.set(id2, source);
-      return merged;
-    };
-    const asset = (materialID, path) => {
-      const sha256 = native("fs.sha256", { path }), byteCount = statSync(path).size, originalName = basename(path);
-      const extension2 = extname(path).toLowerCase(), contentType = extension2 === ".pdf" ? "application/pdf" : extension2 === ".wav" ? "audio/wav" : extension2 === ".png" ? "image/png" : extension2 === ".jpg" || extension2 === ".jpeg" ? "image/jpeg" : "application/octet-stream";
-      assets.push({ materialID, sha256, path, originalName, contentType, byteCount });
-      return { sha256, byteCount };
-    };
-    const allMaterials = db.prepare("SELECT * FROM materials_index").all(), byPath = new Map(allMaterials.map((row) => [`${row.course_id}:${row.rel_path}`, row]));
-    for (const group of db.prepare("SELECT * FROM course_groups").all()) add2(`artifact:course-group:${group.id}`, "artifact", { recordType: "desktop-course-group", id: group.id, name: group.name, sortOrder: group.sort_order, createdAt: group.created_at }, {}, !!group.deleted_at);
-    for (const course of db.prepare("SELECT * FROM courses ORDER BY created_at,id").all()) {
-      add2(`course:${course.id}`, "course", {
-        id: course.id,
-        name: course.name,
-        color: course.color,
-        desktop: { archived: !!course.archived, sortOrder: course.sort_order, groupID: course.group_id, workspaceKind: course.workspace_kind, createdAt: course.created_at }
-      }, { folder: course.folder_path }, !!course.deleted_at);
-      if (course.deleted_at) continue;
-      if (!existsSync(course.folder_path)) throw new Error(`Sync course folder is unavailable: ${course.name}`);
-      for (const item of allMaterials.filter((row) => row.course_id === course.id)) {
-        const path = resolveInsideReal(course.folder_path, item.rel_path);
-        if (item.deleted_at || !existsSync(path)) continue;
-        const mid = item.id, fileName = basename(item.rel_path), extension2 = extname(fileName).toLowerCase();
-        const kind = extension2 === ".pdf" ? "pdf" : [".md", ".markdown"].includes(extension2) ? "note" : [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"].includes(extension2) ? "image" : "file";
-        const binding2 = kind === "pdf" ? deps.pdfBindings.check({ courseId: course.id, relPath: item.rel_path }) : void 0;
-        if (binding2 && binding2.materialID !== mid) throw new Error("PDF material identity changed during sync projection; retry after refreshing the index");
-        const revision = asset(mid, path), source = { courseID: course.id, relPath: item.rel_path, path, hash: revision.sha256 };
-        if (binding2 && binding2.documentRevision !== revision.sha256) throw new Error("PDF changed while preparing sync; ink and original revision were preserved");
-        add2(`material:${mid}`, "material", {
-          id: mid,
-          courseID: course.id,
-          title: fileName.slice(0, fileName.length - extension2.length),
-          fileName,
-          revision: revision.sha256,
-          kind,
-          byteCount: revision.byteCount,
-          createdAt: item.created_at,
-          desktop: { relPath: item.rel_path }
-        }, source);
-        if (kind === "note") add2(`note:${mid}`, "note", { materialID: mid, markdown: readFileSync(path, "utf8") }, source);
-        if (kind !== "pdf") continue;
-        const drawings = db.prepare("SELECT * FROM pdf_drawings WHERE course_id=? AND rel_path=?").all(course.id, item.rel_path);
-        const annotations = db.prepare("SELECT * FROM annotations WHERE course_id=? AND rel_path=?").all(course.id, item.rel_path);
-        const prefix2 = `drawing:${mid}:${revision.sha256}:`;
-        const pages = new Set([...drawings, ...annotations].map((row) => row.page));
-        for (const id2 of mapped.keys()) if (id2.startsWith(prefix2)) pages.add(Number(id2.slice(prefix2.length)));
-        if (!pages.size) continue;
-        const geometries = native("pdf.geometry", { path });
-        for (const page of [...pages].sort((a, b) => a - b)) {
-          const g = geometries.find((geometry2) => geometry2.page === page);
-          if (!g) throw new Error(`Sync ink page ${page} is missing from PDF`);
-          const geometry = { cropX: g.cropBox.x, cropY: g.cropBox.y, width: g.cropBox.width, height: g.cropBox.height, rotation: g.rotation };
-          const prior = mapped.get(prefix2 + page), previous = prior ? decodePage(prior) : void 0;
-          const objects = drawings.filter((row) => row.page === page && !row.deleted_at).map((row) => {
-            const result = transformShape({ id: row.id, kind: row.kind, data: JSON.parse(row.data_json), style: JSON.parse(row.style_json), createdAt: row.created_at, updatedAt: row.updated_at }, geometry);
-            if (result.data.image) {
-              const image = byPath.get(`${course.id}:${result.data.image.relPath}`);
-              if (!image) throw new Error("Sync ink image source is missing");
-              result.data.image.assetId = image.id;
-            }
-            return result;
-          });
-          const highlights = annotations.filter((row) => row.page === page && !row.deleted_at).map((row) => ({ id: row.id, ...JSON.parse(row.anchor_json), rects: JSON.parse(row.rects_json).map((rect) => transformBox(rect, g.rotation)), color: row.color, comment: row.comment, createdAt: row.created_at, updatedAt: row.updated_at }));
-          const tombstones = (collection, deletedKey, rows) => [.../* @__PURE__ */ new Set([...previous?.[deletedKey] ?? [], ...rows.filter((row) => row.page === page && row.deleted_at).map((row) => row.id), ...(previous?.[collection] ?? []).filter((old) => !(collection === "objects" ? objects : highlights).some((current) => current.id === old.id)).map((old) => old.id)])].sort();
-          const portable = {
-            schemaVersion: 1,
-            materialID: mid,
-            documentRevision: revision.sha256,
-            page,
-            coordinateSpace: coordinateSpace2,
-            geometry,
-            objects,
-            highlights,
-            deletedObjectIDs: tombstones("objects", "deletedObjectIDs", drawings),
-            deletedHighlightIDs: tombstones("highlights", "deletedHighlightIDs", annotations)
-          };
-          add2(prefix2 + page, "drawing", encodePage(portable), { ...source, geometry });
+  // DesktopRuntime/backend/sync/conflict-summary.ts
+  function conflictVariantSummary(record2, related = []) {
+    if (!record2) return { exists: false, deleted: false };
+    const p = record2.payload ?? {}, result = { exists: true, deleted: !!record2.deleted };
+    const short = (value, max2) => typeof value === "string" ? value.slice(0, max2) : void 0;
+    const title2 = short(p.title ?? p.name ?? p.fileName, 160);
+    if (title2) result.title = title2;
+    const revision = record2.revision ?? p.revision ?? p.documentRevision;
+    if (typeof revision === "string" || typeof revision === "number") result.revision = typeof revision === "string" ? revision.slice(0, 128) : revision;
+    if (Number.isInteger(p.page) && p.page > 0) result.page = p.page;
+    const dates = [p.updatedAt, p.modifiedAt, p.createdAt].filter((value) => typeof value === "string" && Number.isFinite(Date.parse(value)));
+    const snippets = [];
+    if (typeof p.markdown === "string") snippets.push(p.markdown.replace(/<!--[\s\S]*?-->/g, "").trim());
+    let objects = 0, hasPages = false;
+    for (const pageRecord of [record2, ...related]) {
+      if (pageRecord.kind !== "drawing" || typeof pageRecord.payload.data !== "string") continue;
+      try {
+        const page = decodePage(pageRecord), deletedObjects = new Set(page.deletedObjectIDs ?? []), deletedHighlights = new Set(page.deletedHighlightIDs ?? []);
+        hasPages = true;
+        const values2 = [...(page.objects ?? []).filter((object2) => !deletedObjects.has(object2.id)), ...(page.highlights ?? []).filter((object2) => !deletedHighlights.has(object2.id))];
+        objects += values2.length;
+        for (const object2 of values2) {
+          const updated = object2.updatedAt ?? object2.createdAt;
+          if (typeof updated === "string" && Number.isFinite(Date.parse(updated))) dates.push(updated);
+          const text = object2.data?.text ?? object2.comment ?? object2.quote;
+          if (typeof text === "string" && snippets.join("\n").length < 500) snippets.push(text);
         }
+      } catch {
       }
     }
-    for (const row of db.prepare("SELECT * FROM board_tasks").all()) add2(`task:${row.id}`, "task", {
-      id: row.id,
-      courseID: row.course_id,
-      title: row.title,
-      completed: row.status === "done",
-      due: row.due_at ?? null,
-      desktop: { notes: row.notes, status: row.status, kind: row.kind, color: row.color, startAt: row.start_at, dueAt: row.due_at, allDay: !!row.all_day, sortOrder: row.sort_order, createdAt: row.created_at }
-    }, {}, !!row.deleted_at);
-    for (const board of db.prepare("SELECT * FROM whiteboards").all()) {
-      const mid = board.id, revision = mapped.get(`material:${mid}`)?.payload.revision ?? `whiteboard-${mid}`;
-      add2(`material:${mid}`, "material", {
-        id: mid,
-        courseID: board.course_id,
-        title: board.title,
-        fileName: "canvas.json",
-        kind: "whiteboard",
-        revision,
-        createdAt: board.created_at,
-        desktop: { background: board.background, surface: board.surface, pageCount: board.page_count, sortOrder: board.sort_order }
-      }, { courseID: board.course_id, whiteboard: true }, !!board.deleted_at);
-      if (board.deleted_at) continue;
-      const rows = db.prepare("SELECT * FROM whiteboard_local_shapes WHERE board_id=?").all(mid);
-      const pages = new Set(rows.map((r) => r.page)), prefix2 = `drawing:${mid}:${revision}:`;
-      for (const key4 of mapped.keys()) if (key4.startsWith(prefix2)) pages.add(Number(key4.slice(prefix2.length)));
-      for (const page of pages) {
-        const prior = mapped.get(prefix2 + page), previous = prior ? decodePage(prior) : void 0;
-        const geometry = previous?.geometry ?? { cropX: 0, cropY: 0, width: 595.28, height: 841.89, rotation: 0 };
-        const objects = rows.filter((r) => r.page === page && !r.deleted_at).map((r) => {
-          const object2 = transformShape({ id: r.id, kind: r.kind, data: JSON.parse(r.data_json), style: JSON.parse(r.style_json), createdAt: r.created_at, updatedAt: r.updated_at }, geometry);
-          if (object2.data.image) {
-            const image = byPath.get(`${board.course_id}:${object2.data.image.relPath}`);
-            if (!image) throw new Error("Whiteboard image is missing");
-            object2.data.image.assetId = image.id;
-          }
-          return object2;
-        });
-        const active = new Set(objects.map((o) => o.id)), removed = [.../* @__PURE__ */ new Set([...previous?.deletedObjectIDs ?? [], ...rows.filter((r) => r.page === page && r.deleted_at).map((r) => r.id), ...(previous?.objects ?? []).filter((o) => !active.has(o.id)).map((o) => o.id)])].sort();
-        add2(prefix2 + page, "drawing", encodePage({ schemaVersion: 1, materialID: mid, documentRevision: revision, page, coordinateSpace: coordinateSpace2, geometry, objects, highlights: [], deletedObjectIDs: removed, deletedHighlightIDs: [] }), { courseID: board.course_id, whiteboard: true, geometry });
-      }
-    }
-    for (const row of db.prepare("SELECT * FROM recording_sessions").all()) {
-      const session = JSON.parse(row.payload), id2 = session.id, c = db.prepare("SELECT * FROM courses WHERE id=?").get(session.courseId);
-      if (!c || c.deleted_at || ["recording", "paused", "processing"].includes(session.status)) continue;
-      const path = resolveInsideReal(c.folder_path, session.audioRelPath), revision = asset(`recording:${id2}`, path);
-      const prior = mapped.get(`recording:${id2}`)?.payload;
-      const segments = db.prepare("SELECT * FROM recording_segments WHERE session_id=? ORDER BY start_sample,id").all(id2).map((s) => {
-        const hash3 = digest({ recording: id2, start: s.start_sample, end: s.end_sample, text: s.text });
-        return { id: prior?.segments?.find((p) => p.time === s.start_sample / 16e3 && p.text === s.text)?.id ?? `${hash3.slice(0, 8)}-${hash3.slice(8, 12)}-4${hash3.slice(13, 16)}-a${hash3.slice(17, 20)}-${hash3.slice(20, 32)}`, time: s.start_sample / 16e3, text: s.text, endSample: s.end_sample };
-      });
-      const anchors = db.prepare("SELECT * FROM recording_anchors WHERE session_id=? ORDER BY rowid").all(id2).map((r) => JSON.parse(r.payload)).map((a) => ({ id: a.id, time: a.sample / 16e3, materialID: a.relPath ? byPath.get(`${session.courseId}:${a.relPath}`)?.id ?? null : null, page: a.page, desktop: { label: a.label, relPath: a.relPath } }));
-      add2(`recording:${id2}`, "recording", { id: id2, courseID: session.courseId, title: session.title, fileName: `Recordings/${id2}.wav`, createdAt: session.createdAt, duration: session.samples / 16e3, state: session.status === "complete" ? "completed" : "interrupted", segments, anchors, assetRevision: revision.sha256, byteCount: revision.byteCount, desktop: { session } }, { courseID: session.courseId, path, hash: revision.sha256 });
-    }
-    for (const row of db.prepare("SELECT * FROM favorites").all()) add2(`favorite:${row.id}`, "favorite", { id: row.id, courseID: row.course_id, label: row.label, descriptor: JSON.parse(row.descriptor_json), sortOrder: row.sort_order, createdAt: row.created_at }, {}, !!row.deleted_at);
-    for (const s of db.prepare("SELECT * FROM agent_sessions").all()) {
-      add2(`chat:${s.id}`, "chat", { recordType: "desktop-chat-session", id: s.id, courseID: s.course_id, title: s.title, provider: s.provider, model: s.model, surface: s.surface ?? "app", reasoningEffort: s.reasoning_effort ?? null, createdAt: s.created_at, lastUsedAt: s.last_used_at }, {}, !!s.deleted_at);
-      for (const m of db.prepare("SELECT * FROM messages WHERE session_id=?").all(s.id)) {
-        const blocks = db.prepare("SELECT * FROM message_blocks WHERE message_id=? ORDER BY ord").all(m.id).map((b) => ({ id: b.id, order: b.ord, kind: b.kind, payload: JSON.parse(b.payload_json), createdAt: b.created_at, updatedAt: b.updated_at, deletedAt: b.deleted_at }));
-        add2(`chat:message:${m.id}`, "chat", { recordType: "desktop-chat-message", id: m.id, courseID: m.course_id, sessionID: m.session_id, role: m.role, turnSequence: m.turn_seq, createdAt: m.created_at, updatedAt: m.updated_at, blocks }, {}, !!m.deleted_at);
-      }
-    }
-    const emitted = new Set(records.map((record2) => record2.id));
-    for (const old of mapped.values()) if (!emitted.has(old.id)) {
-      const disappeared = ["material", "note"].includes(old.kind) && old.source?.path && !existsSync(old.source.path);
-      records.push({ id: old.id, kind: old.kind, payload: old.payload, deleted: disappeared || !!old.deleted, formatVersion: 1 });
-      sources2.set(old.id, old.source);
-    }
-    return { records, assets, sources: sources2 };
+    if (hasPages) result.objects = objects;
+    if (dates.length) result.updatedAt = dates.sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1);
+    const excerpt = snippets.join("\n").trim().slice(0, 500);
+    if (excerpt) result.text = excerpt;
+    return result;
   }
 
-  // DesktopRuntime/backend/sync/journal.ts
+  // DesktopRuntime/backend/sync/clip-assets.ts
   init_native();
-  function createFileJournal(db) {
-    const root = join(env2().userDataPath, "SyncRecovery");
-    mkdirSync(root, { recursive: true });
-    const restore = (entries) => {
-      for (const item of entries) {
-        if (item.existed) copyFileSync(item.backup, item.target);
-        else rmSync(item.target, { force: true });
-      }
-    };
-    for (const entry2 of readdirSync(root, { withFileTypes: true })) {
-      if (!entry2.isDirectory()) continue;
-      const path = join(root, entry2.name, "intent.json");
-      if (!existsSync(path)) continue;
-      const intent = JSON.parse(readFileSync(path, "utf8"));
-      if (!db.prepare("SELECT id FROM ipad_sync_commits WHERE id=?").get(intent.id)) restore(intent.entries);
-      rmSync(path);
+  function clippedOriginals(record2) {
+    if (record2.deleted || !["drawing", "annotation"].includes(record2.kind) || typeof record2.payload.data !== "string") return [];
+    const page = decodePage(record2), found = /* @__PURE__ */ new Map();
+    for (const object2 of page.objects ?? []) {
+      const clip2 = object2.data?.clip;
+      if (!clip2?.documentRevision) continue;
+      if (!/^[a-f0-9]{64}$/.test(clip2.documentRevision) || !Number.isSafeInteger(clip2.documentByteCount) || clip2.documentByteCount <= 0) throw new Error("Clipped PDF original metadata is invalid");
+      found.set(clip2.documentRevision, clip2.documentByteCount);
     }
-    return (changes, commit) => {
-      const id2 = randomUUID(), directory2 = join(root, id2), intentPath = join(directory2, "intent.json");
-      mkdirSync(directory2, { recursive: true });
-      const entries = changes.map((change, index) => {
-        const existed = existsSync(change.target), backup = join(directory2, `${index}.original`);
-        if (existed) {
-          copyFileSync(change.target, backup, 1);
-          const mode = statSync(backup).mode;
-          chmodSync(backup, 384);
-          try {
-            const fd = openSync(backup, "r+");
-            try {
-              fsyncSync(fd);
-            } finally {
-              closeSync(fd);
-            }
-          } finally {
-            chmodSync(backup, mode);
-          }
+    return [...found].map(([sha256, byteCount]) => ({ sha256, byteCount }));
+  }
+  function planClipOriginals(record2, assets) {
+    return clippedOriginals(record2).flatMap((ref) => {
+      const target = join(env2().userDataPath, "PDFOriginals", `${ref.sha256}.pdf`);
+      if (existsSync(target) && native("fs.sha256", { path: target }) === ref.sha256 && statSync(target).size === ref.byteCount) return [];
+      const source = assets.get(ref.sha256);
+      if (!source || !existsSync(source) || native("fs.sha256", { path: source }) !== ref.sha256 || statSync(source).size !== ref.byteCount) throw new Error("Clipped PDF original asset is unavailable");
+      return [{ target, source }];
+    });
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/drawingsRepo.ts
+  var DRAWING_KINDS2 = DRAWING_KINDS;
+  function rowToDrawing(row) {
+    return {
+      id: row.id,
+      courseId: row.course_id,
+      relPath: row.rel_path,
+      page: row.page,
+      kind: row.kind,
+      data: JSON.parse(row.data_json),
+      style: JSON.parse(row.style_json),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  function createDrawingsRepo(db, options = {}) {
+    db.exec(`CREATE TABLE IF NOT EXISTS drawing_create_receipts (
+    operation_id TEXT PRIMARY KEY, request_json TEXT NOT NULL, drawing_id TEXT NOT NULL
+  )`);
+    function assertCourseExists(courseId2) {
+      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
+      if (row === void 0) throw new NotFoundError("course", courseId2);
+    }
+    function getRowOrThrow(id2) {
+      const row = db.prepare("SELECT * FROM pdf_drawings WHERE id = ? AND deleted_at IS NULL").get(id2);
+      if (row === void 0) throw new NotFoundError("drawing", id2);
+      return row;
+    }
+    return {
+      listForFile(courseIdInput, relPathInput) {
+        const courseId2 = requireId(courseIdInput, "courseId");
+        const relPath2 = requireNonEmptyString(relPathInput, "relPath");
+        const rows = db.prepare(
+          `SELECT * FROM pdf_drawings
+           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
+           ORDER BY page ASC, created_at ASC`
+        ).all(courseId2, relPath2);
+        return rows.map(rowToDrawing);
+      },
+      create(input) {
+        const courseId2 = requireId(input.courseId, "courseId");
+        assertCourseExists(courseId2);
+        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
+        const page = requireInt(input.page, "page", 1);
+        const kind = assertDrawingKind(input.kind, DRAWING_KINDS2);
+        const data2 = assertDrawingData(input.data, kind, { allowClip: true });
+        const style = assertDrawingStyle(input.style);
+        const operationID = input.clientMutationId;
+        if (operationID !== void 0 && (typeof operationID !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationID))) {
+          throw new ValidationError("clientMutationId must be a UUID");
         }
-        return { ...change, existed, backup };
-      });
-      writeFileAtomic(intentPath, JSON.stringify({ id: id2, entries }));
-      let committed = false;
-      try {
-        db.transaction(() => {
-          for (const item of entries) {
-            mkdirSync(dirname(item.target), { recursive: true });
-            if (item.remove) {
-              rmSync(item.target, { force: true });
-              continue;
+        const documentRevision = input.documentRevision;
+        if (documentRevision !== void 0 && (typeof documentRevision !== "string" || !/^[0-9a-f]{64}$/.test(documentRevision))) {
+          throw new ValidationError("documentRevision must be a SHA-256 digest");
+        }
+        const fingerprint2 = JSON.stringify({ courseId: courseId2, relPath: relPath2, page, kind, data: data2, style, documentRevision });
+        return db.transaction(() => {
+          if (operationID !== void 0) {
+            const receipt = db.prepare("SELECT request_json, drawing_id FROM drawing_create_receipts WHERE operation_id = ?").get(operationID);
+            if (receipt) {
+              if (receipt.request_json !== fingerprint2) throw new ValidationError("A drawing operation cannot be reused for different content");
+              return rowToDrawing(getRowOrThrow(receipt.drawing_id));
             }
-            if (item.source) {
-              const temporary = `${item.target}.${id2}.sync`;
-              try {
-                copyFileSync(item.source, temporary, 1);
-                chmodSync(temporary, 384);
-                const fd = openSync(temporary, "r+");
-                try {
-                  fsyncSync(fd);
-                } finally {
-                  closeSync(fd);
-                }
-                renameSync(temporary, item.target);
-              } finally {
-                rmSync(temporary, { force: true });
-              }
-            } else writeFileAtomic(item.target, item.text ?? "");
           }
-          commit();
-          db.prepare("INSERT INTO ipad_sync_commits(id) VALUES(?)").run(id2);
+          if (documentRevision !== void 0 && options.documentRevision?.(courseId2, relPath2) !== documentRevision) {
+            throw new ValidationError("PDF \uC6D0\uBCF8\uC774 \uBCC0\uACBD\uB418\uC5B4 \uC0C8 \uD544\uAE30\uB97C \uC801\uC6A9\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC6D0\uB798 PDF\uC640 \uD544\uAE30 \uBCF5\uAD6C \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+          }
+          const now = nowIso();
+          const drawing = {
+            id: randomUUID(),
+            courseId: courseId2,
+            relPath: relPath2,
+            page,
+            kind,
+            data: data2,
+            style,
+            createdAt: now,
+            updatedAt: now
+          };
+          db.prepare(
+            `INSERT INTO pdf_drawings
+             (id, course_id, rel_path, page, kind, data_json, style_json,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            drawing.id,
+            courseId2,
+            relPath2,
+            page,
+            kind,
+            JSON.stringify(data2),
+            JSON.stringify(style),
+            now,
+            now
+          );
+          if (operationID !== void 0) db.prepare("INSERT INTO drawing_create_receipts (operation_id, request_json, drawing_id) VALUES (?, ?, ?)").run(operationID, fingerprint2, drawing.id);
+          return drawing;
         })();
-        committed = true;
-        rmSync(intentPath);
-      } catch (error2) {
-        if (!committed) {
-          restore(entries);
-          rmSync(intentPath);
+      },
+      update(input) {
+        const row = getRowOrThrow(requireId(input.id, "id"));
+        const kind = row.kind;
+        const data2 = input.data === void 0 ? JSON.parse(row.data_json) : assertDrawingData(input.data, kind, { allowClip: true });
+        const style = input.style === void 0 ? JSON.parse(row.style_json) : assertDrawingStyle(input.style);
+        const now = nowIso();
+        db.prepare(
+          "UPDATE pdf_drawings SET data_json = ?, style_json = ?, updated_at = ? WHERE id = ?"
+        ).run(JSON.stringify(data2), JSON.stringify(style), now, row.id);
+        return rowToDrawing({
+          ...row,
+          data_json: JSON.stringify(data2),
+          style_json: JSON.stringify(style),
+          updated_at: now
+        });
+      },
+      softDelete(idsInput) {
+        if (!Array.isArray(idsInput)) {
+          throw new ValidationError("ids must be an array");
         }
-        throw error2;
+        const ids = [...new Set(idsInput.map((id2) => requireId(id2, "id")))];
+        if (ids.length === 0) return;
+        const now = nowIso();
+        const remove = db.transaction(() => {
+          const statement = db.prepare(
+            "UPDATE pdf_drawings SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL"
+          );
+          for (const id2 of ids) {
+            if (statement.run(now, now, id2).changes === 0) {
+              throw new NotFoundError("drawing", id2);
+            }
+          }
+        });
+        remove();
       }
     };
+  }
+
+  // DesktopRuntime/upstream/src/main/features/annotations/annotationsRepo.ts
+  var HIGHLIGHT_COLORS2 = ["yellow", "green", "pink", "blue"];
+  function assertColor2(value) {
+    if (!HIGHLIGHT_COLORS2.includes(value)) {
+      throw new ValidationError(
+        `color must be one of ${HIGHLIGHT_COLORS2.join(", ")} (got "${String(value)}")`
+      );
+    }
+    return value;
+  }
+  function assertRects(value) {
+    if (!Array.isArray(value) || value.length === 0) {
+      throw new ValidationError("rects must be a non-empty array");
+    }
+    for (const rect of value) {
+      const r = rect;
+      if (r === null || typeof r !== "object" || ![r.x, r.y, r.width, r.height].every(
+        (n) => typeof n === "number" && Number.isFinite(n)
+      )) {
+        throw new ValidationError("each rect needs finite numeric x/y/width/height");
+      }
+    }
+    return value;
+  }
+  function assertAnchor(value) {
+    const anchor = value;
+    if (anchor === null || typeof anchor !== "object" || typeof anchor.quote !== "string" || typeof anchor.prefix !== "string" || typeof anchor.suffix !== "string") {
+      throw new ValidationError("anchor needs string quote/prefix/suffix");
+    }
+    return anchor;
+  }
+  function rowToAnnotation(row) {
+    return {
+      id: row.id,
+      courseId: row.course_id,
+      relPath: row.rel_path,
+      page: row.page,
+      color: row.color,
+      rects: JSON.parse(row.rects_json),
+      anchor: JSON.parse(row.anchor_json),
+      comment: row.comment,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  function createAnnotationsRepo(db) {
+    function assertCourseExists(courseId2) {
+      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
+      if (row === void 0) {
+        throw new NotFoundError("course", courseId2);
+      }
+    }
+    function getRowOrThrow(id2) {
+      const row = db.prepare("SELECT * FROM annotations WHERE id = ? AND deleted_at IS NULL").get(id2);
+      if (row === void 0) {
+        throw new NotFoundError("annotation", id2);
+      }
+      return row;
+    }
+    return {
+      listForFile(input) {
+        const courseId2 = requireId(input.courseId, "courseId");
+        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
+        const rows = db.prepare(
+          `SELECT * FROM annotations
+           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
+           ORDER BY page ASC, created_at ASC`
+        ).all(courseId2, relPath2);
+        return rows.map(rowToAnnotation);
+      },
+      create(input) {
+        const courseId2 = requireId(input.courseId, "courseId");
+        assertCourseExists(courseId2);
+        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
+        const page = requireInt(input.page, "page", 1);
+        const color = assertColor2(input.color);
+        const rects = assertRects(input.rects);
+        const anchor = assertAnchor(input.anchor);
+        const comment = input.comment ?? null;
+        if (comment !== null && typeof comment !== "string") {
+          throw new ValidationError("comment must be a string or null");
+        }
+        const now = nowIso();
+        const annotation = {
+          id: randomUUID(),
+          courseId: courseId2,
+          relPath: relPath2,
+          page,
+          color,
+          rects,
+          anchor,
+          comment,
+          createdAt: now,
+          updatedAt: now
+        };
+        db.prepare(
+          `INSERT INTO annotations
+           (id, course_id, rel_path, page, color, rects_json, anchor_json,
+            comment, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          annotation.id,
+          courseId2,
+          relPath2,
+          page,
+          color,
+          JSON.stringify(rects),
+          JSON.stringify(anchor),
+          comment,
+          now,
+          now
+        );
+        return annotation;
+      },
+      update(input) {
+        const row = getRowOrThrow(requireId(input.id, "id"));
+        const color = input.color === void 0 ? row.color : assertColor2(input.color);
+        const comment = input.comment === void 0 ? row.comment : input.comment;
+        if (comment !== null && typeof comment !== "string") {
+          throw new ValidationError("comment must be a string or null");
+        }
+        const now = nowIso();
+        db.prepare(
+          "UPDATE annotations SET color = ?, comment = ?, updated_at = ? WHERE id = ?"
+        ).run(color, comment, now, row.id);
+        return rowToAnnotation({ ...row, color, comment, updated_at: now });
+      },
+      softDelete(input) {
+        const row = getRowOrThrow(requireId(input.id, "id"));
+        const now = nowIso();
+        db.prepare("UPDATE annotations SET deleted_at = ?, updated_at = ? WHERE id = ?").run(
+          now,
+          now,
+          row.id
+        );
+        return { ok: true };
+      }
+    };
+  }
+
+  // DesktopRuntime/upstream/src/main/features/pdf/pendingPdfMutations.ts
+  var uuidFor = (value) => {
+    const hash3 = createHash("sha256").update(value).digest("hex");
+    return `${hash3.slice(0, 8)}-${hash3.slice(8, 12)}-5${hash3.slice(13, 16)}-a${hash3.slice(17, 20)}-${hash3.slice(20, 32)}`;
+  };
+  function installPendingPdfMutations(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS pdf_pending_mutations(id TEXT PRIMARY KEY,course_id TEXT NOT NULL,rel_path TEXT NOT NULL,expected_revision TEXT NOT NULL,mutation_json TEXT NOT NULL,created_at TEXT NOT NULL,resolved_at TEXT,recovery_rel_path TEXT)`);
+  }
+  var mutationID = (kind, input) => uuidFor(`${input.clientMutationId ?? ""}:${JSON.stringify({ kind, input })}`);
+  function resolvePendingPdfMutation(db, kind, input) {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE name='pdf_pending_mutations'").get()) return;
+    db.prepare("UPDATE pdf_pending_mutations SET resolved_at=? WHERE id=? AND resolved_at IS NULL").run((/* @__PURE__ */ new Date()).toISOString(), mutationID(kind, input));
+  }
+  function retainPendingPdfMutation(db, kind, input, courseId2, relPath2) {
+    if (typeof input.documentRevision !== "string" || !/^[a-f0-9]{64}$/.test(input.documentRevision)) return;
+    installPendingPdfMutations(db);
+    const mutation = JSON.stringify({ kind, input }), id2 = mutationID(kind, input);
+    db.prepare("INSERT OR IGNORE INTO pdf_pending_mutations(id,course_id,rel_path,expected_revision,mutation_json,created_at) VALUES(?,?,?,?,?,?)").run(id2, courseId2, relPath2, input.documentRevision, mutation, (/* @__PURE__ */ new Date()).toISOString());
+  }
+  function pendingPdfConflicts(db) {
+    installPendingPdfMutations(db);
+    return db.prepare("SELECT * FROM pdf_pending_mutations WHERE resolved_at IS NULL ORDER BY created_at DESC").all().map((r) => ({ id: `pending-ink:${r.id}`, recordID: `pending-ink:${r.id}`, kind: "pending-ink", label: r.rel_path, reason: "\uC6D0\uBCF8 \uBCC0\uACBD \uB610\uB294 \uB3D9\uAE30\uD654 \uC911 \uB3C4\uCC29\uD574 \uBC14\uB85C \uC800\uC7A5\uD560 \uC218 \uC5C6\uC5C8\uB358 \uD544\uAE30\uB97C \uBCF4\uAD00\uD588\uC2B5\uB2C8\uB2E4.", local: null, remote: null, assets: [], expectedRevision: r.expected_revision, createdAt: r.created_at }));
+  }
+  async function recoverPendingPdfMutation(deps, userDataPath, id2, variant) {
+    installPendingPdfMutations(deps.db);
+    const { db } = deps, publish = createNoteFileTransaction(db, join(userDataPath, "NoteRecovery"));
+    publish.recover();
+    const row = db.prepare("SELECT * FROM pdf_pending_mutations WHERE id=?").get(id2);
+    if (!row || !["local", "remote"].includes(variant)) throw new Error("\uBCF4\uAD00\uB41C \uD544\uAE30\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+    if (row.resolved_at) return { applied: 1, resolved: true, ...row.recovery_rel_path ? { recovered: { courseID: row.course_id, relPath: row.recovery_rel_path } } : {} };
+    if (variant === "remote") {
+      db.prepare("UPDATE pdf_pending_mutations SET resolved_at=? WHERE id=?").run((/* @__PURE__ */ new Date()).toISOString(), id2);
+      return { applied: 1, resolved: true };
+    }
+    const original = join(userDataPath, "PDFOriginals", `${row.expected_revision}.pdf`);
+    if (!existsSync(original)) throw new Error("\uC6D0\uBCF8 PDF \uBCF5\uAD6C \uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uBCF4\uAD00\uB41C \uD544\uAE30\uB294 \uC720\uC9C0\uB429\uB2C8\uB2E4.");
+    const bytes = readFileSync(original);
+    if (createHash("sha256").update(bytes).digest("hex") !== row.expected_revision) throw new Error("\uC6D0\uBCF8 PDF \uBCF5\uAD6C \uD30C\uC77C\uC758 \uBB34\uACB0\uC131\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+    const pdf = await PDFDocument_default.load(bytes), pageCount = pdf.getPageCount(), mutation = JSON.parse(row.mutation_json);
+    const materialId = uuidFor(`pending-note:${id2}`), relPath2 = `\uB178\uD2B8/${basename(row.rel_path, ".pdf").slice(0, 70)} - \uD544\uAE30 \uBCF5\uAD6C (${id2}).pdf`;
+    const target = resolveInsideReal(deps.courses.getFolder(row.course_id), relPath2);
+    if (existsSync(target) || db.prepare("SELECT id FROM materials_index WHERE id=?").get(materialId)) throw new Error("\uD544\uAE30 \uBCF5\uAD6C \uC704\uCE58\uAC00 \uC774\uBBF8 \uC0AC\uC6A9 \uC911\uC785\uB2C8\uB2E4. \uAE30\uC874 \uC790\uB8CC\uB97C \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+    const binding2 = db.prepare("SELECT material_id FROM pdf_document_aliases WHERE course_id=? AND rel_path=?").get(row.course_id, row.rel_path);
+    const hasArchive = db.prepare("SELECT 1 FROM sqlite_master WHERE name='pdf_rewrite_archive_variants'").get();
+    const archived = hasArchive && binding2 ? db.prepare("SELECT * FROM pdf_rewrite_archive_variants WHERE material_id=? AND revision=? ORDER BY created_at DESC LIMIT 1").get(binding2.material_id, row.expected_revision) : void 0;
+    let drawings = archived ? JSON.parse(archived.drawings_json) : [], annotations = archived ? JSON.parse(archived.annotations_json) : [];
+    if (!archived) {
+      const bound = binding2 && db.prepare("SELECT bound_sha FROM pdf_document_bindings WHERE material_id=?").get(binding2.material_id);
+      if (bound?.bound_sha === row.expected_revision) {
+        drawings = db.prepare("SELECT * FROM pdf_drawings WHERE course_id=? AND rel_path=?").all(row.course_id, row.rel_path);
+        annotations = db.prepare("SELECT * FROM annotations WHERE course_id=? AND rel_path=?").all(row.course_id, row.rel_path);
+      } else if (mutation.kind !== "drawing:create" && mutation.kind !== "annotation:create") throw new Error("\uAE30\uC874 \uD3B8\uC9D1 \uAC1D\uCCB4 \uBCF5\uAD6C \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uBCF4\uAD00\uB41C \uBCC0\uACBD\uC744 \uC720\uC9C0\uD588\uC2B5\uB2C8\uB2E4.");
+    }
+    const mapped = (old) => uuidFor(`pending-note:${id2}:${old}`), now = (/* @__PURE__ */ new Date()).toISOString();
+    publish([{ target, bytes }], () => {
+      db.prepare("INSERT INTO materials_index(id,course_id,rel_path,kind,size,mtime,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").run(materialId, row.course_id, relPath2, "pdf", bytes.length, statSync(target).mtimeMs, now, now);
+      db.prepare("INSERT INTO pdf_document_bindings VALUES(?,?,?,?,?)").run(materialId, row.expected_revision, "receipt", 0, now);
+      db.prepare("INSERT INTO pdf_document_aliases VALUES(?,?,?)").run(row.course_id, relPath2, materialId);
+      for (const [table11, items] of [["pdf_drawings", drawings], ["annotations", annotations]]) for (const source of items) {
+        if (source.page < 1 || source.page > pageCount) continue;
+        const value = { ...source, id: mapped(source.id), course_id: row.course_id, rel_path: relPath2 }, keys4 = Object.keys(value);
+        db.prepare(`INSERT INTO ${table11}(${keys4.join(",")}) VALUES(${keys4.map(() => "?").join(",")})`).run(...keys4.map((key4) => value[key4]));
+      }
+      const input = { ...mutation.input, courseId: row.course_id, relPath: relPath2 };
+      delete input.documentRevision;
+      delete input.clientMutationId;
+      const drawingRepo = createDrawingsRepo(db), annotationRepo = createAnnotationsRepo(db);
+      if (mutation.kind === "drawing:create") {
+        if (input.page < 1 || input.page > pageCount) throw new Error("\uBCF5\uAD6C\uD560 \uD544\uAE30 \uD398\uC774\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.");
+        drawingRepo.create(input);
+      } else if (mutation.kind === "drawing:update") drawingRepo.update({ ...input, id: mapped(input.id) });
+      else if (mutation.kind === "drawing:delete") drawingRepo.softDelete(input.ids.map(mapped));
+      else if (mutation.kind === "annotation:create") {
+        if (input.page < 1 || input.page > pageCount) throw new Error("\uBCF5\uAD6C\uD560 \uAC15\uC870 \uD398\uC774\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.");
+        annotationRepo.create(input);
+      } else if (mutation.kind === "annotation:update") annotationRepo.update({ ...input, id: mapped(input.id) });
+      else if (mutation.kind === "annotation:delete") annotationRepo.softDelete({ id: mapped(input.id) });
+      else throw new Error("\uC9C0\uC6D0\uB418\uC9C0 \uC54A\uB294 \uD544\uAE30 \uBCF5\uAD6C \uD615\uC2DD\uC785\uB2C8\uB2E4.");
+      db.prepare("UPDATE pdf_pending_mutations SET resolved_at=?,recovery_rel_path=? WHERE id=?").run(now, relPath2, id2);
+    });
+    deps.materials.invalidateTree(row.course_id);
+    return { applied: 1, resolved: true, recovered: { courseID: row.course_id, relPath: relPath2, materialID: materialId } };
+  }
+
+  // DesktopRuntime/backend/sync/pdf-page-notes.ts
+  async function prepareLinkedPageNotes(deps, old, sourcePath, targetPath, chain, geometries, current) {
+    const files = [], notes = [], updates = [];
+    const links = deps.links?.listFor(old.course_id, old.rel_path).outgoing.filter((link) => link.kind === "pdf-page-note" && link.target.kind === "note") ?? [];
+    if (!links.length) return { files, notes, apply: () => {
+    } };
+    const fingerprint2 = async (path) => {
+      const pdf = await PDFDocument_default.load(readFileSync(path)), id2 = pdf.context.trailerInfo.ID?.get(0);
+      return typeof id2?.asBytes === "function" ? Buffer.from(id2.asBytes()).toString("hex") : void 0;
+    };
+    const before = await fingerprint2(sourcePath), after = await fingerprint2(targetPath);
+    const sizes = geometries.map((g) => g.rotation === 90 || g.rotation === 270 ? { width: g.cropBox.height, height: g.cropBox.width } : { width: g.cropBox.width, height: g.cropBox.height });
+    for (const link of links) {
+      const previous = deps.notes.read(link.target.payload), document2 = parsePdfPageNote(previous.markdown);
+      if (!after || !document2 || sourceRelPath(document2.manifest) !== old.rel_path || !isPdfPageNoteLinkMetadata(link.metadata)) throw new Error("\uC5F0\uACB0\uB41C \uD398\uC774\uC9C0 \uB9C8\uD06C\uB2E4\uC6B4\uC744 \uC548\uC804\uD558\uAC8C \uB9DE\uCD9C \uC218 \uC5C6\uC5B4 PDF\uC640 \uD544\uAE30\uB97C \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4. \uD398\uC774\uC9C0 \uD544\uAE30 \uC5F0\uACB0\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+      let markdown = previous.markdown;
+      if (document2.manifest.fingerprint !== after) {
+        if (!before || document2.manifest.fingerprint !== before || link.metadata.fingerprint !== before) throw new Error("\uC5F0\uACB0\uB41C \uD398\uC774\uC9C0 \uB9C8\uD06C\uB2E4\uC6B4\uC758 \uC6D0\uBCF8\uC774 \uB2EC\uB77C PDF \uBCC0\uACBD\uC744 \uBCF4\uB958\uD588\uC2B5\uB2C8\uB2E4. \uAE30\uC874 \uD544\uAE30\uC640 \uD398\uC774\uC9C0 \uC5F0\uACB0\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+        let pages = document2.pages, appendix = document2.appendix;
+        for (const step of chain) {
+          if (step.pages.some((entry2) => entry2.source !== null && entry2.source > pages.length)) throw new Error("\uC5F0\uACB0\uB41C \uB9C8\uD06C\uB2E4\uC6B4\uC758 \uD398\uC774\uC9C0 \uC218\uAC00 \uB2EC\uB77C \uC6D0\uBCF8\uACFC \uD544\uAE30\uB97C \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+          const kept = new Set(step.pages.map((entry2) => entry2.source)), removed = pages.map((content, index) => ({ page: index + 1, content: content.trim() })).filter((item) => !kept.has(item.page) && item.content.length);
+          const archived = removed.length ? ["## \uC5F0\uACB0 \uC81C\uC678\uB41C \uD398\uC774\uC9C0", "", ...removed.flatMap((item) => [`### \uAE30\uC874 PDF ${item.page}\uCABD`, "", item.content, ""])].join("\n").trim() : "";
+          appendix = [appendix, archived].filter(Boolean).join("\n\n");
+          pages = step.pages.map((entry2) => entry2.source === null ? "" : pages[entry2.source - 1] ?? "");
+        }
+        markdown = serializePdfPageNote({ ...document2, pages, appendix, manifest: { ...document2.manifest, fingerprint: after, pages: sizes } });
+      } else if (document2.pages.length !== sizes.length) throw new Error("\uB3D9\uAE30\uD654\uB41C \uD398\uC774\uC9C0 \uB9C8\uD06C\uB2E4\uC6B4\uC758 \uD398\uC774\uC9C0 \uC218\uAC00 \uB2EC\uB77C PDF \uBCC0\uACBD\uC744 \uBCF4\uB958\uD588\uC2B5\uB2C8\uB2E4.");
+      const latest = deps.notes.read(link.target.payload);
+      if (latest.markdown !== previous.markdown || latest.mtime !== previous.mtime) throw new Error("\uD398\uC774\uC9C0 \uB9C8\uD06C\uB2E4\uC6B4\uC774 \uBCC0\uACBD\uB418\uC5B4 PDF \uB3D9\uAE30\uD654\uB97C \uBCF4\uB958\uD588\uC2B5\uB2C8\uB2E4. \uC0C8 \uD544\uAE30\uB97C \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+      if (markdown !== previous.markdown) {
+        const target = resolveInsideReal(deps.courses.getFolder(old.course_id), link.target.payload.relPath);
+        files.push({ target, text: markdown });
+        const material = deps.db.prepare("SELECT id FROM materials_index WHERE course_id=? AND rel_path=?").get(old.course_id, link.target.payload.relPath);
+        const record2 = material ? current.get(`note:${material.id}`) : void 0;
+        if (record2) notes.push({ ...record2, payload: { ...record2.payload, markdown } });
+        const materialRecord = material ? current.get(`material:${material.id}`) : void 0;
+        if (materialRecord) notes.push({ ...materialRecord, payload: { ...materialRecord.payload, revision: createHash("sha256").update(markdown).digest("hex"), byteCount: Buffer.byteLength(markdown) } });
+      }
+      updates.push(() => deps.links.updateMetadata(old.course_id, link.id, { version: 1, syncScroll: link.metadata.syncScroll, fingerprint: after, pageSizes: sizes }));
+    }
+    return { files, notes, apply: () => {
+      for (const update of updates) update();
+    } };
+  }
+
+  // DesktopRuntime/backend/sync/pdf-rewrite.ts
+  init_native();
+
+  // DesktopRuntime/backend/sync/pdf-lineage.ts
+  function validatedLineage(value, target) {
+    if (!Array.isArray(value) || value.length > 1e4) throw new Error("Invalid PDF rewrite history");
+    const steps = value;
+    for (const step of steps) if (!step || !/^[a-f0-9]{64}$/.test(step.from) || !/^[a-f0-9]{64}$/.test(step.to) || !Array.isArray(step.pages) || step.pages.length < 1 || step.pages.length > 2e3 || step.pages.some((p) => !p || p.source !== null && (!Number.isInteger(p.source) || p.source < 1) || p.rotate !== void 0 && ![0, 90, 180, 270].includes(p.rotate))) throw new Error("Invalid PDF rewrite recipe");
+    if (steps.length && !steps.some((step) => step.to === target)) throw new Error("PDF rewrite history does not include target revision");
+    return steps;
+  }
+  function revisionChain(steps, from, to) {
+    if (from === to) return [];
+    const seen = /* @__PURE__ */ new Set();
+    function visit(at) {
+      if (at === to) return [];
+      if (seen.has(at)) return null;
+      seen.add(at);
+      for (const step of steps.filter((s) => s.from === at)) {
+        const tail = visit(step.to);
+        if (tail) return [step, ...tail];
+      }
+      return null;
+    }
+    return visit(from);
   }
 
   // DesktopRuntime/backend/sync/import.ts
@@ -156946,12 +157929,40 @@ ${contextText}
         source = { courseID: p.courseID, relPath: relPath2, path: target, hash: p.revision };
         if (!record2.deleted && old && /\.pdf$/i.test(old.rel_path) && existsSync(target)) {
           const binding2 = deps.pdfBindings.check({ courseId: p.courseID, relPath: old.rel_path });
-          if (binding2.documentRevision !== p.revision) throw new Error("PDF replacement conflicts with its preserved drawing revision; import as a separate material");
+          if (binding2.documentRevision !== p.revision && !deps.permitPDFRewrite) throw new Error("PDF replacement conflicts with its preserved drawing revision; import as a separate material");
         }
         if (record2.deleted) files.push({ target, remove: true });
         else if (!existsSync(target) || native("fs.sha256", { path: target }) !== p.revision) {
           const path = asset(p.revision, p.byteCount);
           files.push({ target, source: path });
+        }
+        if (p.pdfLineage !== void 0) {
+          if (p.kind !== "pdf") throw new Error("Only PDF materials can carry page-edit history");
+          const steps = validatedLineage(p.pdfLineage, p.revision);
+          changes.push(() => {
+            db.exec("CREATE TABLE IF NOT EXISTS pdf_restructure_log(id TEXT PRIMARY KEY,material_id TEXT NOT NULL,from_sha TEXT NOT NULL,to_sha TEXT NOT NULL,recipe_json TEXT NOT NULL,created_at TEXT NOT NULL)");
+            for (const step of steps) db.prepare("INSERT OR IGNORE INTO pdf_restructure_log(id,material_id,from_sha,to_sha,recipe_json,created_at) VALUES(?,?,?,?,?,?)").run(`${id2}:${step.from}:${step.to}`, id2, step.from, step.to, JSON.stringify(step.pages), now);
+          });
+        }
+        if (p.noteMigration !== void 0) {
+          const migration = p.noteMigration;
+          if (p.kind !== "pdf" || migration.version !== 1 || typeof migration.sourceRevision !== "string" || !/^[a-f0-9]{64}$/.test(migration.sourceRevision) || legacyNoteID(identity2(migration.sourceBoardID)) !== id2) throw new Error("Invalid legacy note migration receipt");
+          installNoteMigrationSchema(db);
+          const prior = db.prepare("SELECT * FROM pdf_note_migrations WHERE source_board_id=?").get(migration.sourceBoardID);
+          if (prior && (prior.target_material_id !== id2 || prior.course_id !== p.courseID || prior.source_revision !== migration.sourceRevision)) throw new Error("The original board changed on another device; both note versions were preserved");
+          const verifiedOriginal = () => {
+            if (!db.prepare("SELECT id FROM whiteboards WHERE id=? AND deleted_at IS NULL").get(migration.sourceBoardID)) return null;
+            const original = legacyBoardSnapshot(db, migration.sourceBoardID);
+            if (!prior && (original.board.course_id !== p.courseID || legacyBoardRevision(original) !== migration.sourceRevision)) {
+              throw new Error("\uC774 \uAE30\uAE30\uC5D0 \uB0A8\uC544 \uC788\uB294 \uC774\uC804 \uB178\uD2B8\uAC00 \uB2E4\uB978 \uAE30\uAE30\uC758 \uBCC0\uD658 \uC6D0\uBCF8\uACFC \uB2E4\uB985\uB2C8\uB2E4. \uB85C\uCEEC \uC6D0\uBCF8\uC744 \uBCF4\uC874\uD558\uACE0 \uC774\uC804\uC744 \uBCF4\uB958\uD588\uC2B5\uB2C8\uB2E4.");
+            }
+            return original;
+          };
+          verifiedOriginal();
+          changes.push(() => {
+            const original = verifiedOriginal();
+            db.prepare("INSERT INTO pdf_note_migrations(source_board_id,target_material_id,course_id,rel_path,version,source_revision,original_json,created_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_board_id) DO NOTHING").run(migration.sourceBoardID, id2, p.courseID, relPath2, 1, migration.sourceRevision, original ? canonicalNoteJSON(original) : null, now);
+          });
         }
         row("materials_index", {
           id: id2,
@@ -156972,6 +157983,7 @@ ${contextText}
       source = { courseID: m.course_id, relPath: m.rel_path, path: m.path };
       files.push(record2.deleted ? { target: m.path, remove: true } : { target: m.path, text: p.markdown });
     } else if (record2.kind === "drawing") {
+      files.push(...planClipOriginals(record2, assets));
       const page = decodePage(record2), g = page.geometry;
       if (page.schemaVersion !== 1 || page.coordinateSpace !== coordinateSpace2 || page.materialID !== p.materialID || page.page !== p.page || page.documentRevision !== p.documentRevision || !Number.isInteger(page.page) || page.page < 1 || !g || !(g.width > 0) || !(g.height > 0) || ![0, 90, 180, 270].includes(g.rotation)) throw new Error("Unsupported ink page format");
       const board = db.prepare("SELECT * FROM whiteboards WHERE id=? AND deleted_at IS NULL").get(page.materialID);
@@ -156981,7 +157993,7 @@ ${contextText}
         const binding2 = deps.pdfBindings.check({ courseId: m.course_id, relPath: m.rel_path, documentRevision: page.documentRevision });
         if (binding2.materialID !== page.materialID) throw new Error("Ink belongs to a different material identity");
         const actual = native("pdf.geometry", { path: m.path }).find((value) => value.page === page.page);
-        if (!actual || actual.rotation !== g.rotation || [actual.cropBox.x - g.cropX, actual.cropBox.y - g.cropY, actual.cropBox.width - g.width, actual.cropBox.height - g.height].some((delta) => !Number.isFinite(delta) || Math.abs(delta) > 1e-3)) throw new Error("Ink geometry does not match PDF");
+        if (!actual || actual.rotation !== g.rotation || [actual.cropBox.x - g.cropX, actual.cropBox.y - g.cropY, actual.cropBox.width - g.width, actual.cropBox.height - g.height].some((delta2) => !Number.isFinite(delta2) || Math.abs(delta2) > 1e-3)) throw new Error("Ink geometry does not match PDF");
       }
       source = { courseID, relPath: m.rel_path, path: m.path, geometry: g };
       const objectIDs = /* @__PURE__ */ new Set(), table11 = board ? "whiteboard_local_shapes" : "pdf_drawings", deletedIDs = new Set(page.deletedObjectIDs ?? []);
@@ -156990,13 +158002,20 @@ ${contextText}
         identity2(object2.id);
         if (objectIDs.has(object2.id)) throw new Error("Duplicate ink object identity");
         objectIDs.add(object2.id);
-        const value = transformShape(object2, g, true);
+        const value = transformShape2(object2, g, true);
         if (value.data.image?.assetId) {
           const image = material(value.data.image.assetId);
           if (image.course_id !== courseID) throw new Error("Ink image crosses course boundary");
           value.data.image.relPath = image.rel_path;
           delete value.data.image.assetId;
           delete value.data.image.storage;
+        }
+        if (value.data.clip?.materialID) {
+          const clip2 = db.prepare("SELECT * FROM materials_index WHERE id=?").get(identity2(value.data.clip.materialID));
+          if (clip2) {
+            if (clip2.course_id !== courseID || clip2.kind !== "pdf") throw new Error("Clip source crosses course boundary or is not a PDF");
+            value.data.clip.relPath = clip2.rel_path;
+          } else if (!value.data.clip.documentRevision) throw new Error("Clip source material is unavailable");
         }
         assertDrawingKind(value.kind);
         assertDrawingData(value.data, value.kind, { allowClip: true });
@@ -157027,7 +158046,7 @@ ${contextText}
           rel_path: m.rel_path,
           page: page.page,
           color: h.color,
-          rects_json: JSON.stringify(h.rects.map((r) => transformBox(r, g.rotation, true))),
+          rects_json: JSON.stringify(h.rects.map((r) => transformBox2(r, g.rotation, true))),
           anchor_json: JSON.stringify({ quote: h.quote ?? "", prefix: h.prefix ?? "", suffix: h.suffix ?? "" }),
           comment: h.comment ?? null,
           created_at: h.createdAt ?? now,
@@ -157132,6 +158151,344 @@ ${contextText}
     return { files, source, courseID, apply: () => changes.forEach((change) => change()) };
   }
 
+  // DesktopRuntime/backend/sync/pdf-rewrite.ts
+  async function preparePDFRewrite(record2, records, deps, assets, current, reviewed) {
+    const { db } = deps, p = record2.payload;
+    if (record2.kind !== "material" || p.kind !== "pdf" || record2.deleted) return null;
+    const old = db.prepare("SELECT * FROM materials_index WHERE id=? AND deleted_at IS NULL").get(p.id);
+    if (!old) return null;
+    const binding2 = deps.pdfBindings.check({ courseId: old.course_id, relPath: old.rel_path });
+    if (binding2.documentRevision === p.revision) return null;
+    const steps = validatedLineage(p.pdfLineage, p.revision), chain = revisionChain(steps, binding2.documentRevision, p.revision);
+    if (!chain) throw new Error("PDF replacement has no verified page-edit history; original and ink were preserved");
+    const previousPages = [...current.values()].filter((r) => r.kind === "drawing" && r.payload.materialID === p.id && r.payload.documentRevision === binding2.documentRevision);
+    for (const page of previousPages) {
+      const base = db.prepare("SELECT baseline_json FROM ipad_sync_projection WHERE id=?").get(page.id);
+      const value = canonical2({ kind: page.kind, payload: page.payload, deleted: page.deleted });
+      const explicitlyReviewed = reviewed?.some((r) => r.id === page.id && canonical2({ kind: r.kind, payload: r.payload, deleted: r.deleted }) === value);
+      if (!explicitlyReviewed && (!base || value !== base.baseline_json)) throw new Error("This PDF has offline ink edits; both revisions were preserved for conflict review");
+    }
+    const path = assets.get(p.revision);
+    if (!path || native("fs.sha256", { path }) !== p.revision) throw new Error("Rewritten PDF asset is unavailable");
+    const geometries = native("pdf.geometry", { path });
+    const pages = records.filter((r) => r.kind === "drawing" && r.payload.materialID === p.id && r.payload.documentRevision === p.revision && !r.deleted);
+    if (pages.length !== geometries.length || new Set(pages.map((r) => r.payload.page)).size !== geometries.length || geometries.some((g) => !pages.some((r) => r.payload.page === g.page))) throw new Error("A complete set of rewritten PDF pages is required; old original and ink were preserved");
+    for (const page of pages) {
+      validate(page);
+      const decoded = decodePage(page);
+      if (decoded.documentRevision !== p.revision || decoded.materialID !== p.id) throw new Error("Rewritten ink revision mismatch");
+    }
+    const plan = planImport(record2, { ...deps, permitPDFRewrite: true }, assets);
+    for (const page of pages) for (const file of planClipOriginals(page, assets)) if (!plan.files.some((existing) => existing.target === file.target)) plan.files.push(file);
+    const linked = await prepareLinkedPageNotes(deps, old, plan.source.path, path, chain, geometries, current);
+    plan.files.push(...linked.files);
+    const originalBytes = current.get(record2.id)?.payload.byteCount ?? old.size;
+    return { plan, pages, notes: linked.notes, apply() {
+      db.exec(`CREATE TABLE IF NOT EXISTS pdf_rewrite_archives(material_id TEXT NOT NULL,revision TEXT NOT NULL,drawings_json TEXT NOT NULL,annotations_json TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(material_id,revision));
+      CREATE TABLE IF NOT EXISTS pdf_rewrite_archive_variants(id TEXT PRIMARY KEY,material_id TEXT NOT NULL,revision TEXT NOT NULL,drawings_json TEXT NOT NULL,annotations_json TEXT NOT NULL,created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS pdf_restructure_log(id TEXT PRIMARY KEY,material_id TEXT NOT NULL,from_sha TEXT NOT NULL,to_sha TEXT NOT NULL,recipe_json TEXT NOT NULL,created_at TEXT NOT NULL)`);
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      db.prepare("INSERT OR IGNORE INTO pdf_rewrite_archives(material_id,revision,drawings_json,annotations_json,created_at) VALUES(?,?,?,?,?)").run(p.id, binding2.documentRevision, canonical2(db.prepare("SELECT * FROM pdf_drawings WHERE course_id=? AND rel_path=?").all(old.course_id, old.rel_path)), canonical2(db.prepare("SELECT * FROM annotations WHERE course_id=? AND rel_path=?").all(old.course_id, old.rel_path)), now);
+      pinPdfClipSources(db, old.course_id, old.rel_path, binding2.documentRevision, originalBytes);
+      archivePdfRows(db, p.id, binding2.documentRevision, old.course_id, old.rel_path);
+      db.prepare("DELETE FROM pdf_drawings WHERE course_id=? AND rel_path=?").run(old.course_id, old.rel_path);
+      db.prepare("DELETE FROM annotations WHERE course_id=? AND rel_path=?").run(old.course_id, old.rel_path);
+      db.prepare("UPDATE pdf_document_bindings SET bound_sha=?,evidence='sync',legacy_unverified=0 WHERE material_id=?").run(p.revision, p.id);
+      plan.apply();
+      linked.apply();
+      for (const step of steps) db.prepare("INSERT OR IGNORE INTO pdf_restructure_log(id,material_id,from_sha,to_sha,recipe_json,created_at) VALUES(?,?,?,?,?,?)").run(`${p.id}:${step.from}:${step.to}`, p.id, step.from, step.to, canonical2(step.pages), now);
+      for (const page of pages) planImport(page, deps, assets).apply();
+      const remapPage = (original) => {
+        let page = original;
+        for (const step of chain) {
+          const found = step.pages.findIndex((p2) => p2.source === page);
+          page = found < 0 ? Math.min(page, step.pages.length) : found + 1;
+        }
+        return page;
+      };
+      const view = db.prepare("SELECT page FROM pdf_view_state WHERE course_id=? AND rel_path=?").get(old.course_id, old.rel_path);
+      if (view) db.prepare("UPDATE pdf_view_state SET page=?,updated_at=? WHERE course_id=? AND rel_path=?").run(remapPage(view.page), now, old.course_id, old.rel_path);
+      for (const row of db.prepare("SELECT a.id,a.payload FROM recording_anchors a JOIN recording_sessions s ON s.id=a.session_id WHERE s.course_id=?").all(old.course_id)) {
+        const anchor = JSON.parse(row.payload);
+        if (anchor.relPath !== old.rel_path || !Number.isInteger(anchor.page) || anchor.page < 1) continue;
+        const page = remapPage(anchor.page);
+        if (page !== anchor.page) db.prepare("UPDATE recording_anchors SET payload=? WHERE id=?").run(JSON.stringify({ ...anchor, page }), row.id);
+      }
+    } };
+  }
+
+  // DesktopRuntime/backend/sync/scope.ts
+  var PERSONAL_CONTENT_SCOPE = "personal-content-v1";
+  function inSyncScope(record2, scope) {
+    if (scope !== PERSONAL_CONTENT_SCOPE) return true;
+    return ["course", "material", "note", "drawing", "annotation"].includes(record2.kind) || record2.kind === "artifact" && record2.payload?.recordType === "desktop-course-group";
+  }
+
+  // DesktopRuntime/backend/sync/index.ts
+  init_native();
+
+  // DesktopRuntime/backend/sync/export.ts
+  init_native();
+  function snapshotProjection(deps, scope) {
+    const limited = scope === PERSONAL_CONTENT_SCOPE;
+    const db = deps.db, records = [], assets = [], sources2 = /* @__PURE__ */ new Map();
+    const mapped = new Map(db.prepare("SELECT * FROM ipad_sync_projection").all().map((row) => [row.id, { ...row, payload: JSON.parse(row.payload_json), source: JSON.parse(row.source_json) }]));
+    const add2 = (id2, kind, payload, source, deleted = false) => {
+      const old = mapped.get(id2), merged = { ...old?.payload ?? {}, ...payload };
+      records.push({ id: id2, kind, payload: merged, deleted, formatVersion: 1 });
+      sources2.set(id2, source);
+      return merged;
+    };
+    const asset = (materialID, path) => {
+      const sha256 = native("fs.sha256", { path }), byteCount = statSync(path).size, originalName = basename(path);
+      const extension2 = extname(path).toLowerCase(), contentType = extension2 === ".pdf" ? "application/pdf" : extension2 === ".wav" ? "audio/wav" : extension2 === ".png" ? "image/png" : extension2 === ".jpg" || extension2 === ".jpeg" ? "image/jpeg" : "application/octet-stream";
+      assets.push({ materialID, sha256, path, originalName, contentType, byteCount });
+      return { sha256, byteCount };
+    };
+    const clipOriginal = (clip2, courseID) => {
+      const item = byPath.get(`${courseID}:${clip2.relPath}`);
+      if (item) clip2.materialID = item.id;
+      if (!clip2.documentRevision) {
+        if (!item) throw new Error("Clip source PDF is unavailable");
+        clip2.documentRevision = deps.pdfBindings.check({ courseId: courseID, relPath: item.rel_path }).documentRevision;
+      }
+      const path = join(env2().userDataPath, "PDFOriginals", `${clip2.documentRevision}.pdf`);
+      if (!existsSync(path)) throw new Error("Clipped PDF original was not preserved");
+      const info = asset(`clip:${clip2.documentRevision}`, path);
+      if (info.sha256 !== clip2.documentRevision) throw new Error("Clipped PDF original integrity failed");
+      clip2.documentByteCount = info.byteCount;
+    };
+    const allMaterials = db.prepare("SELECT * FROM materials_index").all(), byPath = new Map(allMaterials.map((row) => [`${row.course_id}:${row.rel_path}`, row]));
+    for (const group of db.prepare("SELECT * FROM course_groups").all()) add2(`artifact:course-group:${group.id}`, "artifact", { recordType: "desktop-course-group", id: group.id, name: group.name, sortOrder: group.sort_order, createdAt: group.created_at }, {}, !!group.deleted_at);
+    for (const course of db.prepare("SELECT * FROM courses ORDER BY created_at,id").all()) {
+      add2(`course:${course.id}`, "course", {
+        id: course.id,
+        name: course.name,
+        color: course.color,
+        desktop: { archived: !!course.archived, sortOrder: course.sort_order, groupID: course.group_id, workspaceKind: course.workspace_kind, createdAt: course.created_at }
+      }, { folder: course.folder_path }, !!course.deleted_at);
+      if (course.deleted_at) continue;
+      if (!existsSync(course.folder_path)) throw new Error(`Sync course folder is unavailable: ${course.name}`);
+      for (const item of allMaterials.filter((row) => row.course_id === course.id)) {
+        const path = resolveInsideReal(course.folder_path, item.rel_path);
+        if (item.deleted_at || !existsSync(path)) continue;
+        const mid = item.id, fileName = basename(item.rel_path), extension2 = extname(fileName).toLowerCase();
+        const kind = extension2 === ".pdf" ? "pdf" : [".md", ".markdown"].includes(extension2) ? "note" : [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"].includes(extension2) ? "image" : "file";
+        const binding2 = kind === "pdf" ? deps.pdfBindings.check({ courseId: course.id, relPath: item.rel_path }) : void 0;
+        if (binding2 && binding2.materialID !== mid) throw new Error("PDF material identity changed during sync projection; retry after refreshing the index");
+        const revision = asset(mid, path), source = { courseID: course.id, relPath: item.rel_path, path, hash: revision.sha256 };
+        if (binding2 && binding2.documentRevision !== revision.sha256) throw new Error("PDF changed while preparing sync; ink and original revision were preserved");
+        const migration = db.prepare("SELECT 1 FROM sqlite_master WHERE name='pdf_note_migrations'").get() ? db.prepare("SELECT * FROM pdf_note_migrations WHERE target_material_id=?").get(mid) : void 0;
+        const lineage = kind === "pdf" && db.prepare("SELECT 1 FROM sqlite_master WHERE name='pdf_restructure_log'").get() ? db.prepare("SELECT from_sha,to_sha,recipe_json FROM pdf_restructure_log WHERE material_id=? ORDER BY created_at,id").all(mid).map((row) => ({ from: row.from_sha, to: row.to_sha, pages: JSON.parse(row.recipe_json) })) : [];
+        add2(`material:${mid}`, "material", {
+          id: mid,
+          courseID: course.id,
+          title: fileName.slice(0, fileName.length - extension2.length),
+          fileName,
+          revision: revision.sha256,
+          kind,
+          byteCount: revision.byteCount,
+          createdAt: item.created_at,
+          ...migration ? { noteMigration: { version: 1, sourceBoardID: migration.source_board_id, sourceRevision: migration.source_revision } } : {},
+          ...lineage.length ? { pdfLineage: lineage } : {},
+          desktop: { relPath: item.rel_path }
+        }, source);
+        if (kind === "note") add2(`note:${mid}`, "note", { materialID: mid, markdown: readFileSync(path, "utf8") }, source);
+        if (kind !== "pdf") continue;
+        const drawings = db.prepare("SELECT * FROM pdf_drawings WHERE course_id=? AND rel_path=?").all(course.id, item.rel_path);
+        const annotations = db.prepare("SELECT * FROM annotations WHERE course_id=? AND rel_path=?").all(course.id, item.rel_path);
+        const prefix2 = `drawing:${mid}:${revision.sha256}:`;
+        const pages = new Set([...drawings, ...annotations].map((row) => row.page));
+        for (const id2 of mapped.keys()) if (id2.startsWith(prefix2)) pages.add(Number(id2.slice(prefix2.length)));
+        if (!pages.size && !lineage.length) continue;
+        const geometries = native("pdf.geometry", { path });
+        if (lineage.length) for (const g of geometries) pages.add(g.page);
+        for (const page of [...pages].sort((a, b) => a - b)) {
+          const g = geometries.find((geometry2) => geometry2.page === page);
+          if (!g) throw new Error(`Sync ink page ${page} is missing from PDF`);
+          const geometry = { cropX: g.cropBox.x, cropY: g.cropBox.y, width: g.cropBox.width, height: g.cropBox.height, rotation: g.rotation };
+          const prior = mapped.get(prefix2 + page), previous = prior ? decodePage(prior) : void 0;
+          const objects = drawings.filter((row) => row.page === page && !row.deleted_at).map((row) => {
+            const result = transformShape2({ id: row.id, kind: row.kind, data: JSON.parse(row.data_json), style: JSON.parse(row.style_json), createdAt: row.created_at, updatedAt: row.updated_at }, geometry);
+            if (result.data.image) {
+              const image = byPath.get(`${course.id}:${result.data.image.relPath}`);
+              if (!image) throw new Error("Sync ink image source is missing");
+              result.data.image.assetId = image.id;
+            }
+            if (result.data.clip) clipOriginal(result.data.clip, course.id);
+            return result;
+          });
+          const highlights = annotations.filter((row) => row.page === page && !row.deleted_at).map((row) => ({ id: row.id, ...JSON.parse(row.anchor_json), rects: JSON.parse(row.rects_json).map((rect) => transformBox2(rect, g.rotation)), color: row.color, comment: row.comment, createdAt: row.created_at, updatedAt: row.updated_at }));
+          const tombstones = (collection, deletedKey, rows) => [.../* @__PURE__ */ new Set([...previous?.[deletedKey] ?? [], ...rows.filter((row) => row.page === page && row.deleted_at).map((row) => row.id), ...(previous?.[collection] ?? []).filter((old) => !(collection === "objects" ? objects : highlights).some((current) => current.id === old.id)).map((old) => old.id)])].sort();
+          const portable = {
+            schemaVersion: 1,
+            materialID: mid,
+            documentRevision: revision.sha256,
+            page,
+            coordinateSpace: coordinateSpace2,
+            geometry,
+            objects,
+            highlights,
+            deletedObjectIDs: tombstones("objects", "deletedObjectIDs", drawings),
+            deletedHighlightIDs: tombstones("highlights", "deletedHighlightIDs", annotations)
+          };
+          add2(prefix2 + page, "drawing", encodePage(portable), { ...source, geometry });
+        }
+      }
+    }
+    if (!limited) for (const row of db.prepare("SELECT * FROM board_tasks").all()) add2(`task:${row.id}`, "task", {
+      id: row.id,
+      courseID: row.course_id,
+      title: row.title,
+      completed: row.status === "done",
+      due: row.due_at ?? null,
+      desktop: { notes: row.notes, status: row.status, kind: row.kind, color: row.color, startAt: row.start_at, dueAt: row.due_at, allDay: !!row.all_day, sortOrder: row.sort_order, createdAt: row.created_at }
+    }, {}, !!row.deleted_at);
+    for (const board of db.prepare("SELECT * FROM whiteboards").all()) {
+      const mid = board.id, revision = mapped.get(`material:${mid}`)?.payload.revision ?? `whiteboard-${mid}`;
+      add2(`material:${mid}`, "material", {
+        id: mid,
+        courseID: board.course_id,
+        title: board.title,
+        fileName: "canvas.json",
+        kind: "whiteboard",
+        revision,
+        createdAt: board.created_at,
+        desktop: { background: board.background, surface: board.surface, pageCount: board.page_count, sortOrder: board.sort_order }
+      }, { courseID: board.course_id, whiteboard: true }, !!board.deleted_at);
+      if (board.deleted_at) continue;
+      const rows = db.prepare("SELECT * FROM whiteboard_local_shapes WHERE board_id=?").all(mid);
+      const pages = new Set(rows.map((r) => r.page)), prefix2 = `drawing:${mid}:${revision}:`;
+      for (const key4 of mapped.keys()) if (key4.startsWith(prefix2)) pages.add(Number(key4.slice(prefix2.length)));
+      for (const page of pages) {
+        const prior = mapped.get(prefix2 + page), previous = prior ? decodePage(prior) : void 0;
+        const geometry = previous?.geometry ?? { cropX: 0, cropY: 0, width: 595.28, height: 841.89, rotation: 0 };
+        const objects = rows.filter((r) => r.page === page && !r.deleted_at).map((r) => {
+          const object2 = transformShape2({ id: r.id, kind: r.kind, data: JSON.parse(r.data_json), style: JSON.parse(r.style_json), createdAt: r.created_at, updatedAt: r.updated_at }, geometry);
+          if (object2.data.image) {
+            const image = byPath.get(`${board.course_id}:${object2.data.image.relPath}`);
+            if (!image) throw new Error("Whiteboard image is missing");
+            object2.data.image.assetId = image.id;
+          }
+          if (object2.data.clip) clipOriginal(object2.data.clip, board.course_id);
+          return object2;
+        });
+        const active = new Set(objects.map((o) => o.id)), removed = [.../* @__PURE__ */ new Set([...previous?.deletedObjectIDs ?? [], ...rows.filter((r) => r.page === page && r.deleted_at).map((r) => r.id), ...(previous?.objects ?? []).filter((o) => !active.has(o.id)).map((o) => o.id)])].sort();
+        add2(prefix2 + page, "drawing", encodePage({ schemaVersion: 1, materialID: mid, documentRevision: revision, page, coordinateSpace: coordinateSpace2, geometry, objects, highlights: [], deletedObjectIDs: removed, deletedHighlightIDs: [] }), { courseID: board.course_id, whiteboard: true, geometry });
+      }
+    }
+    if (!limited) for (const row of db.prepare("SELECT * FROM recording_sessions").all()) {
+      const session = JSON.parse(row.payload), id2 = session.id, c = db.prepare("SELECT * FROM courses WHERE id=?").get(session.courseId);
+      if (!c || c.deleted_at || ["recording", "paused", "processing"].includes(session.status)) continue;
+      const path = resolveInsideReal(c.folder_path, session.audioRelPath), revision = asset(`recording:${id2}`, path);
+      const prior = mapped.get(`recording:${id2}`)?.payload;
+      const segments = db.prepare("SELECT * FROM recording_segments WHERE session_id=? ORDER BY start_sample,id").all(id2).map((s) => {
+        const hash3 = digest({ recording: id2, start: s.start_sample, end: s.end_sample, text: s.text });
+        return { id: prior?.segments?.find((p) => p.time === s.start_sample / 16e3 && p.text === s.text)?.id ?? `${hash3.slice(0, 8)}-${hash3.slice(8, 12)}-4${hash3.slice(13, 16)}-a${hash3.slice(17, 20)}-${hash3.slice(20, 32)}`, time: s.start_sample / 16e3, text: s.text, endSample: s.end_sample };
+      });
+      const anchors = db.prepare("SELECT * FROM recording_anchors WHERE session_id=? ORDER BY rowid").all(id2).map((r) => JSON.parse(r.payload)).map((a) => ({ id: a.id, time: a.sample / 16e3, materialID: a.relPath ? byPath.get(`${session.courseId}:${a.relPath}`)?.id ?? null : null, page: a.page, desktop: { label: a.label, relPath: a.relPath } }));
+      add2(`recording:${id2}`, "recording", { id: id2, courseID: session.courseId, title: session.title, fileName: `Recordings/${id2}.wav`, createdAt: session.createdAt, duration: session.samples / 16e3, state: session.status === "complete" ? "completed" : "interrupted", segments, anchors, assetRevision: revision.sha256, byteCount: revision.byteCount, desktop: { session } }, { courseID: session.courseId, path, hash: revision.sha256 });
+    }
+    if (!limited) for (const row of db.prepare("SELECT * FROM favorites").all()) add2(`favorite:${row.id}`, "favorite", { id: row.id, courseID: row.course_id, label: row.label, descriptor: JSON.parse(row.descriptor_json), sortOrder: row.sort_order, createdAt: row.created_at }, {}, !!row.deleted_at);
+    if (!limited) for (const s of db.prepare("SELECT * FROM agent_sessions").all()) {
+      add2(`chat:${s.id}`, "chat", { recordType: "desktop-chat-session", id: s.id, courseID: s.course_id, title: s.title, provider: s.provider, model: s.model, surface: s.surface ?? "app", reasoningEffort: s.reasoning_effort ?? null, createdAt: s.created_at, lastUsedAt: s.last_used_at }, {}, !!s.deleted_at);
+      for (const m of db.prepare("SELECT * FROM messages WHERE session_id=?").all(s.id)) {
+        const blocks = db.prepare("SELECT * FROM message_blocks WHERE message_id=? ORDER BY ord").all(m.id).map((b) => ({ id: b.id, order: b.ord, kind: b.kind, payload: JSON.parse(b.payload_json), createdAt: b.created_at, updatedAt: b.updated_at, deletedAt: b.deleted_at }));
+        add2(`chat:message:${m.id}`, "chat", { recordType: "desktop-chat-message", id: m.id, courseID: m.course_id, sessionID: m.session_id, role: m.role, turnSequence: m.turn_seq, createdAt: m.created_at, updatedAt: m.updated_at, blocks }, {}, !!m.deleted_at);
+      }
+    }
+    const emitted = new Set(records.map((record2) => record2.id));
+    for (const old of mapped.values()) if (!emitted.has(old.id) && inSyncScope(old, scope)) {
+      const disappeared = ["material", "note"].includes(old.kind) && old.source?.path && !existsSync(old.source.path);
+      records.push({ id: old.id, kind: old.kind, payload: old.payload, deleted: disappeared || !!old.deleted, formatVersion: 1 });
+      sources2.set(old.id, old.source);
+    }
+    return { records, assets, sources: sources2 };
+  }
+
+  // DesktopRuntime/backend/sync/journal.ts
+  init_native();
+  function createFileJournal(db) {
+    const root = join(env2().userDataPath, "SyncRecovery");
+    mkdirSync(root, { recursive: true });
+    const restore = (entries) => {
+      for (const item of entries) {
+        if (item.existed) copyFileSync(item.backup, item.target);
+        else rmSync(item.target, { force: true });
+      }
+    };
+    for (const entry2 of readdirSync(root, { withFileTypes: true })) {
+      if (!entry2.isDirectory()) continue;
+      const path = join(root, entry2.name, "intent.json");
+      if (!existsSync(path)) continue;
+      const intent = JSON.parse(readFileSync(path, "utf8"));
+      if (!db.prepare("SELECT id FROM ipad_sync_commits WHERE id=?").get(intent.id)) restore(intent.entries);
+      rmSync(path);
+    }
+    return (changes, commit) => {
+      const id2 = randomUUID(), directory2 = join(root, id2), intentPath = join(directory2, "intent.json");
+      mkdirSync(directory2, { recursive: true });
+      const entries = changes.map((change, index) => {
+        const existed = existsSync(change.target), backup = join(directory2, `${index}.original`);
+        if (existed) {
+          copyFileSync(change.target, backup, 1);
+          const mode = statSync(backup).mode;
+          chmodSync(backup, 384);
+          try {
+            const fd = openSync(backup, "r+");
+            try {
+              fsyncSync(fd);
+            } finally {
+              closeSync(fd);
+            }
+          } finally {
+            chmodSync(backup, mode);
+          }
+        }
+        return { ...change, existed, backup };
+      });
+      writeFileAtomic(intentPath, JSON.stringify({ id: id2, entries }));
+      let committed = false;
+      try {
+        db.transaction(() => {
+          for (const item of entries) {
+            mkdirSync(dirname(item.target), { recursive: true });
+            if (item.remove) {
+              rmSync(item.target, { force: true });
+              continue;
+            }
+            if (item.source) {
+              const temporary = `${item.target}.${id2}.sync`;
+              try {
+                copyFileSync(item.source, temporary, 1);
+                chmodSync(temporary, 384);
+                const fd = openSync(temporary, "r+");
+                try {
+                  fsyncSync(fd);
+                } finally {
+                  closeSync(fd);
+                }
+                renameSync(temporary, item.target);
+              } finally {
+                rmSync(temporary, { force: true });
+              }
+            } else writeFileAtomic(item.target, item.text ?? "");
+          }
+          commit();
+          db.prepare("INSERT INTO ipad_sync_commits(id) VALUES(?)").run(id2);
+        })();
+        committed = true;
+        rmSync(intentPath);
+      } catch (error2) {
+        if (!committed) {
+          restore(entries);
+          rmSync(intentPath);
+        }
+        throw error2;
+      }
+    };
+  }
+
   // DesktopRuntime/backend/sync/learning.ts
   init_native();
   var directory = ".bandal/learning";
@@ -157208,6 +158565,7 @@ ${contextText}
     if (!record2 || record2.deleted) return [];
     const p = record2.payload, refs = [], mapped = db.prepare("SELECT source_json FROM ipad_sync_projection WHERE id=?").get(record2.id);
     const source = mapped ? JSON.parse(mapped.source_json) : {};
+    for (const ref of clippedOriginals(record2)) refs.push({ sha256: ref.sha256, path: join(env2().userDataPath, "PDFOriginals", `${ref.sha256}.pdf`) });
     if (record2.kind === "material" && p.kind !== "whiteboard") {
       const m = db.prepare("SELECT m.*,c.folder_path FROM materials_index m JOIN courses c ON c.id=m.course_id WHERE m.id=?").get(p.id);
       refs.push({ sha256: p.revision, path: m ? resolveInsideReal(m.folder_path, m.rel_path) : source.path });
@@ -157281,18 +158639,20 @@ ${contextText}
     CREATE TABLE IF NOT EXISTS ipad_sync_conflicts(id TEXT PRIMARY KEY,record_id TEXT NOT NULL,reason TEXT NOT NULL,local_json TEXT,remote_json TEXT NOT NULL,created_at TEXT NOT NULL,resolved_at TEXT);
     CREATE TABLE IF NOT EXISTS ipad_sync_commits(id TEXT PRIMARY KEY);`);
     if (!db.prepare("PRAGMA table_info(ipad_sync_conflicts)").all().some((c) => c.name === "assets_json")) db.exec("ALTER TABLE ipad_sync_conflicts ADD COLUMN assets_json TEXT NOT NULL DEFAULT '[]'");
+    if (!db.prepare("PRAGMA table_info(ipad_sync_conflicts)").all().some((c) => c.name === "related_json")) db.exec("ALTER TABLE ipad_sync_conflicts ADD COLUMN related_json TEXT NOT NULL DEFAULT '{}'");
     const journal = createFileJournal(db);
-    const snapshot = async (learning) => {
-      const base = snapshotProjection(deps), extra = await learning.snapshot();
+    const snapshot = async (learning, scope) => {
+      const base = snapshotProjection(deps, scope), extra = scope === PERSONAL_CONTENT_SCOPE ? { records: [], assets: [], sources: /* @__PURE__ */ new Map() } : await learning.snapshot();
       const ids = new Set(extra.records.map((r) => r.id));
       return { records: [...base.records.filter((r) => !ids.has(r.id)), ...extra.records], assets: [...base.assets, ...extra.assets], sources: new Map([...base.sources, ...extra.sources]) };
     };
     const save = (record2, source, accepted = record2) => db.prepare(`INSERT INTO ipad_sync_projection(id,kind,payload_json,deleted,source_json,baseline_json) VALUES(?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,payload_json=excluded.payload_json,deleted=excluded.deleted,source_json=excluded.source_json,baseline_json=excluded.baseline_json`).run(record2.id, record2.kind, canonical2(record2.payload), record2.deleted ? 1 : 0, canonical2(source), comparable(accepted));
-    const conflict = (local, remote, reason, provided = /* @__PURE__ */ new Map()) => {
-      const id2 = digest({ local: local ?? null, remote, reason });
-      const assets = [...preserveConflictAssets(db, local, provided), ...preserveConflictAssets(db, remote, provided)];
+    const conflict = (local, remote, reason, provided = /* @__PURE__ */ new Map(), related = {}) => {
+      const id2 = digest({ local: local ?? null, remote, reason, ...Object.keys(related).length ? { related } : {} });
+      const assets = [...preserveConflictAssets(db, local, provided), ...preserveConflictAssets(db, remote, provided), ...[...related.local ?? [], ...related.remote ?? []].flatMap((record2) => preserveConflictAssets(db, record2, provided))];
       db.prepare("INSERT INTO ipad_sync_conflicts(id,record_id,reason,local_json,remote_json,created_at,assets_json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET assets_json=excluded.assets_json").run(id2, remote.id, reason, local ? canonical2(local) : null, canonical2(remote), (/* @__PURE__ */ new Date()).toISOString(), canonical2(assets));
+      db.prepare("UPDATE ipad_sync_conflicts SET related_json=? WHERE id=?").run(canonical2(related), id2);
       return { id: id2, recordID: remote.id, reason };
     };
     const refresh = async () => {
@@ -157314,7 +158674,7 @@ ${contextText}
     const preflightPause = (request2) => {
       if (!Array.isArray(request2?.records) || !Array.isArray(request2.assets ?? [])) throw new Error("Invalid sync import");
       const seen = /* @__PURE__ */ new Set();
-      for (const record2 of request2.records) {
+      for (const record2 of request2.records.filter((record3) => inSyncScope(record3, request2.scope))) {
         validate(record2);
         if (seen.has(record2.id)) throw new Error("Duplicate sync record");
         seen.add(record2.id);
@@ -157322,10 +158682,11 @@ ${contextText}
         if (prior && prior.kind !== record2.kind) throw new Error("Sync record kind changed");
       }
       for (const item of request2.conflicts ?? []) {
+        if (!inSyncScope(item.remote, request2.scope)) continue;
         validate(item.local);
         validate(item.remote);
       }
-      return request2.records;
+      return request2.records.filter((record2) => inSyncScope(record2, request2.scope));
     };
     const exclusive = (callback, affectedProjects = () => []) => async (request2) => {
       if (running2) throw new Error("A sync projection operation is already running");
@@ -157367,43 +158728,53 @@ ${contextText}
         running2 = false;
       }
     };
-    handlePrivate2("nativeSync:export", exclusive(async (_request, learning) => {
+    handlePrivate2("nativeSync:export", exclusive(async (request2, learning) => {
       await refresh();
-      const projected = await snapshot(learning);
+      const projected = await snapshot(learning, request2?.scope);
       for (const record2 of projected.records) validate(record2);
       const blocked = new Set(db.prepare("SELECT DISTINCT record_id FROM ipad_sync_conflicts WHERE resolved_at IS NULL").all().map((row) => row.record_id));
       const records = projected.records.filter((record2) => !blocked.has(record2.id));
       db.transaction(() => {
         for (const record2 of records) save(record2, projected.sources.get(record2.id) ?? {});
       })();
-      return { records, assets: projected.assets };
+      const clipHashes = new Set(records.flatMap((record2) => clippedOriginals(record2).map((ref) => ref.sha256)));
+      const includedMaterials = new Set(records.filter((record2) => record2.kind === "material").map((record2) => record2.payload.id));
+      return { records, assets: projected.assets.filter((asset) => includedMaterials.has(asset.materialID) || asset.materialID.startsWith("clip:") && clipHashes.has(asset.sha256) || records.some((record2) => record2.kind === "recording" && asset.materialID === `recording:${record2.payload.id}`) || request2?.scope !== PERSONAL_CONTENT_SCOPE) };
     }));
     const importRecords = async (request2, force, learning) => {
       if (!Array.isArray(request2.records) || !Array.isArray(request2.assets ?? [])) throw new Error("Invalid sync import");
       const seen = /* @__PURE__ */ new Set();
       const assets = new Map((request2.assets ?? []).map((a) => [a.sha256, a.path]));
-      for (const record2 of request2.records) {
+      for (const record2 of request2.records.filter((record3) => inSyncScope(record3, request2.scope))) {
         validate(record2);
         if (seen.has(record2.id)) throw new Error("Duplicate sync record");
         seen.add(record2.id);
         const prior = db.prepare("SELECT kind FROM ipad_sync_projection WHERE id=?").get(record2.id);
         if (prior && prior.kind !== record2.kind) throw new Error("Sync record kind changed");
       }
+      await refresh();
+      const current = new Map((await snapshot(learning, request2.scope)).records.map((record2) => [record2.id, record2]));
+      const relatedPages = (local, remote) => remote.kind === "material" && remote.payload.kind === "pdf" ? {
+        local: [...current.values()].filter((r) => r.kind === "drawing" && r.payload.materialID === remote.payload.id && r.payload.documentRevision === local?.payload.revision),
+        remote: request2.records.filter((r) => r.kind === "drawing" && r.payload.materialID === remote.payload.id && r.payload.documentRevision === remote.payload.revision)
+      } : {};
       for (const item of request2.conflicts ?? []) {
+        if (!inSyncScope(item.remote, request2.scope)) continue;
         validate(item.local);
         validate(item.remote);
-        conflict(item.local, item.remote, "Concurrent edits from another device", assets);
+        conflict(item.local, item.remote, "Concurrent edits from another device", assets, relatedPages(item.local, item.remote));
       }
-      await refresh();
-      const current = new Map((await snapshot(learning)).records.map((record2) => [record2.id, record2]));
       const order = { course: 0, material: 1, note: 2, drawing: 3, task: 4, recording: 5 }, priority = (r) => r.kind === "artifact" && r.payload.recordType === "desktop-course-group" ? -1 : r.payload.recordType === "desktop-chat-session" ? 6 : r.payload.recordType === "desktop-chat-message" ? 7 : order[r.kind] ?? 9;
-      const conflicts = [], changed = /* @__PURE__ */ new Set();
+      const conflicts = [], changed = /* @__PURE__ */ new Set(), handledPages = /* @__PURE__ */ new Set();
       let applied = 0;
-      for (let incoming of [...request2.records].sort((a, b) => priority(a) - priority(b))) {
+      for (let incoming of request2.records.filter((record2) => inSyncScope(record2, request2.scope)).sort((a, b) => priority(a) - priority(b))) {
+        if (handledPages.has(incoming.id)) continue;
         const accepted = incoming;
         const local = current.get(incoming.id), mapped = db.prepare("SELECT * FROM ipad_sync_projection WHERE id=?").get(incoming.id);
-        if (force && local && (request2.reviewedVariants ?? []).every((reviewed) => comparable(reviewed) !== comparable(local)))
-          conflicts.push(conflict(local, incoming, "Local content changed while reviewing the earlier conflict", assets));
+        if (force && local && (request2.reviewedVariants ?? []).every((reviewed) => comparable(reviewed) !== comparable(local))) {
+          conflicts.push(conflict(local, incoming, "Local content changed while reviewing the earlier conflict", assets, relatedPages(local, incoming)));
+          continue;
+        }
         if (local && comparable(local) === comparable(incoming)) {
           save(incoming, mapped ? JSON.parse(mapped.source_json) : {});
           applied++;
@@ -157413,7 +158784,7 @@ ${contextText}
           const base = mapped ? { id: incoming.id, formatVersion: 1, ...JSON.parse(mapped.baseline_json) } : void 0;
           const merged = incoming.kind === "drawing" && base ? mergeInk(base, local, incoming) : void 0;
           if (!merged) {
-            conflicts.push(conflict(local, incoming, "Local content changed after sync export", assets));
+            conflicts.push(conflict(local, incoming, "Local content changed after sync export", assets, relatedPages(local, incoming)));
             continue;
           }
           incoming = merged;
@@ -157426,6 +158797,34 @@ ${contextText}
             applied++;
             continue;
           }
+          const rewrite = await preparePDFRewrite(incoming, request2.records, deps, assets, current, force ? request2.reviewedVariants : void 0);
+          if (rewrite) {
+            journal(rewrite.plan.files, () => {
+              rewrite.apply();
+              save(incoming, rewrite.plan.source, accepted);
+              for (const page of rewrite.pages) {
+                const plan2 = planImport(page, deps, assets);
+                save(page, plan2.source);
+              }
+            });
+            for (const note of rewrite.notes) current.set(note.id, note);
+            for (const page of rewrite.pages) handledPages.add(page.id);
+            if (rewrite.plan.courseID) changed.add(rewrite.plan.courseID);
+            applied += 1 + rewrite.pages.length;
+            continue;
+          }
+          if (incoming.kind === "drawing") {
+            const m = db.prepare("SELECT course_id,rel_path FROM materials_index WHERE id=? AND deleted_at IS NULL").get(incoming.payload.materialID);
+            const lineage = request2.records.find((r) => r.kind === "material" && r.payload.id === incoming.payload.materialID)?.payload.pdfLineage;
+            if (m && lineage) {
+              const bound = deps.pdfBindings.check({ courseId: m.course_id, relPath: m.rel_path });
+              if (bound.documentRevision !== incoming.payload.documentRevision && revisionChain(validatedLineage(lineage, bound.documentRevision), incoming.payload.documentRevision, bound.documentRevision)) {
+                save(incoming, mapped ? JSON.parse(mapped.source_json) : {});
+                applied++;
+                continue;
+              }
+            }
+          }
           const plan = planImport(incoming, deps, assets);
           journal(plan.files, () => {
             plan.apply();
@@ -157434,7 +158833,7 @@ ${contextText}
           if (plan.courseID) changed.add(plan.courseID);
           applied++;
         } catch (error2) {
-          conflicts.push(conflict(local, incoming, String(error2 instanceof Error ? error2.message : error2), assets));
+          conflicts.push(conflict(local, incoming, String(error2 instanceof Error ? error2.message : error2), assets, relatedPages(local, incoming)));
         }
       }
       for (const courseID of changed) {
@@ -157449,23 +158848,40 @@ ${contextText}
       return { applied, changedCourseIDs: [...changed], conflicts };
     };
     handlePrivate2("nativeSync:import", exclusive((request2, learning) => importRecords(request2, false, learning), preflightPause));
-    handlePrivate2("nativeSync:conflicts", () => db.prepare("SELECT * FROM ipad_sync_conflicts WHERE resolved_at IS NULL ORDER BY created_at DESC").all().map((r) => {
+    handlePrivate2("nativeSync:conflicts", (request2) => [...pendingPdfConflicts(db), ...db.prepare("SELECT * FROM ipad_sync_conflicts WHERE resolved_at IS NULL ORDER BY created_at DESC").all().filter((r) => inSyncScope(JSON.parse(r.remote_json), request2?.scope)).map((r) => {
       const local = r.local_json ? JSON.parse(r.local_json) : null, remote = JSON.parse(r.remote_json), p = (local ?? remote).payload, mapped = db.prepare("SELECT source_json FROM ipad_sync_projection WHERE id=?").get(r.record_id), source = mapped ? JSON.parse(mapped.source_json) : {};
       const material = p.materialID ? db.prepare("SELECT course_id,rel_path FROM materials_index WHERE id=?").get(p.materialID) : void 0;
       const board = p.materialID && !material ? db.prepare("SELECT course_id,title FROM whiteboards WHERE id=?").get(p.materialID) : void 0;
       const courseID = p.courseID ?? source.courseID ?? material?.course_id ?? board?.course_id, course = courseID ? db.prepare("SELECT name FROM courses WHERE id=?").get(courseID) : void 0;
       const title2 = p.title ?? p.name ?? material?.rel_path ?? board?.title ?? source.relPath ?? p.rootRelPath ?? r.record_id, label = course ? `${course.name} \xB7 ${title2}` : title2;
-      return { id: r.id, recordID: r.record_id, label, reason: r.reason, local, remote, assets: JSON.parse(r.assets_json), createdAt: r.created_at };
-    }));
+      if (request2?.summary) {
+        const related = JSON.parse(r.related_json);
+        return { id: r.id, recordID: r.record_id, label, reason: r.reason, local: !!local, remote: !!remote, createdAt: r.created_at, variants: { local: conflictVariantSummary(local, related.local), remote: conflictVariantSummary(remote, related.remote) } };
+      }
+      return { id: r.id, recordID: r.record_id, label, reason: r.reason, local, remote, assets: JSON.parse(r.assets_json), related: JSON.parse(r.related_json), createdAt: r.created_at };
+    })]);
     handlePrivate2("nativeSync:restoreConflict", exclusive(async (request2, learning) => {
+      if (typeof request2.conflictID === "string" && request2.conflictID.startsWith("pending-ink:")) {
+        const result2 = await recoverPendingPdfMutation(deps, env2().userDataPath, request2.conflictID.slice("pending-ink:".length), request2.variant);
+        if (result2.recovered) emit("materials:changed", { courseId: result2.recovered.courseID });
+        return result2;
+      }
       const item = db.prepare("SELECT * FROM ipad_sync_conflicts WHERE id=? AND resolved_at IS NULL").get(request2.conflictID);
       if (!item || !["local", "remote"].includes(request2.variant)) throw new Error("Conflict or selected variant is unavailable");
       const value = request2.variant === "local" ? item.local_json : item.remote_json;
       if (!value) throw new Error("Selected conflict version is unavailable");
-      const reviewedVariants = [item.local_json, item.remote_json].filter(Boolean).map((value2) => JSON.parse(value2));
-      const result = await importRecords({ records: [JSON.parse(value)], assets: [...request2.assets ?? [], ...JSON.parse(item.assets_json)], reviewedVariants }, true, learning);
-      if (result.applied === 1) db.prepare("UPDATE ipad_sync_conflicts SET resolved_at=? WHERE id=?").run((/* @__PURE__ */ new Date()).toISOString(), item.id);
-      return result;
+      const related = JSON.parse(item.related_json), selected = JSON.parse(value);
+      const records = [selected, ...related[request2.variant] ?? []];
+      const reviewedVariants = [item.local_json, item.remote_json].filter(Boolean).map((value2) => JSON.parse(value2)).concat(related.local ?? [], related.remote ?? []);
+      const result = await importRecords({ scope: request2.scope ?? PERSONAL_CONTENT_SCOPE, records, assets: [...request2.assets ?? [], ...JSON.parse(item.assets_json)], reviewedVariants }, true, learning);
+      const resolved = result.conflicts.length === 0 && result.applied === records.length;
+      if (resolved) {
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        db.prepare("UPDATE ipad_sync_conflicts SET resolved_at=? WHERE id=?").run(now, item.id);
+        for (const page of records) for (const pending of db.prepare("SELECT id,local_json,remote_json FROM ipad_sync_conflicts WHERE record_id=? AND resolved_at IS NULL").all(page.id))
+          if (comparable(JSON.parse(pending.remote_json)) === comparable(page) && (!pending.local_json || reviewedVariants.some((reviewed) => comparable(reviewed) === comparable(JSON.parse(pending.local_json))))) db.prepare("UPDATE ipad_sync_conflicts SET resolved_at=? WHERE id=?").run(now, pending.id);
+      }
+      return { ...result, appliedRecords: result.applied, applied: resolved ? 1 : 0, resolved };
     }, (request2) => {
       const item = db.prepare("SELECT local_json,remote_json FROM ipad_sync_conflicts WHERE id=? AND resolved_at IS NULL").get(request2.conflictID);
       if (!item || !["local", "remote"].includes(request2.variant)) return [];
@@ -157992,337 +159408,129 @@ ${body}\r
     })();
   }
 
-  // DesktopRuntime/upstream/src/main/features/pdf/drawingsRepo.ts
-  var DRAWING_KINDS2 = DRAWING_KINDS.filter(
-    (kind) => kind !== "clip"
-  );
-  function rowToDrawing(row) {
-    return {
-      id: row.id,
-      courseId: row.course_id,
-      relPath: row.rel_path,
-      page: row.page,
-      kind: row.kind,
-      data: JSON.parse(row.data_json),
-      style: JSON.parse(row.style_json),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-  function createDrawingsRepo(db, options = {}) {
-    db.exec(`CREATE TABLE IF NOT EXISTS drawing_create_receipts (
-    operation_id TEXT PRIMARY KEY, request_json TEXT NOT NULL, drawing_id TEXT NOT NULL
-  )`);
-    function assertCourseExists(courseId2) {
-      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
-      if (row === void 0) throw new NotFoundError("course", courseId2);
-    }
-    function getRowOrThrow(id2) {
-      const row = db.prepare("SELECT * FROM pdf_drawings WHERE id = ? AND deleted_at IS NULL").get(id2);
-      if (row === void 0) throw new NotFoundError("drawing", id2);
-      return row;
-    }
-    return {
-      listForFile(courseIdInput, relPathInput) {
-        const courseId2 = requireId(courseIdInput, "courseId");
-        const relPath2 = requireNonEmptyString(relPathInput, "relPath");
-        const rows = db.prepare(
-          `SELECT * FROM pdf_drawings
-           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
-           ORDER BY page ASC, created_at ASC`
-        ).all(courseId2, relPath2);
-        return rows.map(rowToDrawing);
-      },
-      create(input) {
-        const courseId2 = requireId(input.courseId, "courseId");
-        assertCourseExists(courseId2);
-        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
-        const page = requireInt(input.page, "page", 1);
-        const kind = assertDrawingKind(input.kind, DRAWING_KINDS2);
-        const data2 = assertDrawingData(input.data, kind);
-        const style = assertDrawingStyle(input.style);
-        const operationID = input.clientMutationId;
-        if (operationID !== void 0 && (typeof operationID !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationID))) {
-          throw new ValidationError("clientMutationId must be a UUID");
-        }
-        const documentRevision = input.documentRevision;
-        if (documentRevision !== void 0 && (typeof documentRevision !== "string" || !/^[0-9a-f]{64}$/.test(documentRevision))) {
-          throw new ValidationError("documentRevision must be a SHA-256 digest");
-        }
-        const fingerprint2 = JSON.stringify({ courseId: courseId2, relPath: relPath2, page, kind, data: data2, style, documentRevision });
-        return db.transaction(() => {
-          if (operationID !== void 0) {
-            const receipt = db.prepare("SELECT request_json, drawing_id FROM drawing_create_receipts WHERE operation_id = ?").get(operationID);
-            if (receipt) {
-              if (receipt.request_json !== fingerprint2) throw new ValidationError("A drawing operation cannot be reused for different content");
-              return rowToDrawing(getRowOrThrow(receipt.drawing_id));
-            }
-          }
-          if (documentRevision !== void 0 && options.documentRevision?.(courseId2, relPath2) !== documentRevision) {
-            throw new ValidationError("PDF \uC6D0\uBCF8\uC774 \uBCC0\uACBD\uB418\uC5B4 \uC0C8 \uD544\uAE30\uB97C \uC801\uC6A9\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC6D0\uB798 PDF\uC640 \uD544\uAE30 \uBCF5\uAD6C \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
-          }
-          const now = nowIso();
-          const drawing = {
-            id: randomUUID(),
-            courseId: courseId2,
-            relPath: relPath2,
-            page,
-            kind,
-            data: data2,
-            style,
-            createdAt: now,
-            updatedAt: now
-          };
-          db.prepare(
-            `INSERT INTO pdf_drawings
-             (id, course_id, rel_path, page, kind, data_json, style_json,
-              created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(
-            drawing.id,
-            courseId2,
-            relPath2,
-            page,
-            kind,
-            JSON.stringify(data2),
-            JSON.stringify(style),
-            now,
-            now
-          );
-          if (operationID !== void 0) db.prepare("INSERT INTO drawing_create_receipts (operation_id, request_json, drawing_id) VALUES (?, ?, ?)").run(operationID, fingerprint2, drawing.id);
-          return drawing;
-        })();
-      },
-      update(input) {
-        const row = getRowOrThrow(requireId(input.id, "id"));
-        const kind = row.kind;
-        const data2 = input.data === void 0 ? JSON.parse(row.data_json) : assertDrawingData(input.data, kind);
-        const style = input.style === void 0 ? JSON.parse(row.style_json) : assertDrawingStyle(input.style);
-        const now = nowIso();
-        db.prepare(
-          "UPDATE pdf_drawings SET data_json = ?, style_json = ?, updated_at = ? WHERE id = ?"
-        ).run(JSON.stringify(data2), JSON.stringify(style), now, row.id);
-        return rowToDrawing({
-          ...row,
-          data_json: JSON.stringify(data2),
-          style_json: JSON.stringify(style),
-          updated_at: now
-        });
-      },
-      softDelete(idsInput) {
-        if (!Array.isArray(idsInput)) {
-          throw new ValidationError("ids must be an array");
-        }
-        const ids = [...new Set(idsInput.map((id2) => requireId(id2, "id")))];
-        if (ids.length === 0) return;
-        const now = nowIso();
-        const remove = db.transaction(() => {
-          const statement = db.prepare(
-            "UPDATE pdf_drawings SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL"
-          );
-          for (const id2 of ids) {
-            if (statement.run(now, now, id2).changes === 0) {
-              throw new NotFoundError("drawing", id2);
-            }
-          }
-        });
-        remove();
-      }
-    };
-  }
-
-  // DesktopRuntime/upstream/src/main/features/annotations/annotationsRepo.ts
-  var HIGHLIGHT_COLORS2 = ["yellow", "green", "pink", "blue"];
-  function assertColor2(value) {
-    if (!HIGHLIGHT_COLORS2.includes(value)) {
-      throw new ValidationError(
-        `color must be one of ${HIGHLIGHT_COLORS2.join(", ")} (got "${String(value)}")`
-      );
-    }
-    return value;
-  }
-  function assertRects(value) {
-    if (!Array.isArray(value) || value.length === 0) {
-      throw new ValidationError("rects must be a non-empty array");
-    }
-    for (const rect of value) {
-      const r = rect;
-      if (r === null || typeof r !== "object" || ![r.x, r.y, r.width, r.height].every(
-        (n) => typeof n === "number" && Number.isFinite(n)
-      )) {
-        throw new ValidationError("each rect needs finite numeric x/y/width/height");
-      }
-    }
-    return value;
-  }
-  function assertAnchor(value) {
-    const anchor = value;
-    if (anchor === null || typeof anchor !== "object" || typeof anchor.quote !== "string" || typeof anchor.prefix !== "string" || typeof anchor.suffix !== "string") {
-      throw new ValidationError("anchor needs string quote/prefix/suffix");
-    }
-    return anchor;
-  }
-  function rowToAnnotation(row) {
-    return {
-      id: row.id,
-      courseId: row.course_id,
-      relPath: row.rel_path,
-      page: row.page,
-      color: row.color,
-      rects: JSON.parse(row.rects_json),
-      anchor: JSON.parse(row.anchor_json),
-      comment: row.comment,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-  function createAnnotationsRepo(db) {
-    function assertCourseExists(courseId2) {
-      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
-      if (row === void 0) {
-        throw new NotFoundError("course", courseId2);
-      }
-    }
-    function getRowOrThrow(id2) {
-      const row = db.prepare("SELECT * FROM annotations WHERE id = ? AND deleted_at IS NULL").get(id2);
-      if (row === void 0) {
-        throw new NotFoundError("annotation", id2);
-      }
-      return row;
-    }
-    return {
-      listForFile(input) {
-        const courseId2 = requireId(input.courseId, "courseId");
-        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
-        const rows = db.prepare(
-          `SELECT * FROM annotations
-           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
-           ORDER BY page ASC, created_at ASC`
-        ).all(courseId2, relPath2);
-        return rows.map(rowToAnnotation);
-      },
-      create(input) {
-        const courseId2 = requireId(input.courseId, "courseId");
-        assertCourseExists(courseId2);
-        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
-        const page = requireInt(input.page, "page", 1);
-        const color = assertColor2(input.color);
-        const rects = assertRects(input.rects);
-        const anchor = assertAnchor(input.anchor);
-        const comment = input.comment ?? null;
-        if (comment !== null && typeof comment !== "string") {
-          throw new ValidationError("comment must be a string or null");
-        }
-        const now = nowIso();
-        const annotation = {
-          id: randomUUID(),
-          courseId: courseId2,
-          relPath: relPath2,
-          page,
-          color,
-          rects,
-          anchor,
-          comment,
-          createdAt: now,
-          updatedAt: now
-        };
-        db.prepare(
-          `INSERT INTO annotations
-           (id, course_id, rel_path, page, color, rects_json, anchor_json,
-            comment, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          annotation.id,
-          courseId2,
-          relPath2,
-          page,
-          color,
-          JSON.stringify(rects),
-          JSON.stringify(anchor),
-          comment,
-          now,
-          now
-        );
-        return annotation;
-      },
-      update(input) {
-        const row = getRowOrThrow(requireId(input.id, "id"));
-        const color = input.color === void 0 ? row.color : assertColor2(input.color);
-        const comment = input.comment === void 0 ? row.comment : input.comment;
-        if (comment !== null && typeof comment !== "string") {
-          throw new ValidationError("comment must be a string or null");
-        }
-        const now = nowIso();
-        db.prepare(
-          "UPDATE annotations SET color = ?, comment = ?, updated_at = ? WHERE id = ?"
-        ).run(color, comment, now, row.id);
-        return rowToAnnotation({ ...row, color, comment, updated_at: now });
-      },
-      softDelete(input) {
-        const row = getRowOrThrow(requireId(input.id, "id"));
-        const now = nowIso();
-        db.prepare("UPDATE annotations SET deleted_at = ?, updated_at = ? WHERE id = ?").run(
-          now,
-          now,
-          row.id
-        );
-        return { ok: true };
-      }
-    };
-  }
-
   // DesktopRuntime/upstream/src/main/features/pdf/pdfDocumentBinding.ts
-  function createBoundPDFRepositories(db, bindings) {
+  var PDFMutationDeferredError = class extends ValidationError {
+    constructor(retryable) {
+      super("\uC790\uB8CC \uB3D9\uAE30\uD654 \uC911 \uB3C4\uCC29\uD55C \uD544\uAE30\uB97C \uBCF5\uAD6C\uD568\uC5D0 \uBCF4\uAD00\uD588\uC2B5\uB2C8\uB2E4. \uB3D9\uAE30\uD654 \uCDA9\uB3CC \uBAA9\uB85D\uC5D0\uC11C \uBCF5\uAD6C \uB178\uD2B8\uB97C \uB9CC\uB4E4 \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
+      this.retryable = retryable;
+    }
+  };
+  async function retryPDFMutation(action, options = {}) {
+    const attempts = options.attempts ?? 50;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return action();
+      } catch (error2) {
+        if (!(error2 instanceof PDFMutationDeferredError) || !error2.retryable || attempt >= attempts) throw error2;
+        await new Promise((resolve2) => setTimeout(resolve2, options.delayMs ?? 40));
+      }
+    }
+  }
+  function createBoundPDFRepositories(db, bindings, pathLock) {
     const rawAnnotations = createAnnotationsRepo(db), rawDrawings = createDrawingsRepo(db, {
       documentRevision: (courseId2, relPath2) => bindings.check({ courseId: courseId2, relPath: relPath2 }).documentRevision
     });
-    const checkRow = (table11, id2) => {
+    const checkRow = (table11, id2, documentRevision) => {
       const row = db.prepare(`SELECT course_id,rel_path FROM ${table11} WHERE id=?`).get(id2);
-      if (row) bindings.checkPDF(row.course_id, row.rel_path);
+      if (row) bindings.check({ courseId: row.course_id, relPath: row.rel_path, ...documentRevision !== void 0 ? { documentRevision } : {} });
+    };
+    const sourceFor = (req, table11) => {
+      if (!table11) return req.courseId && req.relPath ? { courseId: req.courseId, relPath: req.relPath } : void 0;
+      const id2 = req.id ?? req.ids?.[0];
+      const row = db.prepare(`SELECT course_id,rel_path FROM ${table11} WHERE id=?`).get(id2);
+      if (row) return { courseId: row.course_id, relPath: row.rel_path };
+      if (req.documentRevision && db.prepare("SELECT 1 FROM sqlite_master WHERE name='pdf_rewrite_archive_variants'").get()) {
+        const column = table11 === "pdf_drawings" ? "drawings_json" : "annotations_json";
+        for (const archive of db.prepare(`SELECT ${column} FROM pdf_rewrite_archive_variants WHERE revision=? ORDER BY created_at DESC`).all(req.documentRevision)) {
+          const old = JSON.parse(archive[column]).find((value) => value.id === id2);
+          if (old) return { courseId: old.course_id, relPath: old.rel_path };
+        }
+      }
+      return void 0;
+    };
+    const protect = (kind, req, action, table11) => {
+      const source = sourceFor(req, table11);
+      const release2 = pathLock?.tryAcquire();
+      if (pathLock && !release2) {
+        const revision = req.documentRevision ?? (source && db.prepare(`SELECT b.bound_sha FROM pdf_document_aliases a
+        JOIN pdf_document_bindings b ON b.material_id=a.material_id WHERE a.course_id=? AND a.rel_path=?`).get(source.courseId, source.relPath)?.bound_sha);
+        if (source && typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)) {
+          retainPendingPdfMutation(db, kind, { ...req, documentRevision: revision }, source.courseId, source.relPath);
+          throw new PDFMutationDeferredError(req.documentRevision !== void 0);
+        }
+        throw new ValidationError("\uC790\uB8CC \uB3D9\uAE30\uD654 \uC911\uC785\uB2C8\uB2E4. \uC800\uC7A5\uC744 \uC644\uB8CC\uD558\uC9C0 \uBABB\uD588\uC73C\uBBC0\uB85C \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+      }
+      try {
+        const result = action();
+        resolvePendingPdfMutation(db, kind, req);
+        return result;
+      } catch (error2) {
+        if (source && typeof req.documentRevision === "string" && /^[a-f0-9]{64}$/.test(req.documentRevision)) {
+          let changed = false;
+          try {
+            changed = bindings.check(source).documentRevision !== req.documentRevision;
+          } catch {
+            changed = true;
+          }
+          if (changed) {
+            retainPendingPdfMutation(db, kind, req, source.courseId, source.relPath);
+            throw new ValidationError("PDF \uC6D0\uBCF8\uC774 \uBCC0\uACBD\uB418\uC5B4 \uD544\uAE30\uB97C \uBCF5\uAD6C\uD568\uC5D0 \uBCF4\uAD00\uD588\uC2B5\uB2C8\uB2E4. \uB3D9\uAE30\uD654 \uCDA9\uB3CC \uBAA9\uB85D\uC5D0\uC11C \uBCF5\uAD6C \uB178\uD2B8\uB97C \uB9CC\uB4E4 \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
+          }
+        }
+        throw error2;
+      } finally {
+        release2?.();
+      }
     };
     return {
       annotations: {
         ...rawAnnotations,
         listForFile: (req) => {
-          bindings.checkPDF(req.courseId, req.relPath);
-          return rawAnnotations.listForFile(req);
+          if (req.documentRevision !== void 0) bindings.check(req);
+          else bindings.checkPDF(req.courseId, req.relPath);
+          const rows = rawAnnotations.listForFile(req);
+          if (req.documentRevision !== void 0) bindings.check(req);
+          return rows;
         },
-        create: (req) => {
-          bindings.checkPDF(req.courseId, req.relPath);
+        create: (req) => protect("annotation:create", req, () => {
+          bindings.check({ ...req });
           return rawAnnotations.create(req);
-        },
-        update: (req) => {
-          checkRow("annotations", req.id);
+        }),
+        update: (req) => protect("annotation:update", req, () => {
+          checkRow("annotations", req.id, req.documentRevision);
           return rawAnnotations.update(req);
-        },
-        softDelete: (req) => {
-          checkRow("annotations", req.id);
+        }, "annotations"),
+        softDelete: (req) => protect("annotation:delete", req, () => {
+          checkRow("annotations", req.id, req.documentRevision);
           return rawAnnotations.softDelete(req);
-        }
+        }, "annotations")
       },
       drawings: {
         ...rawDrawings,
-        listForFile: (courseId2, relPath2) => {
-          bindings.checkPDF(courseId2, relPath2);
-          return rawDrawings.listForFile(courseId2, relPath2);
+        listForFile: (courseId2, relPath2, documentRevision) => {
+          if (documentRevision !== void 0) bindings.check({ courseId: courseId2, relPath: relPath2, documentRevision });
+          else bindings.checkPDF(courseId2, relPath2);
+          const rows = rawDrawings.listForFile(courseId2, relPath2);
+          if (documentRevision !== void 0) bindings.check({ courseId: courseId2, relPath: relPath2, documentRevision });
+          return rows;
         },
-        create: (req) => {
+        create: (req) => protect("drawing:create", req, () => {
           if (req.documentRevision === void 0) bindings.checkPDF(req.courseId, req.relPath);
           return rawDrawings.create(req);
-        },
-        update: (req) => {
-          checkRow("pdf_drawings", req.id);
+        }),
+        update: (req) => protect("drawing:update", req, () => {
+          checkRow("pdf_drawings", req.id, req.documentRevision);
           return rawDrawings.update(req);
-        },
-        softDelete: (ids) => {
-          for (const id2 of ids) checkRow("pdf_drawings", id2);
+        }, "pdf_drawings"),
+        softDelete: (ids, documentRevision) => protect("drawing:delete", { ids, documentRevision }, () => {
+          for (const id2 of ids) checkRow("pdf_drawings", id2, documentRevision);
           return rawDrawings.softDelete(ids);
-        }
+        }, "pdf_drawings")
       }
     };
   }
   var sha = /^[0-9a-f]{64}$/;
-  function relativePath(value) {
+  function relativePath2(value) {
     const path = requireNonEmptyString(value, "relPath");
     if (path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === ".." || part === ".") || /[\u0000-\u001f]/.test(path)) throw new ValidationError("Invalid PDF relative path");
     return path;
@@ -158348,7 +159556,7 @@ ${body}\r
       db.prepare("UPDATE materials_index SET id=? WHERE id=?").run(materialID, item.id);
     };
     function checkAt(input, movedTo) {
-      const courseId2 = requireId(input.courseId, "courseId"), relPath2 = relativePath(input.relPath);
+      const courseId2 = requireId(input.courseId, "courseId"), relPath2 = relativePath2(input.relPath);
       if (movedTo === void 0) assertMaterialPathAvailable(db, courseId2, relPath2);
       if (!db.prepare("SELECT id FROM courses WHERE id=? AND deleted_at IS NULL").get(courseId2)) throw new ValidationError("PDF course is unavailable");
       if (input.documentRevision !== void 0 && (typeof input.documentRevision !== "string" || !sha.test(input.documentRevision))) throw new ValidationError("documentRevision must be a SHA-256 digest");
@@ -158394,7 +159602,7 @@ ${body}\r
       return result(row);
     }
     function repoint(change) {
-      const courseId2 = requireId(change.courseId, "courseId"), from = relativePath(change.fromRelPath), to = relativePath(change.toRelPath);
+      const courseId2 = requireId(change.courseId, "courseId"), from = relativePath2(change.fromRelPath), to = relativePath2(change.toRelPath);
       const key4 = (value) => value.normalize("NFC").toLowerCase(), prefix2 = from.split("/");
       db.transaction(() => {
         const destination = (path) => {
@@ -158449,7 +159657,7 @@ ${body}\r
     const page = requireInt(input.page, "page", 1);
     const kind = assertDrawingKind(input.kind, ["ink", "highlighter"]);
     const data2 = assertDrawingData(input.data, kind), style = assertDrawingStyle(input.style);
-    if (data2.inkVersion !== 2 && data2.inkVersion !== 3 && data2.inkVersion !== 4) throw new ValidationError("Native PDF mutation requires ink version 2, 3 or 4");
+    if (data2.inkVersion !== 2 && data2.inkVersion !== 3 && data2.inkVersion !== 4 && data2.inkVersion !== 5) throw new ValidationError("Native PDF mutation requires ink version 2, 3, 4 or 5");
     const documentRevision = input.documentRevision;
     if (typeof documentRevision !== "string" || !/^[0-9a-f]{64}$/.test(documentRevision)) throw new ValidationError("documentRevision must be a SHA-256 digest");
     const fingerprint2 = JSON.stringify({ courseId: courseId2, relPath: relPath2, page, kind, data: data2, style, documentRevision });
@@ -158466,56 +159674,6 @@ ${body}\r
 
   // DesktopRuntime/backend/pdf-binding-originals.ts
   init_native();
-
-  // DesktopRuntime/upstream/src/main/features/pdf/pdfOriginals.ts
-  function pdfFileRevision(path) {
-    const descriptor = openSync(path, "r");
-    try {
-      return hashDescriptor(descriptor);
-    } finally {
-      closeSync(descriptor);
-    }
-  }
-  function hashDescriptor(descriptor) {
-    const hash3 = createHash("sha256"), buffer2 = new Uint8Array(256 * 1024);
-    for (let offset = 0; ; ) {
-      const length2 = readSync(descriptor, buffer2, 0, buffer2.length, offset);
-      if (!length2) break;
-      hash3.update(buffer2.subarray(0, length2));
-      offset += length2;
-    }
-    return hash3.digest("hex");
-  }
-  function createPDFOriginalPreserver(directory2, pathFor, revisionAt = pdfFileRevision) {
-    const verified = /* @__PURE__ */ new Set();
-    return (courseId2, relPath2, revision) => {
-      if (verified.has(revision)) return;
-      const target = join(directory2, `${revision}.pdf`);
-      mkdirSync(directory2, { recursive: true });
-      if (existsSync(target)) {
-        if (revisionAt(target) !== revision) throw new Error("Preserved PDF original failed its integrity check");
-      } else {
-        const temporary = join(directory2, `${revision}.${randomUUID()}.tmp`);
-        try {
-          copyFileSync(pathFor(courseId2, relPath2), temporary);
-          if (revisionAt(temporary) !== revision) throw new Error("PDF changed while preserving its original; no ink was applied");
-          chmodSync(temporary, 384);
-          const descriptor = openSync(temporary, "r+");
-          try {
-            fsyncSync(descriptor);
-          } finally {
-            closeSync(descriptor);
-          }
-          renameSync(temporary, target);
-        } finally {
-          if (existsSync(temporary)) rmSync(temporary, { force: true });
-        }
-      }
-      verified.add(revision);
-    };
-  }
-
-  // DesktopRuntime/backend/pdf-binding-originals.ts
   function createPDFOriginalPreserver2(pathFor) {
     return createPDFOriginalPreserver(join(env2().userDataPath, "PDFOriginals"), pathFor, (path) => native("fs.sha256", { path }));
   }
@@ -159922,6 +161080,120 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     return { context: context2, insights };
   }
 
+  // DesktopRuntime/backend/material-watch.ts
+  function createMaterialWatchers(deps) {
+    const entries = /* @__PURE__ */ new Map();
+    const schedule = deps.schedule ?? setTimeout, cancel = deps.cancel ?? clearTimeout;
+    const delays = [2500, 5e3, 1e4, 3e4];
+    let active = true, session;
+    const lease = (request2) => `${request2.rendererSessionId ?? "legacy"}\0${request2.subscriptionId ?? "default"}`;
+    const current = (entry2) => entries.get(entry2.courseId) === entry2 && entry2.leases.size > 0;
+    function reportFailure(entry2, error2) {
+      if (current(entry2)) deps.failed(error2);
+    }
+    function clearTimer(entry2) {
+      if (entry2.timer !== void 0) {
+        cancel(entry2.timer);
+        delete entry2.timer;
+      }
+    }
+    function remove(entry2) {
+      clearTimer(entry2);
+      entry2.leases.clear();
+      entries.delete(entry2.courseId);
+    }
+    function next(entry2) {
+      if (!active || !current(entry2) || entry2.timer !== void 0) return;
+      entry2.timer = schedule(() => {
+        delete entry2.timer;
+        void scan(entry2, true).catch((error2) => reportFailure(entry2, error2));
+      }, delays[entry2.delayIndex]);
+    }
+    function resetDelay(entry2) {
+      entry2.delayIndex = 0;
+      entry2.wakeRevision++;
+    }
+    function scan(entry2, invalidate, foreground = false) {
+      if (entry2.flight) return entry2.flight;
+      if (!active || !current(entry2)) return Promise.resolve();
+      const revision = entry2.wakeRevision;
+      const task = (async () => {
+        if (invalidate) deps.invalidate(entry2.courseId);
+        const signature = JSON.stringify(await deps.tree(entry2.courseId));
+        if (!current(entry2) || !active) return;
+        const changed = entry2.signature !== void 0 && entry2.signature !== signature;
+        const initial = entry2.signature === void 0;
+        entry2.signature = signature;
+        if (changed || initial || foreground) entry2.delayIndex = 0;
+        else if (entry2.wakeRevision === revision) entry2.delayIndex = Math.min(entry2.delayIndex + 1, delays.length - 1);
+        if (changed) deps.changed(entry2.courseId);
+      })().catch((error2) => {
+        if (current(entry2) && entry2.wakeRevision === revision) entry2.delayIndex = Math.min(entry2.delayIndex + 1, delays.length - 1);
+        throw error2;
+      });
+      entry2.flight = task.finally(() => {
+        delete entry2.flight;
+        next(entry2);
+      });
+      return entry2.flight;
+    }
+    return {
+      async watch(request2) {
+        if (session !== void 0 && request2.rendererSessionId !== session) throw Object.assign(new Error("\uC774\uC804 \uD654\uBA74\uC758 \uC790\uB8CC \uAC10\uC2DC \uC694\uCCAD\uC785\uB2C8\uB2E4."), { code: "STALE_RENDERER_SESSION" });
+        let entry2 = entries.get(request2.courseId);
+        if (!entry2) {
+          entry2 = { courseId: request2.courseId, leases: /* @__PURE__ */ new Set(), delayIndex: 0, wakeRevision: 0 };
+          entries.set(request2.courseId, entry2);
+        }
+        entry2.leases.add(lease(request2));
+        if (entry2.flight) await entry2.flight;
+        else if (entry2.signature === void 0) await scan(entry2, false);
+      },
+      unwatch(request2) {
+        for (const entry2 of entries.values()) {
+          if (request2?.courseId && request2.courseId !== entry2.courseId) continue;
+          if (!request2?.courseId) {
+            if (request2?.rendererSessionId) for (const key4 of entry2.leases) {
+              if (key4.startsWith(request2.rendererSessionId + "\0")) entry2.leases.delete(key4);
+            }
+            else entry2.leases.clear();
+          } else entry2.leases.delete(lease(request2));
+          if (!entry2.leases.size) remove(entry2);
+        }
+      },
+      setSession(value) {
+        if (session === value) return;
+        for (const entry2 of entries.values()) remove(entry2);
+        session = value;
+      },
+      setActive(value) {
+        if (active === value) return;
+        active = value;
+        for (const entry2 of entries.values()) {
+          clearTimer(entry2);
+          resetDelay(entry2);
+          if (active) void scan(entry2, true, true).catch((error2) => reportFailure(entry2, error2));
+        }
+      },
+      /** Mutations already emit immediately; resume fast external-change checks
+       * without doing a second full tree read for the same mutation. */
+      mutated(courseId2) {
+        const entry2 = entries.get(courseId2);
+        if (!entry2) return;
+        clearTimer(entry2);
+        resetDelay(entry2);
+        if (!entry2.flight) next(entry2);
+      },
+      reset() {
+        for (const entry2 of entries.values()) remove(entry2);
+        session = void 0;
+      },
+      inspect() {
+        return { courses: entries.size, leases: [...entries.values()].reduce((sum2, entry2) => sum2 + entry2.leases.size, 0), timers: [...entries.values()].filter((entry2) => entry2.timer !== void 0).length };
+      }
+    };
+  }
+
   // DesktopRuntime/backend/index.ts
   var handlers = /* @__PURE__ */ new Map();
   var privateHandlers = /* @__PURE__ */ new Map();
@@ -159971,7 +161243,12 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     const recordings = createRecordingRepo(db, (id2) => courses.getFolder(id2));
     const linkIndex = createLinkIndex({ db, getCourseFolder: (id2) => courses.getFolder(id2) });
     const links = createMaterialLinksRepo(db);
-    const changed = (courseId2) => emit("materials:changed", { courseId: courseId2 });
+    let materialWatchChanged = (_courseId) => {
+    };
+    const changed = (courseId2) => {
+      materialWatchChanged(courseId2);
+      emit("materials:changed", { courseId: courseId2 });
+    };
     const courseChanged = (result) => {
       emit("courses:changed", {});
       return result;
@@ -160006,7 +161283,14 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       trashItem: trash,
       onPathChanged: repoint
     });
-    handlePrivate("nativeMaterial:path", (req) => materials.absolutePathForAsync(req.courseId, req.relPath));
+    handlePrivate("nativeMaterial:path", async (req) => {
+      if (req.documentRevision === void 0) return materials.absolutePathForAsync(req.courseId, req.relPath);
+      if (typeof req.documentRevision !== "string" || !/^[a-f0-9]{64}$/.test(req.documentRevision)) throw new Error("Invalid PDF revision");
+      const source = await materials.absolutePathForAsync(req.courseId, req.relPath).catch(() => null);
+      const referenced = isReferencedClipRevision(db, req.courseId, req.relPath, req.documentRevision);
+      if (!referenced && (!source || native("fs.sha256", { path: source }) !== req.documentRevision)) throw new Error("PDF original is not referenced by this course");
+      return resolvePdfClipSource(env2().userDataPath, courses.getFolder(req.courseId), { relPath: req.relPath, page: 1, label: "\uC6D0\uBB38", documentRevision: req.documentRevision });
+    });
     const notes = createNotesRepo({
       renameWithMarkdown: (input) => materials.renameWithMarkdown(input),
       assertPathAvailable: (courseId2, relPath2) => materials.assertPathAvailable(courseId2, relPath2),
@@ -160017,7 +161301,18 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     installHoverPreview({ handle, materials });
     const pdfSourcePath = (courseId2, relPath2) => resolveInsideReal(courses.getFolder(courseId2), relPath2);
     const pdfBindings = createPDFDocumentBindings(db, (courseId2, relPath2) => native("fs.sha256", { path: pdfSourcePath(courseId2, relPath2) }), createPDFOriginalPreserver2(pdfSourcePath));
-    const { annotations, drawings } = createBoundPDFRepositories(db, pdfBindings);
+    const { annotations, drawings } = createBoundPDFRepositories(db, pdfBindings, materialPathLock);
+    const pageNoteMutation = (req, action) => {
+      if (!req.pageNoteSource) return action();
+      const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
+      if (token === null) throw new Error("\uC790\uB8CC \uB3D9\uAE30\uD654 \uC911\uC785\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+      try {
+        pdfBindings.check({ courseId: req.courseId, ...req.pageNoteSource });
+        return action();
+      } finally {
+        native("fs.lockRelease", { token });
+      }
+    };
     const media = createMediaProgressRepo(db), pdf = createPdfViewStateRepo(db);
     const board = createBoardRepo(db), canvas = createCanvasRepo(db), favorites = createFavoritesRepo(db), layout = createLayoutRepo(db);
     const linkService = createLinkService({ notes, getCourseFolder: (id2) => courses.getFolder(id2) });
@@ -160051,54 +161346,54 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       handle(`materials:${action}`, materialMutation((req) => materials[action](req)));
     handle("materials:delete", materialMutation((req) => materials.softDelete(req)));
     handle("materials:reveal", (req) => materials.reveal(req.courseId, req.relPath));
-    const watchers = /* @__PURE__ */ new Map();
+    const watchers = createMaterialWatchers({
+      tree: (id2) => materials.tree(id2),
+      invalidate: (id2) => materials.invalidateTree(id2),
+      changed,
+      failed: (error2) => emit("backend:error", { message: String(error2), operation: "materials.watch" })
+    });
+    materialWatchChanged = (courseId2) => watchers.mutated(courseId2);
     handle("materials:watch", async (req) => {
       courses.getById(req.courseId);
-      if (!watchers.has(req.courseId)) {
-        let signature = JSON.stringify(await materials.tree(req.courseId)), scanning = false;
-        watchers.set(req.courseId, setInterval(async () => {
-          if (scanning) return;
-          scanning = true;
-          try {
-            materials.invalidateTree(req.courseId);
-            const next = JSON.stringify(await materials.tree(req.courseId));
-            if (next !== signature) {
-              signature = next;
-              changed(req.courseId);
-            }
-          } catch (error2) {
-            emit("backend:error", { message: String(error2), operation: "materials.watch" });
-          } finally {
-            scanning = false;
-          }
-        }, 2500));
-      }
+      await watchers.watch(req);
       return OK;
     });
     handle("materials:unwatch", (req) => {
-      if (req?.courseId) {
-        clearInterval(watchers.get(req.courseId));
-        watchers.delete(req.courseId);
-      } else {
-        for (const timer of watchers.values()) clearInterval(timer);
-        watchers.clear();
-      }
-      ;
+      watchers.unwatch(req);
       return OK;
     });
+    handlePrivate("nativeRuntime:rendererReady", (req) => {
+      if (typeof req.rendererSessionId !== "string" || req.rendererSessionId.length > 128) throw new Error("Invalid renderer session");
+      watchers.setSession(req.rendererSessionId);
+      return OK;
+    });
+    handlePrivate("nativeRuntime:rendererReset", () => {
+      watchers.reset();
+      return OK;
+    });
+    handlePrivate("nativeRuntime:active", (req) => {
+      watchers.setActive(req.active === true);
+      return OK;
+    });
+    handlePrivate("nativeRuntime:capabilities", () => ({ channels: [...handlers.keys()].sort() }));
     handle("notes:read", (req) => notes.read(req));
-    for (const action of ["create", "write", "rename"]) handle(`notes:${action}`, materialMutation((req) => notes[action](req)));
+    for (const action of ["create", "write", "rename"]) handle(`notes:${action}`, materialMutation((req) => action === "write" ? pageNoteMutation(req, () => notes.write(req)) : notes[action](req)));
     handle("annotations:listForFile", (req) => annotations.listForFile(req));
-    handle("annotations:create", (req) => annotations.create(req));
-    handle("annotations:update", (req) => annotations.update(req));
-    handle("annotations:delete", (req) => annotations.softDelete(req));
-    handle("drawings:listForFile", (req) => drawings.listForFile(req.courseId, req.relPath));
-    handle("drawings:create", (req) => drawings.create(req));
-    handle("drawings:update", (req) => drawings.update(req));
+    handle("annotations:create", (req) => retryPDFMutation(() => annotations.create(req)));
+    handle("annotations:update", (req) => retryPDFMutation(() => annotations.update(req)));
+    handle("annotations:delete", (req) => retryPDFMutation(() => annotations.softDelete(req)));
+    handle("drawings:listForFile", (req) => drawings.listForFile(req.courseId, req.relPath, req.documentRevision));
+    handle("drawings:create", (req) => retryPDFMutation(() => drawings.create(req)));
+    handle("drawings:update", (req) => retryPDFMutation(() => drawings.update(req)));
     handlePrivate("nativePDF:mutationStatus", (req) => nativePDFMutationStatus(db, req));
-    handlePrivate("nativePDF:binding", (req) => pdfBindings.check(req));
-    handle("drawings:delete", (req) => {
-      drawings.softDelete(req.ids);
+    handlePrivate("nativePDF:binding", async (req) => {
+      const info = await handlers.get("pdfNotes:info")(req);
+      const binding2 = pdfBindings.check({ ...req, documentRevision: req.documentRevision ?? info.documentRevision });
+      if (binding2.documentRevision !== info.documentRevision) throw new Error("PDF \uC6D0\uBCF8\uC774 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC5F4\uC5B4 \uC8FC\uC138\uC694.");
+      return { ...binding2, surface: info.surface };
+    });
+    handle("drawings:delete", async (req) => {
+      await retryPDFMutation(() => drawings.softDelete(req.ids, req.documentRevision));
       return OK;
     });
     handle("media:getProgress", (req) => media.get(req.courseId, req.relPath));
@@ -160155,7 +161450,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     handle("layout:saveMany", (req) => layout.saveMany(req.layouts));
     handle("links:create", materialMutation((req) => links.create({ ...req, label: req.label ?? "" })));
     handle("links:remove", materialMutation((req) => links.remove(req.courseId, req.id)));
-    handle("links:updatePageNote", (req) => links.updateMetadata(req.courseId, req.id, req.metadata));
+    handle("links:updatePageNote", (req) => pageNoteMutation(req, () => links.updateMetadata(req.courseId, req.id, req.metadata)));
     handle("links:listFor", (req) => links.listFor(req.courseId, req.relPath));
     handle("links:listForDescriptor", (req) => {
       if (!isTabDescriptor(req.descriptor)) throw new ValidationError("Invalid TabDescriptor");
@@ -160263,9 +161558,10 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     for (const action of ["state", "connect", "disconnect", "configure", "events"]) handle(`appleCalendar:${action}`, (req) => calendar[action](req));
     handle("appleCalendar:export", (req) => calendar.exportTask(req.taskId));
     const pdfExport = installPdfExport({ handle, courses, drawings, annotations, canvas, materials, changed, pdfBindings });
+    installPdfRestructure({ handle, db, courses, materials, notes, links, pdfBindings, changed });
     installMarket({ handle, courses, materials, annotations, pdfExport: pdfExport.exportAnnotated });
     installPresentation({ handle, courses, drawings, annotations, materials, changed });
-    installSync({ handlePrivate, db, courses, materials, notes, drawings, annotations, board, canvas, recordings, learning, pdfBindings });
+    installSync({ handlePrivate, db, courses, materials, notes, drawings, annotations, board, canvas, recordings, learning, pdfBindings, links });
     installNotifications({ db, handlePrivate });
     installBrowserShortcuts({ handlePrivate });
     handlePrivate("nativeRecording:create", (req) => recordings.create(req.courseId, req.title, req.modelId));

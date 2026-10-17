@@ -8,6 +8,7 @@ import { noteFileKey, subscribeNoteDoc } from '../../notes/noteDocChannel'
 import { markdownPreviewFragment } from './markdownPreview'
 import { loadImageThumbnail, loadPdfThumbnail, loadVideoThumbnail, type MediaThumbnail } from './mediaThumbnails'
 import './previewContent.css'
+import { PdfNotePreviewContent } from './PdfNotePreviewContent'
 
 export { WhiteboardPreviewContent } from './WhiteboardPreviewContent'
 
@@ -113,7 +114,10 @@ function PreviewBody({ courseId, preview }: { courseId: string; preview: Materia
         : content.text.trim().length === 0 ? <PreviewMessage>아직 내용이 없어요</PreviewMessage> : <p className="material-preview-content__text">{content.text}</p>}
       <span className="material-preview-content__caption">첫 슬라이드 · 총 {content.slideCount}장</span>
     </>
-    case 'image': case 'pdf': case 'video': return <MediaPreview key={`${preview.relPath}:${preview.mtime}:${preview.size}`} courseId={courseId} preview={preview} />
+    case 'pdf': return preview.relPath.startsWith('노트/')
+      ? <PdfNotePreviewContent courseId={courseId} relPath={preview.relPath} />
+      : <MediaPreview key={`${preview.relPath}:${preview.mtime}:${preview.size}`} courseId={courseId} preview={preview} />
+    case 'image': case 'video': return <MediaPreview key={`${preview.relPath}:${preview.mtime}:${preview.size}`} courseId={courseId} preview={preview} />
     case 'recording': return <RecordingPreview courseId={courseId} relPath={preview.relPath} />
     case 'unsupported': return <PreviewMessage>{content.message}</PreviewMessage>
   }

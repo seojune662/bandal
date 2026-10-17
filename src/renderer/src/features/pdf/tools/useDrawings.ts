@@ -1,3 +1,5 @@
+import { readViewedPdfRevision } from '../readViewedPdfRevision'
+import { registerDocumentSave } from '../../documents/saveRegistry'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type {
   CreateDrawingInput,
@@ -86,7 +88,7 @@ interface DrawingSession {
 
 const EMPTY_DRAWINGS: Drawing[] = []
 
-export function useDrawings(courseId: string, relPath: string): DrawingsApi {
+export function useDrawings(courseId: string, relPath: string, documentRevision?: string): DrawingsApi {
   // A session owns its asynchronous work as well as its undo stack. Saving a
   // box in one file must never replace the newly opened file's drawings.
   const instanceId = useId()
@@ -142,11 +144,11 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
       session.loading = true
       publish()
     }
-    void invoke('drawings:listForFile', { courseId, relPath })
+    void readViewedPdfRevision(courseId, relPath, documentRevision, () => invoke('drawings:listForFile', { courseId, relPath, ...(documentRevision ? { documentRevision } : {}) }))
       .then((list) => {
         if (session.generation !== generation || activeSessionRef.current !== session) return
         session.loadPending = false
-        session.saved = sortDrawings(list)
+        if (list !== undefined) session.saved = sortDrawings(list)
         session.loadError = null
         session.loading = false
         publish()
@@ -158,7 +160,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
         session.loading = false
         publish()
       })
-  }, [courseId, relPath, publish, session])
+  }, [documentRevision, courseId, relPath, publish, session])
 
   useEffect(() => {
     activeSessionRef.current = session
@@ -205,8 +207,9 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
       queue = session.queue
       await queue
     } while (queue !== session.queue)
-    if (session.error !== null) throw new Error(session.error)
+    if (session.saveError !== null) throw new Error(session.saveError)
   }, [session])
+  useEffect(() => registerDocumentSave(flush), [flush])
 
   const addPreview = useCallback((
     apply: DrawingPreview['apply'],
@@ -248,7 +251,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     const preview = optimistic?.preview ?? addPreview((drawings) =>
       drawings.some((drawing) => drawing.id === resolveId(temporary.id)) ? drawings : [...drawings, temporary], order)
     try {
-      const created = await invoke('drawings:create', input)
+      const created = await invoke('drawings:create', { ...input, ...(documentRevision ? { documentRevision } : {}) })
       session.ids.set(temporary.id, created.id)
       replace([...session.saved.filter((drawing) => drawing.id !== created.id), created])
       if (recordHistory && activeSessionRef.current === session) {
@@ -262,7 +265,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     } finally {
       dropPreview(preview)
     }
-  }, [addPreview, dropPreview, fileKey, replace, resolveId, session, setError])
+  }, [documentRevision, addPreview, dropPreview, fileKey, replace, resolveId, session, setError])
 
   const updateInternal = useCallback(async (
     input: UpdateDrawingInput,
@@ -275,7 +278,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     const preview = optimistic ?? previewUpdate(input, order)
     try {
       if (before === undefined) return null
-      const updated = await invoke('drawings:update', { ...input, id })
+      const updated = await invoke('drawings:update', { ...input, id, ...(documentRevision ? { documentRevision } : {}) })
       replace(session.saved.map((drawing) => drawing.id === updated.id ? updated : drawing))
       if (recordHistory && activeSessionRef.current === session) {
         usePdfToolStore.getState().recordHistory(fileKey, { kind: 'update', drawings: [before] })
@@ -288,7 +291,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     } finally {
       dropPreview(preview)
     }
-  }, [dropPreview, fileKey, previewUpdate, replace, resolveId, session, setError])
+  }, [documentRevision, dropPreview, fileKey, previewUpdate, replace, resolveId, session, setError])
 
   const removeInternal = useCallback(async (
     idsInput: string[],
@@ -301,7 +304,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     const preview = optimistic ?? previewRemove(idsInput, order)
     try {
       if (removed.length === 0) return { ok: true, removed: [] }
-      await invoke('drawings:delete', { ids: removed.map((drawing) => drawing.id) })
+      await invoke('drawings:delete', { ids: removed.map((drawing) => drawing.id), ...(documentRevision ? { documentRevision } : {}) })
       replace(session.saved.filter((drawing) => !idSet.has(drawing.id)))
       if (recordHistory && activeSessionRef.current === session) {
         usePdfToolStore.getState().recordHistory(fileKey, { kind: 'restore', drawings: removed })
@@ -314,7 +317,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     } finally {
       dropPreview(preview)
     }
-  }, [dropPreview, fileKey, previewRemove, replace, resolveId, session, setError])
+  }, [documentRevision, dropPreview, fileKey, previewRemove, replace, resolveId, session, setError])
 
   const create = useCallback((input: CreateDrawingInput): Promise<Drawing | null> => {
     if (input.courseId !== courseId || input.relPath !== relPath) return Promise.resolve(null)

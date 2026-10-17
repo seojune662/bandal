@@ -11,10 +11,21 @@ export type AuthErrorCode =
   | 'network'
   | 'provider'
   | 'storage'
+  | 'profile-mismatch'
   /** The build has no MAIN_VITE_SUPABASE_* keys, or OAuth is not wired yet. */
   | 'not-configured'
 
-export type AuthProvider = 'google' | 'kakao'
+export type AuthProvider = 'google' | 'kakao' | 'apple'
+
+/** A local receipt is independent of the current server session or subscription. */
+export interface LocalAccessState {
+  allowed: boolean
+  requiresLogin: boolean
+  boundUserID: string | null
+  profileID: string
+  requiresBindingConfirmation?: boolean
+  pendingUserID?: string | null
+}
 
 /** Public profile of the signed-in user. No token, no e-mail. */
 export interface MyProfile {
@@ -37,6 +48,7 @@ export interface AuthState {
   avatarUrl: string | null
   online: boolean
   errorCode: AuthErrorCode | null
+  localAccess?: LocalAccessState
 }
 
 /**

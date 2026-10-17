@@ -759,6 +759,46 @@ describe('debounced structural saves', () => {
     consoleError.mockRestore()
   })
 
+  test('awaitable flush drains an in-flight layout and the newer snapshot before a transition', async () => {
+    const dock = await readyWithLayout()
+    const acknowledgements: Array<() => void> = []
+    invokeMock.mockImplementation((channel: string) => channel === 'layout:save'
+      ? new Promise(resolve => { acknowledgements.push(() => resolve({ ok: true })) })
+      : Promise.resolve({ layout: null }))
+    dock.json = singleLeafLayout([pdfA, pdfB])
+    useWorkspaceStore.getState().notifyLayoutChanged()
+    const finished = vi.fn()
+    const pending = useWorkspaceStore.getState().flushPendingSave().then(finished)
+    expect(acknowledgements).toHaveLength(1)
+    dock.json = singleLeafLayout([pdfB])
+    useWorkspaceStore.getState().notifyLayoutChanged()
+    acknowledgements.shift()!(); await settle()
+    expect(finished).not.toHaveBeenCalled()
+    expect(acknowledgements).toHaveLength(1)
+    acknowledgements.shift()!(); await pending
+    expect(finished).toHaveBeenCalledOnce()
+  })
+
+  test('awaitable flush rejects exhausted retries while preserving the unsaved layout', async () => {
+    const dock = await readyWithLayout()
+    invokeMock.mockImplementation((channel: string) => channel === 'layout:save'
+      ? Promise.reject(new Error('disk full')) : Promise.resolve({ layout: null }))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    dock.json = singleLeafLayout([pdfA, pdfB])
+    useWorkspaceStore.getState().notifyLayoutChanged()
+    const rejected = expect(useWorkspaceStore.getState().flushPendingSave()).rejects.toThrow('작업 공간을 저장하지 못해 전환하지 않았어요')
+    await vi.runAllTimersAsync(); await rejected
+    expect(savesFor('c1')).toHaveLength(4)
+    expect(dock.json).toEqual(singleLeafLayout([pdfA, pdfB]))
+    await expect(useWorkspaceStore.getState().flushPendingSave()).rejects.toThrow('작업 공간을 저장하지 못해 전환하지 않았어요')
+    consoleError.mockRestore()
+  })
+
+  test('an empty pre-login workspace has no layout writes to await', async () => {
+    await expect(useWorkspaceStore.getState().flushPendingSave()).resolves.toBeUndefined()
+    expect(savesFor('c1')).toHaveLength(0)
+  })
+
   test('pure focus changes (decorative churn) never trigger a save', async () => {
     // Arrange
     const dock = await readyWithLayout()

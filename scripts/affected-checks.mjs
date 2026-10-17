@@ -13,6 +13,9 @@ export const PADDLE_BILLING_FUNCTIONS = [
   'supabase/functions/paddle-webhook-live/index.ts'
 ]
 
+export const APPLE_BILLING_FUNCTIONS = ['apple-billing', 'apple-billing-sandbox', 'apple-notifications', 'apple-notifications-sandbox'].map(name => `supabase/functions/${name}/index.ts`)
+export const ACCOUNT_DELETION_FUNCTIONS = ['supabase/functions/account-delete/index.ts']
+
 /** A failed or draft release must not hide changes from the next release's checks. */
 export function publishedReleaseBase(releases, ancestorTags) {
   const reachable = new Set(ancestorTags)
@@ -168,7 +171,9 @@ export function planChecks(files, full = false) {
   const sharedBackendConfig = has(/^supabase\/(?:config\.toml|functions\/deno\.(?:json|lock))$/)
   const studyMarketBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/study-market\/|study-market(?:-webhook|-cron)?\/)|migrations\/.*study_market)|tests\/backend\/studyMarket\/|src\/shared\/types\/studyMarket\.ts$)/)
   const paddleBillingBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/paddle-billing\/|paddle-(?:billing|webhook)(?:-live)?\/)|migrations\/.*paddle_billing)|tests\/backend\/paddleBilling\/)/)
-  const syncAccessBackend = full || sharedBackendConfig || has(/^(supabase\/migrations\/.*(?:sync_paid_access|sync_quota_errors|paddle_billing)|tests\/backend\/syncAccess\/)/)
+  const appleBillingBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/apple-billing\/|apple-(?:billing|notifications)(?:-sandbox)?\/)|migrations\/.*apple_billing)|tests\/backend\/appleBilling\/(?!deletion))/)
+  const accountDeletionBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/account-delete\/|account-delete\/)|migrations\/.*account_deletion)|tests\/backend\/appleBilling\/deletion)/)
+  const syncAccessBackend = full || sharedBackendConfig || appleBillingBackend || accountDeletionBackend || has(/^(supabase\/migrations\/.*(?:personal_sync|sync_paid_access|sync_quota_errors|paddle_billing)|tests\/backend\/syncAccess\/)/)
   const types = new Set()
   if (full || has(/^(src\/(main|preload|shared)\/|server\/|sdk\/|(?:marketplace|sdk)\.vite\.config\.ts|tsconfig\.node\.json)/)) types.add('tsconfig.node.json')
   if (full || has(/^(src\/(renderer|shared)\/|src\/preload\/browser|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
@@ -176,12 +181,20 @@ export function planChecks(files, full = false) {
   const scriptTests = new Set(files.filter((f) => /^scripts\/test-.*\.mjs$/.test(f)))
   const ipadBilling = full || has(/^(resources\/ipad-bridge\/bridge\.py|src\/main\/features\/ipadSync\/runtime\.ts|tests\/main\/ipadSync\/test_bridge_billing\.py|e2e\/ipadBilling\.spec\.ts)$/)
   const pythonTests = ipadBilling ? ['tests/main/ipadSync/test_bridge_billing.py'] : []
+  if (has(/^(resources\/ipad-bridge\/|tests\/main\/ipadSync\/test_bridge_scope\.py$)/)) pythonTests.push('tests/main/ipadSync/test_bridge_scope.py')
+  if (full || has(/^(resources\/ipad-bridge\/bridge\.py|src\/main\/features\/ipadSync\/runtime\.ts|tests\/main\/ipadSync\/test_bridge_cancellation\.py)$/)) pythonTests.push('tests/main/ipadSync/test_bridge_cancellation.py')
   if (has(/^(sdk\/|sdk\.vite\.config\.ts$|scripts\/test-plugin-sdk\.mjs$)/)) scriptTests.add('scripts/test-plugin-sdk.mjs')
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   if (has(/^scripts\/browser-auth-probe\.mjs$/)) scriptTests.add('scripts/test-browser-auth-probe.mjs')
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
   if (ipadBilling) e2e.add('e2e/ipadBilling.spec.ts')
+  if (has(/^src\/(?:renderer\/src\/features\/pdf\/(?:clipTransfer|renderClip|useWhiteboardClipDelivery|ClipOriginalDialog|PdfPageView)\.tsx?$|main\/features\/pdf\/pdfClipSource\.ts$)/)) e2e.add('e2e/pdfClip.spec.ts')
+  if (has(/^src\/(?:main\/features\/(?:account\/|pdf\/(?:pdfNotes|legacyNoteMigration|noteFileTransaction)\.ts)|renderer\/src\/features\/(?:account\/AccountAccessGate\.tsx|pdfNotes\/|materials\/NotesGroup\.tsx|settings\/(?:AccountPanel|BillingSyncPanel|TabsSettingsPanel)\.tsx)|shared\/(?:types\/(?:auth|subscription|pdfNote)\.ts|tabPreferences\.ts))/)) {
+    e2e.add('e2e/accountNotes.spec.ts')
+    e2e.add('e2e/accountProfileBackup.spec.ts')
+  }
+  if (has(/^src\/(?:main\/ipc\/(?:workspaceTransition|registerHandlers)\.ts|renderer\/src\/(?:features\/documents\/workspaceTransition|main)\.tsx?|preload\/index\.ts|shared\/ipc\/(?:events|contract)\.ts)$/)) e2e.add('e2e/accountProfileBackup.spec.ts')
   if (studyMarketBackend || has(/^src\/(?:main\/(?:features\/studyMarket\/|ipc\/studyMarketHandlers\.ts$)|shared\/(?:types\/studyMarket\.ts$|ipc\/studyMarketContract\.ts$)|renderer\/src\/(?:features\/studyMarket\/|app\/studyMarketNavigation\.ts$))/)) e2e.add('e2e/studyMarket.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/materials\/(?:MaterialAffordances|materialAffordances|materialStatus|preview\/)|main\/features\/materials\/(?:hoverPreview|materialAdded)|shared\/types\/materialHoverPreview)/)) {
     e2e.add('e2e/materialPreview.spec.ts')
@@ -282,12 +295,14 @@ export function planChecks(files, full = false) {
   }
   if (has(/^src\/(?:renderer\/src\/(?:features\/(?:updates\/|account\/(?:SidebarAccountEntry\.tsx|AccountAvatar\.tsx|account\.css)$|help\/(?:HelpHub\.tsx|help\.css)$)|stores\/updateStore\.ts$|app\/GlobalNavigation\.tsx$)|main\/features\/updater\/|shared\/types\/update\.ts$)/)) e2e.add('e2e/railUx.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/(?:workspace\/(?:panelContentHost|WorkspaceHost|panels\/browserAnchor)\.|browser\/(?:BrowserGuestView|nativePageHandle)\.)|main\/features\/browser\/nativeTabs\.ts$)/)) e2e.add('e2e/browserPlacement.spec.ts')
-  // A server-only Paddle change has no packaged desktop flow to exercise.
-  const paddleBackendOnly = (paddleBillingBackend || syncAccessBackend) && !studyMarketBackend && !has(/^(src\/|server\/|sdk\/|resources\/|native\/|electron|package\.json$|pnpm-lock\.yaml$)/)
+  // Server-only billing changes have no packaged desktop flow to exercise.
+  const paddleBackendOnly = (paddleBillingBackend || appleBillingBackend || accountDeletionBackend || syncAccessBackend) && !studyMarketBackend && !has(/^(src\/|server\/|sdk\/|resources\/|native\/|electron|package\.json$|pnpm-lock\.yaml$)/)
   if (e2e.size === 0 && !paddleBackendOnly) e2e.add('e2e/startup.spec.ts')
-  const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
+  const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f) && !f.endsWith('.deno.ts'))
   if (studyMarketBackend) unitInputs.push('tests/backend/studyMarket/policy.test.ts')
   if (paddleBillingBackend) unitInputs.push('tests/backend/paddleBilling/policy.test.ts', 'tests/backend/paddleBilling/service.test.ts')
+  if (appleBillingBackend) unitInputs.push('tests/backend/appleBilling/service.test.ts')
+  if (accountDeletionBackend) unitInputs.push('tests/backend/appleBilling/deletion.test.ts')
   if (dictionaryResources) unitInputs.push('src/main/features/learning/dictionary.ts')
   if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')
   if (has(/^(?:native|resources\/native)\/browser-import\/|^scripts\/(build-browser-import|verify-browser-import|build-native)\.mjs$/)) unitInputs.push('src/main/features/browser/import/index.ts')
@@ -304,12 +319,12 @@ export function planChecks(files, full = false) {
   }
   const e2eGrep = partial.size ? [...e2e].map(f => partial.get(f) ?? f.replace('e2e/', '').replaceAll('.', '\\.')).join('|') : null
 
-  return { e2eGrep, full, studyMarketBackend, paddleBillingBackend, syncAccessBackend, types: [...types], scriptTests: [...scriptTests], pythonTests, unitInputs, e2e: [...e2e] }
+  return { e2eGrep, full, studyMarketBackend, paddleBillingBackend, appleBillingBackend, accountDeletionBackend, syncAccessBackend, types: [...types], scriptTests: [...scriptTests], pythonTests, unitInputs, e2e: [...e2e] }
 }
 
-function run(command, args) {
+function run(command, args, env = process.env) {
   console.log(`> ${command} ${args.join(' ')}`)
-  const result = spawn.sync(command, args, { stdio: 'inherit' })
+  const result = spawn.sync(command, args, { stdio: 'inherit', env })
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
@@ -325,7 +340,7 @@ export function main(args) {
   const baseFlag = args.indexOf('--base')
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
   const plan = planChecks(files, args.includes('--full'))
-  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend || plan.paddleBillingBackend || plan.syncAccessBackend)); return }
+  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend || plan.paddleBillingBackend || plan.appleBillingBackend || plan.accountDeletionBackend || plan.syncAccessBackend)); return }
   const nativeTabs = 'src/main/features/browser/nativeTabs.ts'
   if (!plan.full && files.includes(nativeTabs) && onlySwipeRegistrationChanged(
     git('show', `${base}:${nativeTabs}`), readFileSync(nativeTabs, 'utf8')
@@ -353,7 +368,12 @@ export function main(args) {
     run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', ...PADDLE_BILLING_FUNCTIONS])
     run('node', ['tests/backend/paddleBilling/run-local.mjs'])
   }
-  if (plan.syncAccessBackend) run('node', ['tests/backend/syncAccess/run-local.mjs'])
+  if (plan.appleBillingBackend) {
+    run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', ...APPLE_BILLING_FUNCTIONS])
+    run('deno', ['test', '--frozen', '--config', 'supabase/functions/deno.json', 'tests/backend/appleBilling/provider.deno.ts'])
+  }
+  if (plan.accountDeletionBackend) run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', ...ACCOUNT_DELETION_FUNCTIONS])
+  if (plan.syncAccessBackend) run('node', ['tests/backend/syncAccess/run-local.mjs'], plan.accountDeletionBackend ? { ...process.env, BANDAL_ACCOUNT_DELETE_FULL_SCHEMA: '1' } : process.env)
   if (plan.full) {
     run('pnpm', ['deadcode'])
     run('pnpm', ['test'])

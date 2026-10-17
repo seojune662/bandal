@@ -8,8 +8,9 @@ import { createMaterialsRepo } from '../../../src/main/features/materials'
 import { createMaterialPathLock } from '../../../src/main/features/materials/materialPathLock'
 import { createRequire } from 'node:module'
 import { createDrawingsRepo } from '../../../src/main/features/pdf/drawingsRepo'
-import { createPDFDocumentBindings, createBoundPDFRepositories } from '../../../src/main/features/pdf/pdfDocumentBinding'
+import { createPDFDocumentBindings, createBoundPDFRepositories, retryPDFMutation } from '../../../src/main/features/pdf/pdfDocumentBinding'
 import { createPDFOriginalPreserver, pdfFileRevision } from '../../../src/main/features/pdf/pdfOriginals'
+import { pendingPdfConflicts } from '../../../src/main/features/pdf/pendingPdfMutations'
 import { repointMaterialPath } from '../../../src/main/features/links/renameRepoint'
 import type { CreateDrawingInput } from '../../../src/shared/types/drawing'
 
@@ -132,6 +133,48 @@ describe('durable PDF identity and original binding', () => {
     expect(readFileSync(file('moved.pdf'), 'utf8')).toBe(original)
     expect(readFileSync(join(ctx.dir, 'PDFOriginals', before.documentRevision + '.pdf'), 'utf8')).toBe(original)
     expect(ctx.db.prepare('SELECT rel_path FROM pdf_document_aliases WHERE material_id=?').get(before.materialID)).toEqual({ rel_path: 'lecture.pdf' })
+  })
+  test('revision reads recheck after row fetch to reject an interprocess replacement', () => {
+    const revision=makeFile()
+    let checking=false,reads=0
+    const binding=createPDFDocumentBindings(ctx.db,()=>checking&&++reads>1?'a'.repeat(64):revision)
+    const {drawings,annotations}=createBoundPDFRepositories(ctx.db,binding)
+    drawings.create(input());binding.check({courseId,relPath:'lecture.pdf'})
+    checking=true
+    expect(()=>drawings.listForFile(courseId,'lecture.pdf',revision)).toThrow('PDF 원본')
+    reads=0
+    expect(()=>annotations.listForFile({courseId,relPath:'lecture.pdf',documentRevision:revision})).toThrow('PDF 원본')
+  })
+  test('a separate projector lock defers every drawing and annotation mutation without blocking reads', async () => {
+    const revision=makeFile(), binding=bindings(), lock=createMaterialPathLock(join(ctx.dir,'material-path-lock.db'),path=>new SQLite(path,{timeout:0}))
+    const {drawings,annotations}=createBoundPDFRepositories(ctx.db,binding,lock)
+    const drawing=drawings.create({...input(),documentRevision:revision})
+    const annotationInput={courseId,relPath:'lecture.pdf',page:1,color:'pink',rects:[{x:.1,y:.2,width:.3,height:.04}],anchor:{quote:'quote',prefix:'',suffix:''},documentRevision:revision}
+    const annotation=annotations.create(annotationInput)
+    const before={drawings:ctx.db.prepare('SELECT * FROM pdf_drawings').all(),annotations:ctx.db.prepare('SELECT * FROM annotations').all()}
+    const release=lock.tryAcquire()!
+    try {
+      const operations=[()=>drawings.create({...input(),documentRevision:revision,clientMutationId:randomUUID()}),
+        ()=>drawings.update({id:drawing.id,documentRevision:revision,data:{points:[{x:.8,y:.8,p:.7}]}}),
+        ()=>drawings.softDelete([drawing.id],revision),()=>annotations.create(annotationInput),
+        ()=>annotations.update({id:annotation.id,documentRevision:revision,color:'green'}),
+        ()=>annotations.softDelete({id:annotation.id,documentRevision:revision})]
+      for(const operation of operations)expect(operation).toThrow('복구함')
+      expect(pendingPdfConflicts(ctx.db)).toHaveLength(6)
+      expect(ctx.db.prepare('SELECT * FROM pdf_drawings').all()).toEqual(before.drawings)
+      expect(ctx.db.prepare('SELECT * FROM annotations').all()).toEqual(before.annotations)
+      expect(drawings.listForFile(courseId,'lecture.pdf',revision)).toHaveLength(1)
+      expect(annotations.listForFile({courseId,relPath:'lecture.pdf',documentRevision:revision})).toHaveLength(1)
+    } finally {release()}
+    const delayed={...input(),documentRevision:revision,clientMutationId:randomUUID()}
+    const pause=lock.tryAcquire()!
+    const flight=retryPDFMutation(()=>drawings.create(delayed),{delayMs:1,attempts:30})
+    expect(pendingPdfConflicts(ctx.db)).toHaveLength(7)
+    pause()
+    const saved=await flight
+    expect(drawings.listForFile(courseId,'lecture.pdf',revision).some(row=>row.id===saved.id)).toBe(true)
+    expect(pendingPdfConflicts(ctx.db)).toHaveLength(6)
+    expect(drawings.create(delayed).id).toBe(saved.id)
   })
   test('failed original verification neither acknowledges preservation nor changes source bytes', () => {
     const revision = makeFile(), directory = join(ctx.dir, 'PDFOriginals')

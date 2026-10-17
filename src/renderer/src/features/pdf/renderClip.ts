@@ -34,7 +34,7 @@ async function renderPdfPage(
     // bandal-media:// URL — CSP connect-src 가 이 스킴을 허용하므로 pdf.js 가
     // 직접 range fetch 한다. base64-over-IPC 시절의 64MB 캡·전체 상주 없음.
     const loadingTask = pdfjs.getDocument({
-      url: mediaUrlFor(courseId, source.relPath),
+      url: mediaUrlFor(courseId, source.relPath)+(source.documentRevision?`?revision=${source.documentRevision}`:''),
       disableStream: true,
       disableAutoFetch: true
     })
@@ -66,7 +66,7 @@ function pageFor(
   courseId: string,
   source: DrawingClipSource
 ): Promise<RenderedPage | null> {
-  const key = JSON.stringify([courseId, source.relPath, source.page])
+  const key = JSON.stringify([courseId, source.relPath, source.documentRevision, source.page])
   const cached = pageCache.get(key)
   if (cached !== undefined) {
     touchPageCache(key, cached)
@@ -102,7 +102,7 @@ function cropCanvas(
 export function createPdfClipRenderer(courseId: string): RenderClip {
   const outputCache = new Map<string, Promise<string | null>>()
   return async (source) => {
-    const key = JSON.stringify([source.relPath, source.page, source.crop])
+    const key = JSON.stringify([source.relPath, source.documentRevision, source.page, source.crop])
     const cached = outputCache.get(key)
     if (cached !== undefined) {
       outputCache.delete(key)

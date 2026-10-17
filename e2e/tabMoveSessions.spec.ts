@@ -70,10 +70,14 @@ test('moving a plugin panel preserves its live guest, page token and unsaved dra
       await window.bandal.invoke('plugins:approve', { id: 'bandal.word-count' })
       await window.bandal.invoke('plugins:setEnabled', { id: 'bandal.word-count', enabled: true })
     }, resolve(__dirname, '..', 'examples', 'plugins', 'word-count'))
-    await page.getByRole('button', { name: '새 탭 열기' }).click()
-    const menu = page.getByRole('dialog', { name: '새 탭 열기' })
-    await menu.getByLabel('새 탭 검색').fill('단어 수')
-    await menu.getByRole('option', { name: '단어 수 단어 수', exact: true }).click()
+    // Upgrade fixture: existing plugin favorites must open their panel even
+    // though plugin entries are absent from the five-item creation menu.
+    await page.evaluate(courseId => window.bandal.invoke('favorites:add', {
+      courseId, label: '단어 수 (기존 즐겨찾기)',
+      descriptor: { kind: 'plugin-panel', payload: { pluginId: 'bandal.word-count', panelId: 'stats' } }
+    }), source.id)
+    await page.reload()
+    await page.locator('.favorites-section .favorite-row', { hasText: '단어 수 (기존 즐겨찾기)' }).click()
     const guestUrl = 'bandal-plugin://bandal.word-count/ui/index.html'
     await expect.poll(() => app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(wc => wc.getURL() === url && !wc.isLoading())?.id ?? null, guestUrl)).not.toBeNull()
     const guestId = await app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(wc => wc.getURL() === url)!.id, guestUrl)

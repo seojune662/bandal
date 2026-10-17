@@ -21,7 +21,7 @@ describe('ShortcutsPanel', () => {
     expect(html).toContain('>변경됨</span><span>2</span>')
     expect(html).toContain('>미할당</span><span>2</span>')
     expect(html).toContain('>전역</h3>')
-    expect(html).toContain('>화이트보드</h3>')
+    expect(html).toContain('>노트</h3>')
     expect(html).toContain('>고정</span>')
   })
 })

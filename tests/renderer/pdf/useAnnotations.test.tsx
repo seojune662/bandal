@@ -137,13 +137,13 @@ test('isolates the new file from a prior file save and immediately hides its ann
   expect(await api.create(input)).toBeNull()
 })
 
-test('does not hide an initial read error after a subsequent successful write', async () => {
+test('keeps an initial read error visible without blocking a fully saved transition', async () => {
   invoke.mockRejectedValueOnce(new Error('read failed'))
   await act(async () => root.render(<Harness />))
   invoke.mockResolvedValue(row)
   await act(async () => { await api.create(input) })
   expect(api.error).toBe('read failed')
-  await expect(api.flush!()).rejects.toThrow('read failed')
+  await expect(api.flush!()).resolves.toBeUndefined()
 })
 
 test('retains a failed memo across popover closure and offers a durable retry', async () => {

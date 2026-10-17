@@ -114,6 +114,6 @@ describe('material hover preview content', () => {
     expect(container.querySelector('[data-background]')?.getAttribute('data-background')).toBe('grid')
     expect(container.textContent).toContain('1 / 3쪽')
     expect(harness.invoke.mock.calls.map(([channel]) => channel)).toEqual(['canvas:hoverPreview'])
-    expect(harness.reference).toHaveBeenCalledWith('c', '그림.png', expect.any(AbortSignal), undefined, undefined)
+    expect(harness.reference).toHaveBeenCalledWith('c', '그림.png', expect.any(AbortSignal), undefined, undefined, undefined)
   })
 })

@@ -1199,3 +1199,5 @@
   color: var(--danger);
   font-size: var(--text-sm);
 }
+
+.pdf-tab[data-restructuring] .pdf-scroller { pointer-events: none; opacity: .7; }

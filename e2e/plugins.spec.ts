@@ -85,9 +85,20 @@ test.describe('third-party plugins', () => {
       })
     })
 
+    // Extensions keep a dedicated launcher; installing one must not add a sixth creation type.
     await page.getByRole('button', { name: '새 탭 열기' }).click()
     const menu = page.getByRole('dialog', { name: '새 탭 열기' })
-    await menu.getByLabel('새 탭 검색').fill('현재 과목 필기 단어 수')
+    await expect(menu.getByRole('option')).toHaveCount(5)
+    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    await page.keyboard.press('Escape')
+    await page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '도구', exact: true }).click()
+    const launcher = page.getByRole('complementary', { name: '학습 도구' })
+    await expect(launcher).toBeVisible()
+    await launcher.getByLabel('기능 검색').fill('단어 수')
+    const command = launcher.locator('.launcher-feature[data-kind="plugin-command"]').filter({ hasText: '현재 과목 필기 단어 수' }).getByRole('button').first()
+    const pluginPanel = launcher.locator('.launcher-feature[data-kind="plugin-panel"]').filter({ hasText: '단어 수' }).getByRole('button').first()
+    await expect(command).toBeEnabled()
+    await expect(pluginPanel).toBeEnabled()
     const notice = page.evaluate(
       () =>
         new Promise<unknown>((resolveNotice, rejectNotice) => {
@@ -110,20 +121,13 @@ test.describe('third-party plugins', () => {
           })
         })
     )
-    await menu
-      .getByRole('option', { name: /현재 과목 필기 단어 수/u })
-      .click()
+    await command.click()
     await expect(notice).resolves.toMatchObject({
       pluginId: 'bandal.word-count',
       message: '플러그인 과목: 단어 3개 · 글자 6자'
     })
 
-    await page.getByRole('button', { name: '새 탭 열기' }).click()
-    const panelMenu = page.getByRole('dialog', { name: '새 탭 열기' })
-    await panelMenu.getByLabel('새 탭 검색').fill('단어 수')
-    await panelMenu
-      .getByRole('option', { name: '단어 수 단어 수', exact: true })
-      .click()
+    await pluginPanel.click()
 
     await expect(
       page.locator('webview[src="bandal-plugin://bandal.word-count/ui/index.html"]')

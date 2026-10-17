@@ -45,7 +45,7 @@ describe('PDF whiteboard destination', () => {
     expect(html).toContain('role="menu"')
     expect(html).toContain('개념 정리')
     expect(html).toContain('문제 풀이')
-    expect(html).toContain('새 화이트보드')
+    expect(html).toContain('새 노트')
     expect(html.match(/role="menuitem"/g)).toHaveLength(3)
   })
 })

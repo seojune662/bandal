@@ -55,6 +55,7 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
   lastSignInResult: null,
 
   init: async () => {
+    const initialGeneration = generation
     if (initialization === null) {
       initialization = (async () => {
         set({ initializing: true })
@@ -74,10 +75,9 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
       await pending
     } catch (error) {
       if (initialization === pending) initialization = null
-      // A failure here must never break the app: stay unconfigured, which
-      // leaves local study features available.
+      // Preserve any verified local receipt while reporting a failed account read.
       console.error('[Bandal] 로그인 상태를 불러오지 못했습니다.', error)
-      set({ hydrated: true, initializing: false })
+      if (generation === initialGeneration) set(state => ({ auth: { ...state.auth, phase: 'error', errorCode: 'storage' }, hydrated: true, initializing: false }))
     }
   },
 
@@ -90,7 +90,7 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
   signOut: async () => {
     const current = generation
     await invoke('auth:signOut', {})
-    if (current === generation) set({ auth: { ...get().auth, phase: 'signed-out', profile: null, email: null, avatarUrl: null, errorCode: null }, lastSignInResult: null })
+    if (current === generation) set({ auth: { ...get().auth, ...(get().auth.localAccess ? { localAccess: { ...get().auth.localAccess!, allowed: false, requiresLogin: true } } : {}), phase: 'signed-out', profile: null, email: null, avatarUrl: null, errorCode: null }, lastSignInResult: null })
   },
 
   setNickname: async (nickname) => {

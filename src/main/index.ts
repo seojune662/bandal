@@ -39,6 +39,7 @@ import { resolveAppVersion } from './features/updater/appVersion'
 import { configureBrowserIdentity } from './features/browser/browserIdentity'
 import { BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY, BROWSER_AUTH_PROBE_PROTOCOL, initializeBrowserAuthProbe } from './features/browser/authProbe'
 import { writeFileSync } from 'node:fs'
+import { resolveActiveProfile } from './features/account/profileManager'
 
 const execFileAsync = promisify(execFile)
 
@@ -67,6 +68,10 @@ const testUserDataDir = authProbe?.userDataDir ?? process.env['BANDAL_USER_DATA_
 if (testUserDataDir !== undefined && testUserDataDir !== '') {
   app.setPath('userData', testUserDataDir)
 }
+
+const profileBaseRoot = app.getPath('userData')
+process.env['BANDAL_PROFILE_BASE_ROOT'] = profileBaseRoot
+app.setPath('userData', resolveActiveProfile(profileBaseRoot))
 
 // [bandal-media] 자료 동영상 스트리밍 스킴. 특권 등록은 반드시 whenReady 전에
 // 해야 한다 (Electron 제약). stream: true 가 Range 기반 <video> 탐색의 핵심.

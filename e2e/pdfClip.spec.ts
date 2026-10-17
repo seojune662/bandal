@@ -14,7 +14,7 @@ import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 const SEEDED_PDF = 'Lecture.pdf'
 
-test.describe('pdf clip to whiteboard', () => {
+test.describe('pdf clip to editable note', () => {
   let bandal: BandalApp
 
   test.beforeAll(async () => {
@@ -37,7 +37,7 @@ test.describe('pdf clip to whiteboard', () => {
     await bandal.close()
   })
 
-  test('clicking the clip button puts the page on a whiteboard', async () => {
+  test('clicking the clip button puts the page on a PDF note', async () => {
     const { page } = bandal
     const row = page.locator('.material-row', { hasText: 'Lecture' })
     await expect(async () => {
@@ -49,24 +49,26 @@ test.describe('pdf clip to whiteboard', () => {
     await row.click()
 
     const clipButton = page
-      .getByRole('button', { name: '1 페이지를 화이트보드로 보내기' })
+      .getByRole('button', { name: '1 페이지를 노트로 보내기' })
       .first()
     await expect(clipButton).toBeVisible({ timeout: 30_000 })
-    await page.waitForTimeout(2500)
     await clipButton.click()
-    await page.waitForTimeout(2500)
+    const sheet = page.getByRole('dialog', { name: '새 노트', exact: true })
+    await expect(sheet).toBeVisible()
+    await sheet.getByLabel('제목').fill('클립 노트')
+    await sheet.getByRole('button', { name: '만들기', exact: true }).click()
 
     // A whiteboard opens even though none was open to drag onto...
-    await expect(page.locator('.canvas-tab__ink-layer')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.workspace-panel[data-kind="pdf"]:visible .pdf-drawing-layer').first()).toBeVisible({ timeout: 15_000 })
     // ...and the page actually landed on it.
-    await expect(page.locator('.ink-layer .ink-layer__clip-group')).toHaveCount(1, {
+    await expect(page.locator('.workspace-panel[data-kind="pdf"]:visible .ink-layer__clip-group')).toHaveCount(1, {
       timeout: 15_000
     })
     // And the page is actually drawn, not the "원본을 찾을 수 없어요" fallback.
     // ready 클립은 이제 foreignObject 가 아니라 SVG <image> 로 렌더된다
     // (v0.33.0 — 핸들과 픽셀 단위 일치를 위한 ImageShape 패턴).
     await expect(
-      page.locator('.ink-layer__clip-group .ink-layer__image-el')
+      page.locator('.workspace-panel[data-kind="pdf"]:visible .ink-layer__clip-group .ink-layer__image-el')
     ).toBeVisible({ timeout: 20_000 })
   })
 
@@ -75,12 +77,12 @@ test.describe('pdf clip to whiteboard', () => {
     await page.locator('.workspace-tab__title', { hasText: 'Lecture' }).click()
 
     const clipButton = page
-      .getByRole('button', { name: '1 페이지를 화이트보드로 보내기' })
+      .getByRole('button', { name: '1 페이지를 노트로 보내기' })
       .first()
     await expect(clipButton).toBeVisible()
     await clipButton.click()
 
-    const clips = page.locator('.ink-layer .ink-layer__clip-group')
+    const clips = page.locator('.workspace-panel[data-kind="pdf"]:visible .ink-layer__clip-group')
     await expect(clips).toHaveCount(2, { timeout: 15_000 })
 
     // Offset, not stacked — otherwise the second send looks like nothing
@@ -88,6 +90,5 @@ test.describe('pdf clip to whiteboard', () => {
     const [first, second] = await clips.all()
     const boxes = await Promise.all([first!.boundingBox(), second!.boundingBox()])
     expect(boxes[0]!.x).not.toBeCloseTo(boxes[1]!.x, 0)
-    await page.waitForTimeout(1500)
   })
 })

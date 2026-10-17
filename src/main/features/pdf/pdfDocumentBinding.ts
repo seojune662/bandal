@@ -1,4 +1,6 @@
+import { retainPendingPdfMutation, resolvePendingPdfMutation } from './pendingPdfMutations'
 import { randomUUID } from 'node:crypto'
+import type { MaterialPathLock } from '../materials/materialPathJournal'
 import { assertMaterialPathAvailable } from '../materials/materialPathJournal'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString } from '../../db/validate'
@@ -13,31 +15,105 @@ export interface PDFDocumentBinding {
   legacyUnverified: boolean
 }
 
+class PDFMutationDeferredError extends ValidationError {
+  constructor(readonly retryable: boolean) {
+    super('자료 동기화 중 도착한 필기를 복구함에 보관했습니다. 동기화 충돌 목록에서 복구 노트를 만들 수 있습니다.')
+  }
+}
+/** Brief projector reads need not interrupt an active stroke. Retry only an
+ * exact-revision request; a structural change still rejects into recovery. */
+export async function retryPDFMutation<T>(action: () => T, options: {attempts?: number; delayMs?: number} = {}): Promise<T> {
+  const attempts = options.attempts ?? 50
+  for (let attempt = 0; ; attempt++) {
+    try { return action() } catch (error) {
+      if (!(error instanceof PDFMutationDeferredError) || !error.retryable || attempt >= attempts) throw error
+      await new Promise(resolve => setTimeout(resolve, options.delayMs ?? 40))
+    }
+  }
+}
+
 /** Every consumer (IPC, exports and tools) shares these guarded repositories.
  * The native revision callback runs only for a genuinely new create receipt;
  * retrying a committed operation retains its original idempotent semantics. */
-export function createBoundPDFRepositories(db: any, bindings: ReturnType<typeof createPDFDocumentBindings>) {
+export function createBoundPDFRepositories(db: any, bindings: ReturnType<typeof createPDFDocumentBindings>, pathLock?: MaterialPathLock) {
   const rawAnnotations = createAnnotationsRepo(db), rawDrawings = createDrawingsRepo(db, {
     documentRevision: (courseId, relPath) => bindings.check({ courseId, relPath }).documentRevision
   })
-  const checkRow = (table: 'annotations' | 'pdf_drawings', id: string) => {
+  const checkRow = (table: 'annotations' | 'pdf_drawings', id: string, documentRevision?: string) => {
     const row = db.prepare(`SELECT course_id,rel_path FROM ${table} WHERE id=?`).get(id)
-    if (row) bindings.checkPDF(row.course_id, row.rel_path)
+    if (row) bindings.check({ courseId: row.course_id, relPath: row.rel_path, ...(documentRevision !== undefined ? {documentRevision} : {}) })
+  }
+  const sourceFor = (req: any, table?: 'annotations' | 'pdf_drawings'): {courseId: string; relPath: string} | undefined => {
+    if (!table) return req.courseId && req.relPath ? {courseId:req.courseId,relPath:req.relPath} : undefined
+    const id = req.id ?? req.ids?.[0]
+    const row = db.prepare(`SELECT course_id,rel_path FROM ${table} WHERE id=?`).get(id)
+    if (row) return {courseId:row.course_id,relPath:row.rel_path}
+    // A completed remote rewrite can remove the old row before its viewer's
+    // final edit arrives. Its archived ID still identifies the original source.
+    if (req.documentRevision && db.prepare("SELECT 1 FROM sqlite_master WHERE name='pdf_rewrite_archive_variants'").get()) {
+      const column = table === 'pdf_drawings' ? 'drawings_json' : 'annotations_json'
+      for (const archive of db.prepare(`SELECT ${column} FROM pdf_rewrite_archive_variants WHERE revision=? ORDER BY created_at DESC`).all(req.documentRevision)) {
+        const old = JSON.parse(archive[column]).find((value: any) => value.id === id)
+        if (old) return {courseId:old.course_id,relPath:old.rel_path}
+      }
+    }
+    return undefined
+  }
+  const protect = <T>(kind: string, req: any, action: () => T, table?: 'annotations' | 'pdf_drawings'): T => {
+    const source = sourceFor(req,table)
+    const release = pathLock?.tryAcquire()
+    if (pathLock && !release) {
+      // Never write a row between the projector's snapshot and replacement.
+      // Persist the full attempt while waiting; a crash cannot lose the stroke.
+      const revision = req.documentRevision ?? (source && db.prepare(`SELECT b.bound_sha FROM pdf_document_aliases a
+        JOIN pdf_document_bindings b ON b.material_id=a.material_id WHERE a.course_id=? AND a.rel_path=?`).get(source.courseId,source.relPath)?.bound_sha)
+      if (source && typeof revision === 'string' && /^[a-f0-9]{64}$/.test(revision)) {
+        retainPendingPdfMutation(db,kind,{...req,documentRevision:revision},source.courseId,source.relPath)
+        throw new PDFMutationDeferredError(req.documentRevision !== undefined)
+      }
+      throw new ValidationError('자료 동기화 중입니다. 저장을 완료하지 못했으므로 잠시 후 다시 시도해 주세요.')
+    }
+    try {
+      const result = action()
+      resolvePendingPdfMutation(db,kind,req)
+      return result
+    } catch (error) {
+      if (source && typeof req.documentRevision === 'string' && /^[a-f0-9]{64}$/.test(req.documentRevision)) {
+        let changed = false
+        try { changed = bindings.check(source).documentRevision !== req.documentRevision } catch { changed = true }
+        if (changed) {
+          retainPendingPdfMutation(db,kind,req,source.courseId,source.relPath)
+          throw new ValidationError('PDF 원본이 변경되어 필기를 복구함에 보관했습니다. 동기화 충돌 목록에서 복구 노트를 만들 수 있습니다.')
+        }
+      }
+      throw error
+    } finally { release?.() }
   }
   return {
     annotations: { ...rawAnnotations,
-      listForFile: (req: Parameters<typeof rawAnnotations.listForFile>[0]) => { bindings.checkPDF(req.courseId, req.relPath); return rawAnnotations.listForFile(req) },
-      create: (req: Parameters<typeof rawAnnotations.create>[0]) => { bindings.checkPDF(req.courseId, req.relPath); return rawAnnotations.create(req) },
-      update: (req: Parameters<typeof rawAnnotations.update>[0]) => { checkRow('annotations', req.id); return rawAnnotations.update(req) },
-      softDelete: (req: Parameters<typeof rawAnnotations.softDelete>[0]) => { checkRow('annotations', req.id); return rawAnnotations.softDelete(req) }
+      listForFile: (req: Parameters<typeof rawAnnotations.listForFile>[0]) => {
+        if(req.documentRevision!==undefined)bindings.check(req);else bindings.checkPDF(req.courseId,req.relPath)
+        const rows=rawAnnotations.listForFile(req)
+        if(req.documentRevision!==undefined)bindings.check(req)
+        return rows
+      },
+      create: (req: Parameters<typeof rawAnnotations.create>[0]) => protect('annotation:create',req,()=>{bindings.check({...req});return rawAnnotations.create(req)}),
+      update: (req: Parameters<typeof rawAnnotations.update>[0]) => protect('annotation:update',req,()=>{checkRow('annotations',req.id,req.documentRevision);return rawAnnotations.update(req)},'annotations'),
+      softDelete: (req: Parameters<typeof rawAnnotations.softDelete>[0]) => protect('annotation:delete',req,()=>{checkRow('annotations',req.id,req.documentRevision);return rawAnnotations.softDelete(req)},'annotations')
     },
     drawings: { ...rawDrawings,
-      listForFile: (courseId: string, relPath: string) => { bindings.checkPDF(courseId, relPath); return rawDrawings.listForFile(courseId, relPath) },
-      create: (req: Parameters<typeof rawDrawings.create>[0]) => { if (req.documentRevision === undefined) bindings.checkPDF(req.courseId, req.relPath); return rawDrawings.create(req) },
-      update: (req: Parameters<typeof rawDrawings.update>[0]) => { checkRow('pdf_drawings', req.id); return rawDrawings.update(req) },
-      softDelete: (ids: string[]) => { for (const id of ids) checkRow('pdf_drawings', id); return rawDrawings.softDelete(ids) }
+      listForFile: (courseId: string, relPath: string, documentRevision?: string) => {
+        if(documentRevision!==undefined)bindings.check({courseId,relPath,documentRevision});else bindings.checkPDF(courseId,relPath)
+        const rows=rawDrawings.listForFile(courseId,relPath)
+        if(documentRevision!==undefined)bindings.check({courseId,relPath,documentRevision})
+        return rows
+      },
+      create: (req: Parameters<typeof rawDrawings.create>[0]) => protect('drawing:create',req,()=>{if(req.documentRevision===undefined)bindings.checkPDF(req.courseId,req.relPath);return rawDrawings.create(req)}),
+      update: (req: Parameters<typeof rawDrawings.update>[0]) => protect('drawing:update',req,()=>{checkRow('pdf_drawings',req.id,req.documentRevision);return rawDrawings.update(req)},'pdf_drawings'),
+      softDelete: (ids:string[],documentRevision?:string) => protect('drawing:delete',{ids,documentRevision},()=>{for(const id of ids)checkRow('pdf_drawings',id,documentRevision);return rawDrawings.softDelete(ids)},'pdf_drawings')
     }
   }
+
 }
 const sha = /^[0-9a-f]{64}$/
 function relativePath(value: unknown): string {

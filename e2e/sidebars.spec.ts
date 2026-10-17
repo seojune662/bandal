@@ -1,3 +1,4 @@
+import { createPdfNote } from './helpers/pdfNotes'
 /**
  * A collapsed sidebar must always be reopenable.
  *
@@ -88,10 +89,7 @@ test.describe('sidebars', () => {
 
   test('opening a tab does not leave two of either toggle', async () => {
     const { page } = bandal
-    await page
-      .locator('.whiteboards-group')
-      .getByRole('button', { name: '새 화이트보드 만들기' })
-      .click()
+    await createPdfNote(page)
     await expect(page.locator('.ink-layer')).toBeVisible()
 
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
@@ -155,7 +153,7 @@ test.describe('sidebars', () => {
     const { page, app } = bandal
     if (await page.locator('.workspace-chrome-spacer').count() === 0) {
       await createCourse(page, '전체화면')
-      await page.locator('.whiteboards-group').getByRole('button', { name: '새 화이트보드 만들기' }).click()
+      await createPdfNote(page)
     }
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     const chrome = page.locator('.shell-chrome')
@@ -228,7 +226,7 @@ test('shell controls remain reachable over the academic board and retained tab c
     await expect(page.locator('.board-overlay')).toHaveCount(0)
     await expect(page.locator('aside.app-rail--left')).toBeVisible()
     await createCourse(page, '첫 과목')
-    await page.locator('.whiteboards-group').getByRole('button', { name: '새 화이트보드 만들기' }).click()
+    await createPdfNote(page)
     await expect(page.locator('.ink-layer')).toBeVisible()
     await createCourse(page, '두 번째 과목')
     const inactiveHeaders = page.locator('.workspace-course[hidden] .dv-tabs-and-actions-container')
