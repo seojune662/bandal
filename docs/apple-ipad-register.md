@@ -9,6 +9,8 @@
 
 각 생성 응답과 후속 GET에서 내부 resource ID와 설정을 다시 확인한다. 기존 등록의 identifier·name·platform·seedId가 모두 맞으면 재사용한다. 기존 Apple 로그인 설정이 primary와 다르거나 응답이 중복·불완전하면 중단한다. 이름 변경, 앱 그룹 연결, PATCH, DELETE, 앱 record·상품·키 생성, 계약 동의는 수행하지 않는다.
 
+2026-10-17 실제 API는 `IOS` 생성 요청을 `UNIVERSAL`로 반환했다. identifier·name·seedId는 요청과 일치했다. Apple의 [BundleIdPlatform 정의](https://developer.apple.com/documentation/appstoreconnectapi/bundleidplatform)에 따라 iOS를 포함하는 `UNIVERSAL`도 조회·후속 검증에서 허용한다. 생성 요청은 계속 `IOS`이며 `MAC_OS`나 알 수 없는 플랫폼은 거절한다. 이는 다른 플랫폼의 App Store 앱 record를 추가하지 않는다.
+
 `APPLE_TEAM_ID`는 메모리에서 `VUZ7Z98BW3`와 정확히 비교한다. 생성 요청의 `seedId`도 이 값으로 고정하며, 기존·생성·검증 응답에서 같은 prefix인지 확인한다. 설정값이나 서버가 돌려준 내부 ID는 로그에 출력하지 않는다. 다만 **이 비교는 JWT issuer가 어느 팀 소유인지 독립적으로 조회하는 검증은 아니다.** 공개 API의 `seedId` 필드는 App ID prefix이며, 기존 팀은 Team ID와 다른 prefix를 가질 수도 있다. 이 도구는 요청된 고정 prefix만 허용한다. 공식 문서는 `seedId`를 설정할 수 있다고 명시하지만, 다른 팀 prefix 거절 동작을 독립적인 팀 인증 수단으로 보장하지 않으므로 그런 주장을 하지 않는다. API 인증과 역할 권한 검사는 Apple 서버가 수행한다.
 
 GitHub Actions secrets `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_TEAM_ID`는 등록 step의 프로세스 환경에만 전달한다. 개인키·JWT를 파일, 로그, artifact에 저장하지 않는다. Node 표준 라이브러리로 매 요청마다 120초 ES256 JWT를 만들고, 공식 `https://api.appstoreconnect.apple.com`만 호출하며 redirect를 거부한다. 원격 응답의 링크는 따라가지 않는다.

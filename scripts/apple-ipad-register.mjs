@@ -74,7 +74,10 @@ async function boundedJSON(response) {
 }
 
 const isResource = (row, type) => object(row) && row.type === type && safeID(row.id) && object(row.attributes)
-const matchesBundle = row => isResource(row, 'bundleIds') && Object.entries(expectedAttributes).every(([key, value]) => row.attributes[key] === value)
+// Apple may normalize an IOS creation request to UNIVERSAL. That documented
+// platform includes iOS; it does not create additional App Store app records.
+const matchesBundle = row => isResource(row, 'bundleIds') && Object.entries(expectedAttributes).every(([key, value]) =>
+  key === 'platform' ? ['IOS', 'UNIVERSAL'].includes(row.attributes[key]) : row.attributes[key] === value)
 const bundleValidation = row => ({
   resource: isResource(row, 'bundleIds') ? 'valid' : 'invalid',
   ...Object.fromEntries(Object.entries(expectedAttributes).map(([key, value]) => [key, row?.attributes?.[key] === value ? 'matched' : row?.attributes?.[key] == null ? 'missing' : 'mismatched'])),

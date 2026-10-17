@@ -84,6 +84,21 @@ test('reuses the exact registration without writes and can resume after a previo
   assert.deepEqual(partial.calls.filter(call => call.method === 'POST').map(call => call.url.pathname), ['/v1/bundleIdCapabilities'])
 })
 
+test('accepts Apple-normalized UNIVERSAL bundles for iOS but rejects macOS-only bundles', async () => {
+  const normalized = { ...bundle, attributes: { ...bundle.attributes, platform: 'UNIVERSAL' } }
+  const created = transport([response([]), response(normalized, 201), response([normalized]), response([]), response(capability, 201), response([capability])])
+  assert.equal((await registerAppleIPad({ env, now, ...created })).outcome, 'complete')
+  assert.equal(JSON.parse(created.calls[1].body).data.attributes.platform, 'IOS')
+  const existing = transport([response([normalized]), response([capability])])
+  assert.equal((await registerAppleIPad({ env, now, ...existing })).outcome, 'complete')
+  assert.ok(existing.calls.every(call => call.method === 'GET'))
+  const wrong = transport([response([{ ...bundle, attributes: { ...bundle.attributes, platform: 'MAC_OS' } }])])
+  const report = await registerAppleIPad({ env, now, ...wrong })
+  assert.equal(report.reason, 'bundle_attributes_mismatch')
+  assert.equal(report.bundleId.validation.returnedPlatform, 'MAC_OS')
+  assert.equal(wrong.calls.length, 1)
+})
+
 test('missing, mismatched-team and invalid credentials stop before any request without exposing their values', async () => {
   for (const [changes, reason] of [
     [{ APPLE_TEAM_ID: '' }, 'missing_credentials'],
@@ -102,7 +117,7 @@ test('missing, mismatched-team and invalid credentials stop before any request w
 })
 
 test('wrong existing attributes, duplicate identifiers, unsafe IDs and incomplete listings never trigger creation', async () => {
-  const variants = Object.entries({ identifier: 'other.app', name: 'Other name', platform: 'UNIVERSAL', seedId: 'WRONG_TEAM' })
+  const variants = Object.entries({ identifier: 'other.app', name: 'Other name', platform: 'UNRECOGNIZED', seedId: 'WRONG_TEAM' })
     .map(([key, value]) => response([{ ...bundle, attributes: { ...bundle.attributes, [key]: value } }]))
   variants.push(response([bundle, bundle]), response([{ ...bundle, id: '../other' }]), response([],
     200, { links: { next: 'https://attacker.invalid/?token=PRIVATE' } }), response([], 200, { links: { next: '/v1/bundleIds?cursor=more' } }))
