@@ -74,5 +74,4 @@ export interface StudyMarketApi {
 export type StudyMarketAction = keyof StudyMarketApi
 export type StudyMarketRequest = { [K in StudyMarketAction]: { action: K; input: StudyMarketApi[K]['req'] } }[StudyMarketAction]
 export const STUDY_MARKET_ACTIONS: readonly StudyMarketAction[] = ['context', 'requestUniversity', 'courses', 'createCourse', 'listings', 'listing', 'dashboard', 'saveDraft', 'uploadGrant', 'finalizeFile', 'publish', 'withdraw', 'order', 'orderStatus', 'download', 'downloadComplete', 'refund', 'report', 'registerSeller', 'operatorDashboard', 'operatorAction']
-export function studyMarketFee(amount: number): number { return Math.floor(amount / 10) }
 export function normalizeMarketCourseName(value: string): string { return value.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ko-KR') }

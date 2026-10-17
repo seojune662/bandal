@@ -46,18 +46,3 @@ export function applyVerticalWheelToTabStrip(
   tabs.scrollLeft = nextScrollLeft
   return true
 }
-
-/** Delegates from the stable workspace root because dockview replaces groups. */
-export function installTabStripWheelScrolling(root: HTMLElement): () => void {
-  const handleWheel = (event: WheelEvent): void => {
-    if (!(event.target instanceof Element)) return
-    const tabs = event.target.closest<HTMLElement>(
-      '.dv-tabs-container.dv-horizontal'
-    )
-    if (tabs === null || !root.contains(tabs)) return
-    applyVerticalWheelToTabStrip(tabs, event)
-  }
-
-  root.addEventListener('wheel', handleWheel, { passive: false })
-  return () => root.removeEventListener('wheel', handleWheel)
-}

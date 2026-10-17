@@ -21,7 +21,8 @@
   ],
   "ignore": [
     "src/shared/brandMark.d.mts",
-    "src/shared/brandMark.ts"
+    "src/shared/brandMark.ts",
+    "resources/ipad-bridge/backend.js"
   ],
   "ignoreDependencies": [
     "@milkdown/exception"

@@ -17,7 +17,6 @@ import { MarketEmpty, MarketError, MarketIcon } from './primitives'
 import { errorMessage, formatWon } from './presentation'
 import './studyMarket.css'
 
-export { openStudyMarketSell, OPEN_STUDY_MARKET_SELL_EVENT } from './controller'
 
 type Tab = 'browse' | 'purchases' | 'sales' | 'operator'
 const ORDER_LABELS: Record<StudyMarketOrder['status'], string> = { pending: '결제 대기', paid: '구매 완료', refund_pending: '환불 처리 중', refunded: '환불 완료', failed: '결제 실패', cancelled: '결제 취소' }

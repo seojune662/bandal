@@ -5,7 +5,6 @@ import { segmentSamplesV4 } from './inkV4'
 
 /** Display-only diameter factors. Never substitute these for measured pressure. */
 export interface InkRenderSampleV5 { x: number; y: number; factor: number }
-export interface InkSegmentV5 { index: number; samples: InkRenderSampleV5[] }
 export const INK_V5_TAIL_SEGMENTS = 16
 const clamp = (value: number): number => Math.max(0, Math.min(1, value))
 const smoothstep = (value: number): number => { const t = clamp(value); return t * t * (3 - 2 * t) }
@@ -164,11 +163,6 @@ export function segmentSamplesV5(profile: InkProfileV5, index: number, width: nu
       profile.highlighter ? 1 : base * startGainV5(travel, width) * endGainV5(travel, profile.travel, width)
     return { x, y, factor }
   })
-}
-export function* strokeSegmentsV5(points: readonly DrawingPoint[], width: number, aspect: number,
-  highlighter = false): Generator<InkSegmentV5> {
-  const profile = renderProfileV5(points, width, aspect, highlighter)
-  for (let index = 0; index + 1 < profile.points.length; index++) yield { index, samples: segmentSamplesV5(profile, index, width, aspect) }
 }
 export function strokeCenterlineV5(points: readonly DrawingPoint[], width: number, aspect: number, highlighter = false): InkRenderSampleV5[] {
   const profile = renderProfileV5(points, width, aspect, highlighter), first = profile.points[0]

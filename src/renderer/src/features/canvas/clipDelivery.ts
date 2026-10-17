@@ -13,16 +13,6 @@ export const CLIP_DELIVERY_EVENT = 'bandal:canvas-clip-delivery'
 
 const pending = new Map<string, DrawingClipSource[]>()
 
-export function requestClipDelivery(
-  boardId: string,
-  source: DrawingClipSource
-): void {
-  pending.set(boardId, [...(pending.get(boardId) ?? []), source])
-  window.dispatchEvent(
-    new CustomEvent(CLIP_DELIVERY_EVENT, { detail: { boardId } })
-  )
-}
-
 /** Returns and clears everything queued for the board. */
 export function takeClipDeliveries(boardId: string): DrawingClipSource[] {
   const queued = pending.get(boardId)

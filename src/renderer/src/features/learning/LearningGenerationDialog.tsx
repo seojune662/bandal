@@ -6,7 +6,7 @@ import { useFocusTrap } from '../../components/useFocusTrap'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { LearningGenerationForm, type LearningGenerationRequest } from './LearningGenerationForm'
 
-export type { LearningGenerationChoice, LearningGenerationRequest } from './LearningGenerationForm'
+export type { LearningGenerationRequest } from './LearningGenerationForm'
 
 /** Standalone shell; the study palette uses the same validated form in place. */
 export function LearningGenerationDialog({ request, onClose }: { request: LearningGenerationRequest; onClose: () => void }): JSX.Element {
