@@ -7,7 +7,7 @@
 1. 정확한 Bundle ID를 GET으로 조회해 없을 때만 `POST /v1/bundleIds`로 등록한다.
 2. 그 Bundle ID에서 Sign in with Apple capability가 없을 때만 `POST /v1/bundleIdCapabilities`로 `APPLE_ID_AUTH`를 활성화한다. 새 앱의 primary 설정은 `APPLE_ID_AUTH_APP_CONSENT` → `PRIMARY_APP_CONSENT`, `enabled: true`다.
 
-3. 이미 생성된 해당 capability가 단 하나의 primary 옵션만 가지며 아직 활성화되지 않았다면, 그 정확한 resource에 한 번만 PATCH해 primary 옵션을 설정하고 후속 GET으로 확인한다. 다른 설정이 섞여 있거나 응답이 불명확하면 변경하지 않는다.
+3. 이미 생성된 해당 capability가 단 하나의 primary 옵션만 가지며 `enabled:false`가 명시됐다면, 그 정확한 resource에 한 번만 PATCH해 primary 옵션을 설정하고 후속 GET으로 확인한다. 다른 설정이 섞여 있거나 응답이 불명확하면 변경하지 않는다.
 
 각 생성 응답과 후속 GET에서 내부 resource ID와 설정을 다시 확인한다. 기존 등록의 identifier·name·platform·seedId가 모두 맞으면 재사용한다. 기존 Apple 로그인 설정의 구조가 다르거나 응답이 중복·불완전하면 중단한다. 이름 변경, 앱 그룹 연결, DELETE, 앱 record·상품·키 생성, 계약 동의는 수행하지 않는다.
 
@@ -37,3 +37,11 @@ node --test scripts/test-apple-ipad-register.mjs
 공식 근거(2026-10-17 확인): [Bundle ID 등록 API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-bundleids), [Capability 활성화 API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-bundleidcapabilities), [공식 OpenAPI 명세](https://developer.apple.com/sample-code/app-store-connect/app-store-connect-openapi-specification.zip), [JWT와 GET scope](https://developer.apple.com/documentation/appstoreconnectapi/generating-tokens-for-api-requests), [새 앱의 primary Apple 로그인 설정](https://developer.apple.com/help/account/capabilities/about-sign-in-with-apple/), [App ID prefix와 Team ID](https://developer.apple.com/library/archive/technotes/tn2311/_index.html), [새 앱 record 등록](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/), [별도 결제 서버 키](https://developer.apple.com/documentation/appstoreserverapi/creating-api-keys-to-authorize-api-requests).
 
 추가 공식 근거: [capability 설정 수정 API](https://developer.apple.com/documentation/appstoreconnectapi/patch-v1-bundleidcapabilities-_id_).
+
+## 2026-10-17 실행 결과
+
+고정 Bundle ID 등록은 HTTP 201 뒤 재조회로 확인했다. Apple은 iOS 요청을 `UNIVERSAL`로 정규화했으며 identifier·name·seedId는 일치했다. Apple 로그인 capability 생성도 HTTP 201을 반환했고, 이후 읽기에서 In-App Purchase와 Apple 로그인이 모두 목록에 있음을 확인했다. 기존 공증 키를 외부로 추출하지 않았다.
+
+Primary 설정 요청은 HTTP 200을 반환했지만 조회 응답이 `PRIMARY_APP_CONSENT` 옵션의 `enabled`와 `enabledByDefault`를 모두 생략했다. 따라서 true 또는 false로 단정하지 않는다. 추가 쓰기는 중단했으며, 이후 도구도 명시적인 false에만 PATCH하고 값이 없으면 `primary_state_not_returned`로 남긴다. Developer Portal에서 “Enable as a primary App ID”가 선택됐는지 확인해야 한다.
+
+[최종 조회 실행](https://github.com/seojune662/bandal/actions/runs/38989943604)은 성공했다. Bundle ID와 두 capability는 존재하지만 App Store 앱 record·구독 그룹·월/연 상품은 아직 없다. 이 결과는 Apple 실제 로그인·기기 구매·배포 성공을 의미하지 않는다.

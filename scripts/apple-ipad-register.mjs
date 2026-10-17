@@ -198,6 +198,10 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
       // Ambiguous or additional settings must not be overwritten.
       const settings = capabilities[0].attributes.settings
       if (value.settingCount !== 1 || value.primarySettingCount !== 1 || value.primaryOptionCount !== 1 || settings[0].options.length !== 1) return stop('existing_sign_in_configuration_mismatch')
+      if (typeof settings[0].options[0].enabled !== 'boolean') {
+        report.signInWithApple.status = 'listed_primary_option_unverified'
+        return stop('primary_state_not_returned')
+      }
       const id = capabilities[0].id
       primaryCapabilityPath = `/v1/bundleIdCapabilities/${id}`
       report.signInWithApple.write = 'attempted'

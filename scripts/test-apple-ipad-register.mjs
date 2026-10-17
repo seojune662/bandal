@@ -193,6 +193,15 @@ test('configures only the fixed app primary option and verifies the final state'
   }
 })
 
+test('an omitted Apple primary enabled flag is unknown and never causes repeated writes', async () => {
+  const opaque = { ...capability, attributes: { ...capability.attributes, settings: [{ key: 'APPLE_ID_AUTH_APP_CONSENT', options: [{ key: 'PRIMARY_APP_CONSENT' }] }] } }
+  const wire = transport([response([bundle]), response([opaque])])
+  const report = await registerAppleIPad({ env, now, ...wire })
+  assert.equal(report.reason, 'primary_state_not_returned')
+  assert.equal(report.signInWithApple.status, 'listed_primary_option_unverified')
+  assert.ok(wire.calls.every(call => call.method === 'GET'))
+})
+
 test('the newly enabled capability must be present and primary in a subsequent GET', async () => {
   for (const caps of [[], [{ ...capability, id: 'OTHER' }], [{ ...capability, attributes: { ...capability.attributes, settings: [] } }]]) {
     const wire = transport([response([bundle]), response([]), response(capability, 201), response(caps)])
