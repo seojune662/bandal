@@ -55,7 +55,7 @@ function StateIcons({ open, recent }: { open: boolean; recent: boolean }): JSX.E
 }
 
 /** Augment the existing button without adding a hit target or changing drag behavior. */
-export function MaterialRowAffordance({ target, children }: { target: PreviewTarget; children: ReactElement<ButtonHTMLAttributes<HTMLButtonElement>> }): JSX.Element {
+export function MaterialRowAffordance({ target, children, previewEnabled = true }: { target: PreviewTarget; previewEnabled?: boolean; children: ReactElement<ButtonHTMLAttributes<HTMLButtonElement>> }): JSX.Element {
   const context = useContext(AffordancesContext)
   const anchor = useRef<HTMLButtonElement | null>(null)
   const suppressFocus = useRef(false)
@@ -69,10 +69,10 @@ export function MaterialRowAffordance({ target, children }: { target: PreviewTar
     title: undefined,
     'aria-describedby': context?.activeAnchor === anchor.current && anchor.current ? context.tooltipId : props['aria-describedby'],
     ...({ 'data-material-open': open || undefined, 'data-material-new': recent || undefined } as Record<string, unknown>),
-    onPointerEnter: event => { props.onPointerEnter?.(event); anchor.current = event.currentTarget; if (!event.buttons && !event.currentTarget.disabled) context?.show(target, event.currentTarget) },
+    onPointerEnter: event => { props.onPointerEnter?.(event); anchor.current = event.currentTarget; if (previewEnabled && !event.buttons && !event.currentTarget.disabled) context?.show(target, event.currentTarget) },
     onPointerLeave: event => { props.onPointerLeave?.(event); context?.hide(event.currentTarget) },
     onPointerDown: event => { suppressFocus.current = true; context?.hide(); props.onPointerDown?.(event) },
-    onFocus: event => { props.onFocus?.(event); anchor.current = event.currentTarget; if (!suppressFocus.current) context?.show(target, event.currentTarget); suppressFocus.current = false },
+    onFocus: event => { props.onFocus?.(event); anchor.current = event.currentTarget; if (previewEnabled && !suppressFocus.current) context?.show(target, event.currentTarget); suppressFocus.current = false },
     onBlur: event => { suppressFocus.current = false; context?.hide(event.currentTarget); props.onBlur?.(event) },
     onClick: event => { context?.hide(); props.onClick?.(event) },
     onContextMenu: event => { context?.hide(); props.onContextMenu?.(event) },

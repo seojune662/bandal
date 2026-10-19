@@ -384,6 +384,12 @@ jobs:
         if: matrix.os == 'macos-14'
         run: node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app
 
+      - name: Verify bundled photo picker and share extension
+        if: matrix.os == 'macos-14'
+        run: |
+          node scripts/verify-photo-picker.mjs release/mac*/Bandal.app
+          node scripts/verify-share-extension.mjs release/mac*/Bandal.app
+
       - name: Verify bundled browser import helper
         shell: bash
         run: |

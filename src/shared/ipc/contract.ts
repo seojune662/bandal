@@ -1,3 +1,5 @@
+import type { SharedMaterialRequest } from '../types/share'
+import type { ExternalSourceLocation } from '../types/externalSources'
 import type { BillingState, RuntimeSyncState, RuntimeSyncConflict } from '../types/subscription'
 import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'
 import { LEARNING_CHANNELS, type LearningIpcContract } from './learningContract'
@@ -178,6 +180,9 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
 }
 
 export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
+  'share:list': { req: Record<string, never>; res: SharedMaterialRequest[] }
+  'share:import': { req: { id: string; courseId: string; dirRelPath: string }; res: { relPaths: string[] } }
+  'share:dismiss': { req: { id: string }; res: { ok: true } }
   // -- courses --------------------------------------------------------------
   'courses:list': {
     req: { includeArchived?: boolean }
@@ -313,6 +318,11 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
   }
 
   // -- materials ------------------------------------------------------------
+  'externalSources:pickFolder': { req: Record<string, never>; res: ExternalSourceLocation | null }
+  'externalSources:pickPhotos': { req: Record<string, never>; res: ExternalSourceLocation | null }
+  'externalSources:list': { req: { id: string }; res: ExternalSourceLocation }
+  'externalSources:thumbnail': { req: { id: string }; res: { dataUrl: string | null } }
+  'externalSources:import': { req: { id: string; courseId: string }; res: ImportResult }
   'materials:snapshot': { req: { courseId: string }; res: { tree: MaterialNode[] | null } }
   'materials:tree': {
     req: { courseId: string }
@@ -1694,10 +1704,18 @@ export const IPC_CHANNELS = [
   'courseLinks:update',
   'courseLinks:delete',
   'shell:openExternal',
+  'externalSources:pickFolder',
+  'externalSources:pickPhotos',
+  'externalSources:list',
+  'externalSources:thumbnail',
+  'externalSources:import',
   'materials:snapshot',
   'materials:tree',
   'materials:search',
   'materials:import',
+  'share:list',
+  'share:import',
+  'share:dismiss',
   'materials:move',
   'materials:reveal',
   'materials:preview',

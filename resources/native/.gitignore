@@ -1,0 +1,3 @@
+# Native outputs are rebuilt for each release architecture.
+photo-picker/
+share-extension/

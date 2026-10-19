@@ -1,3 +1,4 @@
+import { ShareImportDialog } from '../features/share/ShareImportDialog'
 import { openStudyMarket } from './studyMarketNavigation'
 import {
   lazy,
@@ -449,6 +450,7 @@ export function AppShell(): JSX.Element {
       </Suspense>
       {isOnboardingVisible && <OnboardingOverlay />}
       <ToastHost />
+      <ShareImportDialog />
       <LearningDialogsHost />
       <PresentationProgress />
       {settingsPresent && (

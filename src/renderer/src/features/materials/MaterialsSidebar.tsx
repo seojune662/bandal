@@ -21,7 +21,10 @@ import {
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { MaterialDeleteDialog } from './MaterialDeleteDialog'
-import { MaterialSearchResults, MaterialTree } from './MaterialTree'
+import { MaterialSearchResults, type MaterialTreeProps } from './MaterialTree'
+import { MaterialBrowser, MaterialViewMenu } from './MaterialViews'
+import { readMaterialView, rememberMaterialView, type MaterialView } from './materialViewPreference'
+import { ExternalSourcesPanel } from './ExternalSourcesPanel'
 import {
   MaterialsContextMenu,
   type MaterialsContextMenuState
@@ -198,6 +201,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const pickFolder = useCoursesStore((state) => state.pickFolder)
   const relinkCourse = useCoursesStore((state) => state.relinkCourse)
   const [filesOpen, setFilesOpen] = useState(true)
+  const [view, setView] = useState<MaterialView>(readMaterialView)
+  const [browserDirectory, setBrowserDirectory] = useState('')
   const [query, setQuery] = useState('')
   const [isDebouncing, setIsDebouncing] = useState(false)
   const [isRelinking, setIsRelinking] = useState(false)
@@ -262,6 +267,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   // Re-runs when the course is re-linked too — folderPath is part of the key.
   useEffect(() => {
     setQuery('')
+    setBrowserDirectory('')
     setContextMenu(null)
     setLinkTarget(null)
     setEditing(null)
@@ -359,12 +365,15 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       const newest = relPaths.at(-1)
       if (newest === undefined) return
       ensureAncestorsExpanded(newest)
+      setBrowserDirectory(materialParentPath(newest))
       setSelectedRelPath(newest)
     },
     [ensureAncestorsExpanded]
   )
 
-  const selectedNode = findMaterialNode(tree, selectedRelPath)
+  const browsedDirectory = view !== 'list' ? findMaterialNode(tree, browserDirectory) : null
+  const importDirRelPath = browsedDirectory?.kind === 'dir' ? browsedDirectory.relPath : ''
+  const selectedNode = findMaterialNode(tree, selectedRelPath) ?? browsedDirectory
   const pasteDirRelPath = targetDirectory(selectedNode)
   const pasteDestinationName =
     pasteDirRelPath === ''
@@ -423,6 +432,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       await refreshAfterMutation(course.id)
       if (activeCourseIdRef.current !== course.id) return
       ensureAncestorsExpanded(moved.relPath)
+      setBrowserDirectory(materialParentPath(moved.relPath))
       setSelectedRelPath(moved.relPath)
     } catch (moveError) {
       console.error('[Bandal] 자료를 이동하지 못했습니다.', moveError)
@@ -436,7 +446,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     setUrlDropTargetDirRelPath(null)
     if (course === null || course.missing || files.length === 0) return
     const courseId = course.id
-    void importDroppedFiles(courseId, files, dirRelPath).then(paths => {
+    void importDroppedFiles(courseId, files, dirRelPath ?? importDirRelPath).then(paths => {
       if (activeCourseIdRef.current === courseId) handleCreated(paths)
     })
   }
@@ -527,6 +537,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       openMaterialInWorkspace('note', created.relPath)
       await refreshAfterMutation(course.id)
       if (activeCourseIdRef.current !== course.id) return
+      setBrowserDirectory(materialParentPath(created.relPath))
       setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: true })
     } catch (createError) {
@@ -550,6 +561,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       ensureAncestorsExpanded(created.relPath)
       await refreshAfterMutation(course.id)
       if (activeCourseIdRef.current !== course.id) return
+      setBrowserDirectory(materialParentPath(created.relPath))
       setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: false })
     } catch (createError) {
@@ -570,6 +582,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       ensureAncestorsExpanded(duplicated.relPath)
       await refreshAfterMutation(course.id)
       if (activeCourseIdRef.current !== course.id) return
+      setBrowserDirectory(materialParentPath(duplicated.relPath))
       setSelectedRelPath(duplicated.relPath)
       showToast('자료를 복제했어요.')
     } catch (duplicateError) {
@@ -658,6 +671,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       )
       await refreshAfterMutation(course.id)
       if (activeCourseIdRef.current !== course.id) return null
+      setBrowserDirectory(materialParentPath(renamedRelPath))
       setSelectedRelPath(renamedRelPath)
       setEditing(null)
       return null
@@ -696,6 +710,27 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       setDeletePending(false)
     }
   }
+
+  const browserProps: MaterialTreeProps = {
+    courseId: course?.id ?? '', nodes: tree, expandedPaths,
+    editingRelPath: editing?.relPath ?? null, selectedRelPath,
+    pasteTargetDirRelPath: pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null,
+    dropTargetDirRelPath, urlDropTargetDirRelPath, downloadingDirRelPath,
+    onToggleFolder: toggleFolder,
+    onSelect: node => setSelectedRelPath(node.relPath),
+    onContextMenu: handleContextMenu,
+    onCancelRename: () => setEditing(null), onRename: rename,
+    onDropTargetChange: setDropTargetDirRelPath, onUrlDropTargetChange: setUrlDropTargetDirRelPath,
+    onMove: (payload, toDirRelPath) => { void moveMaterial(payload, toDirRelPath) },
+    onImportFiles: importFiles,
+    onDownloadUrl: (url, dirRelPath, fileName) => { void downloadFromUrl(url, dirRelPath, fileName) },
+    onUnsupportedDrop: types => { setDropActive(false); reportUnsupportedDrop(types) }
+  }
+  const materialBrowser = (searching = false): JSX.Element => <MaterialBrowser
+    {...browserProps} key={course?.id} view={view} directory={browserDirectory}
+    onDirectoryChange={relPath => { setBrowserDirectory(relPath); setSelectedRelPath(relPath || null) }}
+    searching={searching} nodes={searching ? searchResults.map(hit => findMaterialNode(tree, hit.relPath) ?? hit) : tree}
+  />
 
   return (
     <MaterialAffordancesProvider courseId={course?.id ?? null}>
@@ -797,7 +832,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
         setDropTargetDirRelPath(null)
-        setUrlDropTargetDirRelPath('')
+        setUrlDropTargetDirRelPath(importDirRelPath)
       }}
       onDragOver={(event) => {
         if (
@@ -811,7 +846,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
         setDropTargetDirRelPath(null)
-        setUrlDropTargetDirRelPath('')
+        setUrlDropTargetDirRelPath(importDirRelPath)
       }}
       onDragLeave={(event) => {
         if (!canAcceptUrlDrop([...event.dataTransfer.types])) return
@@ -839,7 +874,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         setDropTargetDirRelPath(null)
         setUrlDropTargetDirRelPath(null)
         if (drop.kind === 'url') {
-          void downloadFromUrl(drop.url, '', drop.fileName)
+          void downloadFromUrl(drop.url, importDirRelPath, drop.fileName)
           return
         }
         if (drop.kind === 'files') {
@@ -884,7 +919,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               const files = Array.from(input.files ?? [])
               input.value = ''
               if (files.length === 0) return
-              void importDroppedFiles(course.id, files).then(handleCreated)
+              void importDroppedFiles(course.id, files, importDirRelPath).then(handleCreated)
             }}
           />
           <Tooltip label="자료 가져오기">
@@ -1032,7 +1067,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             event.dataTransfer.getData(MATERIAL_MOVE_MIME)
           )
           if (payload !== null && payload.courseId === course?.id) {
-            void moveMaterial(payload, '')
+            void moveMaterial(payload, importDirRelPath)
           }
         }}
       >
@@ -1053,10 +1088,17 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             <section
               className="materials-files-group"
               aria-label="자료 파일"
-              onContextMenu={(event) => handleContextMenu(event, null)}
+              onContextMenu={(event) => handleContextMenu(event, view === 'list' ? null : findMaterialNode(tree, browserDirectory))}
             >
               <div className="materials-group-heading">
                 <button className="materials-section-toggle" aria-expanded={filesOpen || searching} onClick={() => setFilesOpen(!filesOpen)}><span aria-hidden="true">{filesOpen || searching ? '⌄' : '›'}</span>파일</button>
+                <MaterialViewMenu value={view} onChange={next => {
+                  setView(next); rememberMaterialView(next)
+                  if (selectedRelPath !== null) {
+                    if (view === 'list') setBrowserDirectory(materialParentPath(selectedRelPath))
+                    if (next === 'list') ensureAncestorsExpanded(selectedRelPath)
+                  }
+                }} />
                 {downloadingDirRelPath === '' && (
                   <span className="materials-download-status" role="status">
                     <Icon name="refresh" className="is-spinning" />
@@ -1097,7 +1139,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                       전체 자료 보기
                     </button>
                   </div>
-                ) : (
+                ) : view !== 'list' ? materialBrowser(true) : (
                   <MaterialSearchResults
                     courseId={course.id}
                     results={searchResults}
@@ -1112,45 +1154,15 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                   <Icon name="folder" className="empty-state__folder" />
                 </div>
               ) : (
-                <MaterialTree
-                  courseId={course.id}
-                  nodes={tree}
-                  expandedPaths={expandedPaths}
-                  editingRelPath={editing?.relPath ?? null}
-                  selectedRelPath={selectedRelPath}
-                  pasteTargetDirRelPath={
-                    pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
-                  }
-                  dropTargetDirRelPath={dropTargetDirRelPath}
-                  urlDropTargetDirRelPath={urlDropTargetDirRelPath}
-                  downloadingDirRelPath={downloadingDirRelPath}
-                  onToggleFolder={toggleFolder}
-                  onSelect={(node) => setSelectedRelPath(node.relPath)}
-                  onContextMenu={handleContextMenu}
-                  onCancelRename={() => setEditing(null)}
-                  onRename={rename}
-                  onDropTargetChange={setDropTargetDirRelPath}
-                  onUrlDropTargetChange={setUrlDropTargetDirRelPath}
-                  onMove={(payload, toDirRelPath) => {
-                    void moveMaterial(payload, toDirRelPath)
-                  }}
-                  onImportFiles={(files, dirRelPath) => {
-                    importFiles(files, dirRelPath)
-                  }}
-                  onDownloadUrl={(url, dirRelPath, fileName) => {
-                    void downloadFromUrl(url, dirRelPath, fileName)
-                  }}
-                  onUnsupportedDrop={(types) => {
-                    setDropActive(false)
-                    reportUnsupportedDrop(types)
-                  }}
-                />
+                materialBrowser()
               )}
               </div>
             </section>
           </>
         )}
       </div>
+
+      <ExternalSourcesPanel courseId={course?.id ?? null} />
 
       <WidgetDock />
 

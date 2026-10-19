@@ -43,7 +43,7 @@ import {
   primeDrawingImageCache,
   readBandalImageDragData
 } from '../ink'
-import { imageDataUrl } from '../image/imageSource'
+import { imageDataUrl, imageMimeType } from '../image/imageSource'
 import { BANDAL_CLIP_MIME, readBandalClipDragData, pdfClipLabel, writeBandalClipDragData } from './clipTransfer'
 import { clipBoxAtDrop } from '../canvas/canvasModel'
 
@@ -260,14 +260,8 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
   }, [aspect, courseId, drawingColor, drawingWidth, onDrawingCreate,
     onDrawingRemove, onDrawingUpdate, pageNumber, relPath])
 
-  const handlePaste = useCallback((event: ReactClipboardEvent<HTMLElement>): void => {
-    const imageFiles = Array.from(event.clipboardData.files).filter((file) =>
-      file.type.toLocaleLowerCase().startsWith('image/')
-    )
-    if (imageFiles.length === 0) return
-    event.preventDefault()
-    const origin = insertionPointRef.current
-    void (async () => {
+  const insertImageFiles = useCallback((imageFiles: File[], origin: { x: number; y: number }, preserveNames = false): Promise<void> => {
+    return (async () => {
       const timestamp = new Date()
       for (const [index, file] of imageFiles.entries()) {
         const base64 = await fileToBase64(file)
@@ -275,7 +269,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
           courseId,
           dirRelPath: PDF_PASTED_IMAGE_DIRECTORY,
           createDirIfMissing: true,
-          fileName: pastedImageFileName(file, timestamp),
+          fileName: preserveNames && imageMimeType(file.name) ? file.name : pastedImageFileName(file, timestamp),
           encoding: 'base64',
           data: base64
         })
@@ -307,6 +301,13 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     })
   }, [courseId, placeImage])
 
+  const handlePaste = useCallback((event: ReactClipboardEvent<HTMLElement>): void => {
+    const imageFiles = Array.from(event.clipboardData.files).filter(file => file.type.toLowerCase().startsWith('image/'))
+    if (!imageFiles.length) return
+    event.preventDefault()
+    void insertImageFiles(imageFiles, insertionPointRef.current)
+  }, [insertImageFiles])
+
   const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>): void => {
     const types = Array.from(event.dataTransfer.types)
     if (!types.includes(BANDAL_IMAGE_MIME) && !types.includes(BANDAL_CLIP_MIME) && !types.includes('Files')) return
@@ -333,17 +334,27 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       readBandalImageDragData(event.dataTransfer) ??
       imageSourceFromFileDrop(courseId, event.dataTransfer)
     const element = wrapperRef.current
-    if (source === null || element === null) return
+    if (element === null) return
     const point = pointInPage(element, event.clientX, event.clientY)
     if (point === null) return
+    if (source === null) {
+      const files = Array.from(event.dataTransfer.files).filter(file => file.type.toLowerCase().startsWith('image/') || imageMimeType(file.name) !== null)
+      if (!files.length) return
+      event.preventDefault()
+      event.stopPropagation()
+      insertionPointRef.current = point
+      void insertImageFiles(files, point, true)
+      return
+    }
     event.preventDefault()
+    event.stopPropagation()
     event.dataTransfer.dropEffect = 'copy'
     insertionPointRef.current = point
     void placeImage(source, point).catch((error: unknown) => {
       console.error('[Bandal] PDF에 이미지를 놓지 못했습니다.', error)
       showToast('이미지를 놓지 못했습니다.', 'danger')
     })
-  }, [courseId, relPath, pageNumber, aspect, drawingsInteractive, drawingsLoading, onDrawingCreate, placeImage])
+  }, [courseId, relPath, pageNumber, aspect, drawingsInteractive, drawingsLoading, onDrawingCreate, placeImage, insertImageFiles])
 
   const height = Math.round(width * aspect)
   const clipSource: DrawingClipSource = {

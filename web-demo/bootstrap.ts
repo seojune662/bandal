@@ -16,7 +16,7 @@ if (window.parent !== window) {
 
 // Some production stores subscribe at module evaluation. Install before importing the UI.
 setIpcAdapter(adapter)
-window.bandal = { ...adapter, platform: 'web', pathForFile: () => '', startMaterialDrag: () => {}, openSettings: async () => {} }
+window.bandal = { ...adapter, platform: 'web', pathForFile: () => '', startMaterialDrag: () => {}, startExternalFileDrag: () => {}, openSettings: async () => {} }
 try {
   const key = 'bandal:course-sidebar:collapsed:v1'
   if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(['demo-data-structures','demo-course-1','demo-course-2','demo-course-3']))

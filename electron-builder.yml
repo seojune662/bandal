@@ -112,7 +112,8 @@ mac:
   # Signed with the Developer ID Application identity found in the keychain.
   # CI imports it from the MAC_CERT_P12 secret; locally, `pnpm dist` falls back
   # to an unsigned build if no identity is present.
-  entitlements: resources/entitlements.mac.plist
+  entitlements: resources/native/share-extension/entitlements.main.plist
+  sign: scripts/sign-mac.mjs
   entitlementsInherit: resources/entitlements.mac.plist
   # Gatekeeper assessment during packaging is redundant with notarization and
   # fails on machines where the cert is not trusted for assessment yet.
@@ -121,7 +122,17 @@ mac:
   # APPLE_API_KEY_ID / APPLE_API_ISSUER). Skipped automatically when those
   # env vars are absent, so local builds stay fast.
   notarize: true
+  extraFiles:
+    - from: resources/native/share-extension/${arch}/BandalShare.appex
+      to: PlugIns/BandalShare.appex
   extraResources:
+    - from: resources/native/share-extension/${arch}
+      to: share
+      filter:
+        - bandal-share-inbox
+        - config.json
+    - from: resources/native/photo-picker/${arch}/bandal-photo-picker
+      to: photo-picker/bandal-photo-picker
     - from: resources/native/ipad-bridge/darwin-${arch}/bandal-ipad-bridge
       to: ipad-bridge/bandal-ipad-bridge
     - from: resources/native/calendar/${arch}/bandal-calendar
@@ -129,6 +140,8 @@ mac:
     - from: resources/native/browser-import/${arch}/bandal-browser-import
       to: browser-import/bandal-browser-import
   binaries:
+    - Contents/Resources/share/bandal-share-inbox
+    - Contents/Resources/photo-picker/bandal-photo-picker
     - Contents/Resources/ipad-bridge/bandal-ipad-bridge
     - Contents/Resources/calendar/bandal-calendar
     - Contents/Resources/browser-import/bandal-browser-import

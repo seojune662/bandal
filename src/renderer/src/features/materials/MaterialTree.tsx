@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useMemo, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useMemo, type CSSProperties, type ReactNode } from 'react'
 import type {
   MaterialKind,
   MaterialNode,
@@ -106,7 +106,7 @@ function focusAdjacentRow(
   direction: -1 | 1
 ): void {
   const container = event.currentTarget.closest<HTMLElement>(
-    '.material-tree, .material-results'
+    '.material-tree, .material-results, .materials-items'
   )
   if (container === null) return
   const rows = Array.from(
@@ -188,7 +188,10 @@ function InlineNameEditor({
   )
 }
 
-interface TreeNodeProps {
+export interface TreeNodeProps {
+  appearance?: 'icon' | 'column' | 'gallery'
+  preview?: ReactNode
+  selectOnly?: boolean
   flat?: boolean
   virtualIndex?: number
   courseId: string
@@ -214,7 +217,10 @@ interface TreeNodeProps {
   onUnsupportedDrop: (types: readonly string[]) => void
 }
 
-function TreeNode({
+export function TreeNode({
+  appearance,
+  preview,
+  selectOnly = false,
   flat = false,
   virtualIndex,
   courseId,
@@ -245,8 +251,15 @@ function TreeNode({
   const downloading =
     isDirectory && downloadingDirRelPath === node.relPath
   const rowStyle = { '--tree-depth': depth } as CSSProperties
+  const open = (event: { metaKey: boolean; ctrlKey: boolean }): void => {
+    if (node.kind === 'dir') return
+    const newInstance = window.bandal?.platform === 'darwin' ? event.metaKey : event.ctrlKey
+    openMaterialInWorkspace(node.kind, node.relPath, newInstance ? { newInstance: true } : undefined)
+  }
+  const rowClass = appearance ? `material-row material-row--${appearance}` : 'material-row'
   const rowContents = (
     <>
+      {preview}
       <span
         className="material-row__chevron"
         data-visible={isDirectory}
@@ -282,7 +295,7 @@ function TreeNode({
     >
       {editing ? (
         <div
-          className="material-row"
+          className={rowClass}
           data-kind={node.kind}
           data-selected={selectedRelPath === node.relPath || undefined}
           data-paste-target={
@@ -308,11 +321,12 @@ function TreeNode({
           {rowContents}
         </div>
       ) : (
-        <MaterialRowAffordance target={{ courseId, node }}>
+        <MaterialRowAffordance target={{ courseId, node }} previewEnabled={appearance === undefined || appearance === 'column'}>
         <button
           type="button"
-          className="material-row"
+          className={rowClass}
           draggable
+          aria-label={appearance ? node.name : undefined}
           data-material-row="true"
           data-kind={node.kind}
           data-selected={selectedRelPath === node.relPath || undefined}
@@ -340,18 +354,9 @@ function TreeNode({
           onClick={(event) => {
             onSelect(node)
             if (isDirectory) onToggleFolder(node.relPath)
-            else if (node.kind !== 'dir') {
-              const newInstance =
-                window.bandal?.platform === 'darwin'
-                  ? event.metaKey
-                  : event.ctrlKey
-              openMaterialInWorkspace(
-                node.kind,
-                node.relPath,
-                newInstance ? { newInstance: true } : undefined
-              )
-            }
+            else if (!selectOnly) open(event)
           }}
+          onDoubleClick={selectOnly ? open : undefined}
           onContextMenu={(event) => onContextMenu(event, node)}
           onDragStart={(event) => {
             startMaterialDragEvent(event, courseId, node)
@@ -478,6 +483,11 @@ function TreeNode({
             onUnsupportedDrop(types)
           }}
           onKeyDown={(event) => {
+            if (selectOnly && event.key === 'Enter' && !isDirectory) { event.preventDefault(); open(event); return }
+            if (appearance === 'icon' || appearance === 'gallery') {
+              if (event.key === 'ArrowRight') focusAdjacentRow(event, 1)
+              if (event.key === 'ArrowLeft') focusAdjacentRow(event, -1)
+            }
             if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
             if (event.key === 'ArrowUp') focusAdjacentRow(event, -1)
             if (isDirectory && event.key === 'ArrowRight' && !expanded) {
@@ -528,7 +538,7 @@ function TreeNode({
   )
 }
 
-interface MaterialTreeProps {
+export interface MaterialTreeProps {
   courseId: string
   nodes: MaterialNode[]
   expandedPaths: Record<string, boolean>

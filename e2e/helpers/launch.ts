@@ -105,6 +105,8 @@ export async function launchBandal(
   }
   env['BANDAL_USER_DATA_DIR'] = userDataDir
   env['BANDAL_DATA_ROOT'] = dataRoot
+  // Keep shared documents out of the installed app's macOS App Group inbox.
+  env['BANDAL_SHARE_INBOX_DIR'] = join(profileDir, 'share-inbox')
   // 합성 dragstart 가 webContents.startDrag 를 부르면 macOS 중첩 런루프에
   // 걸려 앱 종료가 간헐적으로 영영 안 끝난다 — 테스트에선 끈다.
   env['BANDAL_DISABLE_NATIVE_DRAG'] = '1'

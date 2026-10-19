@@ -1,3 +1,8 @@
+import { createShareInbox } from '../features/share/shareInbox'
+import { createShareRootResolver } from '../features/share/shareRuntime'
+import { createMainWindow, revealMainWindow } from '../windows/mainWindow'
+import { createExternalSourceLibrary } from '../features/externalSources/library'
+import { createPhotoPicker } from '../features/externalSources/photoPicker'
 import { resolvePdfClipSource, isReferencedClipRevision } from '../features/pdf/pdfClipSource'
 import { createPdfNotesService } from '../features/pdf/pdfNotes'
 import { createProfileManager } from '../features/account/profileManager'
@@ -500,6 +505,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     pauseWatching: (courseId) => materialsWatcher.pause(courseId),
     onPathChanged: onMaterialPathChanged
   })
+  const shareInbox = createShareInbox({
+    journalRoot: join(deps.userDataPath, 'share-import-progress'),
+    root: createShareRootResolver({ resourcesPath: process.resourcesPath, packaged: app.isPackaged, platform: process.platform, env: process.env }),
+    importFiles: (courseId, paths, dirRelPath) => materialsRepo.import(courseId, paths, dirRelPath),
+    changed: () => broadcast('share:changed', {})
+  })
   const hoverPreview = createMaterialHoverPreviewService({ materials: materialsRepo, userData: deps.userDataPath })
   app.once('will-quit', () => hoverPreview.dispose())
   const notesRepo = createNotesRepo({
@@ -783,7 +794,46 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
 
+  handle('share:list', () => shareInbox.list())
+  handle('share:import', req => {
+    const result = shareInbox.import(req)
+    broadcast('materials:changed', { courseId: req.courseId })
+    return result
+  })
+  handle('share:dismiss', req => { shareInbox.dismiss(req.id); return OK })
+
   // -- materials ------------------------------------------------------------
+  const externalSources = createExternalSourceLibrary()
+  const photoPicker = createPhotoPicker()
+  app.once('will-quit', () => { photoPicker.dispose(); externalSources.disconnect() })
+  handle('externalSources:pickFolder', async () => {
+    const selection = await dialog.showOpenDialog({ title: '자료에서 열 폴더 선택', properties: ['openDirectory'] })
+    if (selection.canceled || !selection.filePaths[0]) return null
+    return externalSources.connectFolder(selection.filePaths[0])
+  })
+  handle('externalSources:pickPhotos', async () => {
+    const paths = await photoPicker.pick()
+    return paths.length ? externalSources.connectPhotos(paths) : null
+  })
+  handle('externalSources:list', req => externalSources.list(req.id))
+  handle('externalSources:thumbnail', async req => {
+    const path = externalSources.pathFor(req.id)
+    if (!/\.(png|jpe?g|gif|webp|bmp|avif|heic)$/i.test(path)) return { dataUrl: null }
+    try {
+      const thumbnail = await nativeImage.createThumbnailFromPath(path, { width: 160, height: 120 })
+      return { dataUrl: thumbnail.isEmpty() ? null : thumbnail.toDataURL() }
+    } catch { return { dataUrl: null } }
+  })
+  handle('externalSources:import', req => materialsRepo.import(req.courseId, [externalSources.pathFor(req.id)]))
+  ipcMain.on('externalSources:startDrag', (event, req: unknown) => {
+    try {
+      assertAppRendererSender(event)
+      if (!req || typeof req !== 'object' || !('id' in req) || typeof req.id !== 'string') return
+      const path = externalSources.pathFor(req.id)
+      if (process.env['BANDAL_DISABLE_NATIVE_DRAG'] === '1') return
+      event.sender.startDrag({ file: path, icon: FALLBACK_DRAG_ICON })
+    } catch (error) { console.error('[externalSources] startDrag failed', error) }
+  })
   handle('materials:snapshot', (req) => ({ tree: materialsRepo.snapshot(req.courseId) }))
   handle('materials:tree', (req) => materialsRepo.tree(req.courseId))
   handle('materials:search', (req) => materialsRepo.search(req.courseId, req.query))
@@ -3795,6 +3845,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   return {
     miniPlayer,
     handleDeepLink(url) {
+      if (shareInbox.receive(url)) {
+        revealMainWindow(createMainWindow())
+        return
+      }
       // Checked HERE so an unrelated `bandal://` route never constructs the
       // Supabase client — the laziness rule (§1.4-2) survives deep links.
       if (!isAuthCallbackUrl(url)) return

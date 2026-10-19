@@ -86,11 +86,31 @@ export function changedFiles(base) {
     const after = readFileSync('electron.vite.config.ts', 'utf8')
     if (onlyBrowserGestureEntryChanged(before, after) || onlyHoverPreviewEntryChanged(before, after)) files.delete('electron.vite.config.ts')
   }
+  for (const [file, additions, inputs] of [
+    ['src/renderer/src/app/AppShell.tsx', ["import { ShareImportDialog } from '../features/share/ShareImportDialog'", '      <ShareImportDialog />'], ['src/renderer/src/features/share/ShareImportDialog.tsx']],
+    ['scripts/build-native.mjs', ["import shareExtension from './build-share-extension.mjs'", "import photoPicker from './build-photo-picker.mjs'", '  await photoPicker(context)', '  await shareExtension(context)'], ['scripts/build-share-extension.mjs', 'scripts/build-photo-picker.mjs']]
+  ]) {
+    if (files.has(file) && onlyAddedLinesChanged(gitBlob(base, file), readFileSync(file, 'utf8'), additions)) {
+      files.delete(file)
+      for (const input of inputs) files.add(input)
+    }
+  }
   if (files.has('supabase/config.toml') && onlyLiveBillingConfigAdded(gitBlob(base, 'supabase/config.toml'), readFileSync('supabase/config.toml', 'utf8'))) {
     files.delete('supabase/config.toml')
     for (const entry of PADDLE_BILLING_FUNCTIONS) files.add(entry)
   }
   return { base, files: [...files] }
+}
+
+/** Exact isolated feature registrations retain their feature tests without changing existing hosts. */
+export function onlyAddedLinesChanged(before, after, additions) {
+  const previous = before.replaceAll('\r\n', '\n')
+  let next = after.replaceAll('\r\n', '\n')
+  for (const line of additions) {
+    if (previous.split('\n').includes(line) || next.split('\n').filter(value => value === line).length !== 1) return false
+    next = next.replace(`${line}\n`, '')
+  }
+  return previous === next
 }
 
 /** The exact installed PDF library only moves into the packaged runtime. */
@@ -261,6 +281,9 @@ export function planChecks(files, full = false) {
     if (files.some(file => file === `.github/workflows/apple-ipad-${action}.yml` || file === `scripts/apple-ipad-${action}.mjs`)) scriptTests.add(`scripts/test-apple-ipad-${action}.mjs`)
   }
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
+  if (has(/^src\/renderer\/src\/features\/materials\/(?:MaterialViews|MaterialTree|MaterialsSidebar|materialViewPreference|materials)\./)) e2e.add('e2e/materialViews.spec.ts')
+  if (has(/^(?:src\/(?:main\/(?:features\/externalSources\/|ipc\/externalSourcesHandlers\.ts$)|renderer\/src\/features\/materials\/(?:ExternalSourcesPanel|externalSources)\.|shared\/types\/externalSources\.ts$)|native\/photo-picker\/|scripts\/build-photo-picker\.mjs$)/)) e2e.add('e2e/externalSources.spec.ts')
+  if (has(/^(?:src\/(?:main\/(?:features\/share\/|ipc\/shareHandlers\.ts$)|renderer\/src\/features\/share\/|shared\/types\/share\.ts$)|native\/share-extension\/|scripts\/(?:build-share-extension|sign-mac|verify-share-extension)\.mjs$)/)) e2e.add('e2e/shareImport.spec.ts')
   if (ipadBilling) e2e.add('e2e/ipadBilling.spec.ts')
   if (has(/^(?:resources\/ipad-bridge\/bridge\.py|src\/main\/features\/ipadSync\/runtime\.ts)$/)) {
     e2e.add('e2e/accountNotes.spec.ts')

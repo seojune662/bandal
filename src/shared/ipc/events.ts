@@ -181,6 +181,7 @@ export interface ShortcutPassthrough {
 }
 
 export interface PushEvents {
+  'share:changed': Record<string, never>
   'workspace:prepareTransition': { requestId: string }
   'workspace:releaseTransition': { requestId: string }
   'learning:changed': { binding: import('../types/learning').LearningBinding }

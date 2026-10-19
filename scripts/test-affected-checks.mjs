@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyAddedLinesChanged, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 const publishedRelease = (tag_name, published_at, extra = {}) => ({ tag_name, published_at, draft: false, prerelease: false, ...extra })
@@ -437,6 +437,35 @@ test('English guide rendering, persistence and entry points retain first-use pac
     assert.ok(plan.e2e.includes('e2e/englishReadingGuide.spec.ts'))
     assert.ok(!plan.e2e.includes('e2e/browserCompatibility.spec.ts'))
   }
+})
+
+test('material views and native source/share changes retain their packaged flows', () => {
+  for (const [file, spec] of [
+    ['src/renderer/src/features/materials/MaterialViews.tsx', 'materialViews'],
+    ['src/renderer/src/features/materials/materialViewPreference.ts', 'materialViews'],
+    ['src/main/features/externalSources/library.ts', 'externalSources'],
+    ['src/renderer/src/features/materials/ExternalSourcesPanel.tsx', 'externalSources'],
+    ['native/photo-picker/main.swift', 'externalSources'],
+    ['src/main/features/share/inbox.ts', 'shareImport'],
+    ['native/share-extension/ShareViewController.swift', 'shareImport'],
+    ['scripts/verify-share-extension.mjs', 'shareImport']
+  ]) {
+    const plan = planChecks([file])
+    assert.equal(plan.full, false, file)
+    assert.ok(plan.e2e.includes(`e2e/${spec}.spec.ts`), file)
+    assert.ok(!plan.e2e.includes('e2e/appleCalendar.spec.ts'), file)
+  }
+})
+
+test('isolated registrations narrow scope only when all existing host lines are unchanged', () => {
+  const before = 'import existing\nfunction run() {\n  existing()\n}\n'
+  const additions = ['import feature', '  feature()']
+  const after = 'import feature\nimport existing\nfunction run() {\n  existing()\n  feature()\n}\n'
+  assert.equal(onlyAddedLinesChanged(before, after, additions), true)
+  assert.equal(onlyAddedLinesChanged(before, after.replaceAll('\n', '\r\n'), additions), true)
+  assert.equal(onlyAddedLinesChanged(before, after.replace('existing()', 'changed()'), additions), false)
+  assert.equal(onlyAddedLinesChanged(before, after + '  feature()\n', additions), false)
+  assert.equal(onlyAddedLinesChanged(after, after, additions), false)
 })
 
 test('offline dictionary assets and study palette retain focused packaged coverage', () => {

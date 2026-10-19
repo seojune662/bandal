@@ -20,6 +20,7 @@ declare global {
       pathForFile(file: File): string
       /** 자료 행 드래그를 OS 네이티브 파일 드래그로 승격(발사 후 망각). */
       startMaterialDrag(courseId: string, relPath: string): void
+      startExternalFileDrag(id: string): void
       /** [M9] 'darwin' | 'win32' | 'linux' — drives the traffic-light inset. */
       readonly platform: string
       readonly browserAuthProbe?: 'product' | 'clean'

@@ -64,3 +64,8 @@ export function pathForFile(file: File): string {
 export function startMaterialDrag(courseId: string, relPath: string): void {
   window.bandal.startMaterialDrag(courseId, relPath)
 }
+
+/** Drag a file explicitly granted by the folder / Photos picker. */
+export function startExternalFileDrag(id: string): void {
+  window.bandal.startExternalFileDrag(id)
+}

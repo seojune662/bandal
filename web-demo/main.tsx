@@ -17,7 +17,7 @@ import './web-demo.css'
 
 // No Electron APIs or local file access are available in this build.
 setIpcAdapter(adapter)
-window.bandal = { ...adapter, platform: 'web', pathForFile: () => '', startMaterialDrag: () => {}, openSettings: async () => { useUiStore.getState().openSettings() } }
+window.bandal = { ...adapter, platform: 'web', pathForFile: () => '', startMaterialDrag: () => {}, startExternalFileDrag: () => {}, openSettings: async () => { useUiStore.getState().openSettings() } }
 document.documentElement.dataset.platform = 'web'
 setLocale(ko ? 'ko-KR' : 'en-US')
 if (!window.requestIdleCallback) {
