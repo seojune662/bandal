@@ -62,6 +62,9 @@
   overflow: clip;
 }
 .shell-course-rail { grid-area: left; }
+.app-shell[data-left-panel='courses'] > .shell-course-rail {
+  grid-row: 1 / -1;
+}
 .shell-materials-rail { grid-area: right; }
 .shell-course-rail > .app-rail { width: var(--rail-left-width); height: 100%; }
 .shell-materials-rail > .app-rail { width: var(--rail-right-width); height: 100%; }

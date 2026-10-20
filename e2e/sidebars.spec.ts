@@ -49,16 +49,25 @@ test.describe('sidebars', () => {
     await expect(page.locator('aside.app-rail--left')).toBeVisible()
   })
 
-  test('uses the school as the rail identity instead of centered branding', async () => {
+  test('uses the school in the top row without covering window controls', async ({}, info) => {
     const { page } = bandal
     const rail = page.locator('aside.app-rail--left')
+    const school = rail.getByRole('button', { name: /서울대학교 바로가기/ })
 
     await expect(rail.locator('.course-sidebar-chrome__name')).toHaveCount(0)
     await expect(rail.locator('.course-sidebar-chrome__mark')).toHaveCount(0)
     await expect(rail.getByText('CAMPUS', { exact: true })).toHaveCount(0)
-    await expect(
-      rail.getByRole('button', { name: /서울대학교 바로가기/ })
-    ).toBeVisible()
+    await expect(school).toBeVisible()
+    await expect(rail).toHaveCSS('transform', 'none')
+    const schoolBounds = await school.boundingBox()
+    const chromeBounds = await page.locator('.shell-chrome').boundingBox()
+    expect(schoolBounds!.y).toBeLessThan(12)
+    expect(schoolBounds!.x).toBeGreaterThanOrEqual(chromeBounds!.x + chromeBounds!.width)
+    await school.click()
+    await expect(school).toHaveAttribute('aria-expanded', 'false')
+    await page.screenshot({ path: info.outputPath('sidebar-top-row.png') })
+    await school.click()
+    await expect(school).toHaveAttribute('aria-expanded', 'true')
   })
 
   test('the materials sidebar can be reopened with no tabs open', async () => {
@@ -164,6 +173,17 @@ test.describe('sidebars', () => {
       await expect(chrome).toHaveCSS('width', '48px')
       await expect(page.locator('.workspace-chrome-spacer').first()).toHaveCSS('width', '48px')
       await page.screenshot({ path: info.outputPath('fullscreen-collapsed.png') })
+      await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
+      await expect(page.locator('aside.app-rail--left')).toHaveCSS('transform', 'none')
+      const school = page.getByRole('button', { name: /서울대학교 바로가기/ })
+      const bounds = await school.boundingBox()
+      expect(bounds!.y).toBeLessThan(12)
+      expect(bounds!.x).toBeLessThan(80)
+      await school.click()
+      await expect(school).toHaveAttribute('aria-expanded', 'false')
+      await page.screenshot({ path: info.outputPath('fullscreen-sidebar-top-row.png') })
+      await school.click()
+      await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     } finally {
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setFullScreen(false))
     }

@@ -109,20 +109,60 @@ const REPORTER_SOURCE = `(() => {
     if (result === null) send('open-null', 'window.open returned null');
     return result;
   };
-  // One-shot environment probe — answers the questions we previously had to
-  // answer by reading our own source.
-  send('env', JSON.stringify({
-    plugins: navigator.plugins ? navigator.plugins.length : 0,
-    pdfViewerEnabled: navigator.pdfViewerEnabled === true,
-    pdfMime: !!(navigator.mimeTypes && navigator.mimeTypes['application/pdf']),
-    cookieEnabled: navigator.cookieEnabled,
-    contentType: document.contentType,
-    frames: window.frames.length
-  }));
+  // Read capabilities only: no pointer tracking or changes to the site's input.
+  const media = {
+    hover: window.matchMedia('(hover: hover)'),
+    anyHover: window.matchMedia('(any-hover: hover)'),
+    pointerFine: window.matchMedia('(pointer: fine)'),
+    anyPointerFine: window.matchMedia('(any-pointer: fine)')
+  };
+  let lastEnvironment = '';
+  let environmentTimer;
+  const reportEnvironment = () => {
+    const snapshot = JSON.stringify({
+      pdfViewerEnabled: navigator.pdfViewerEnabled === true,
+      cookieEnabled: navigator.cookieEnabled === true,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+      hover: media.hover.matches,
+      anyHover: media.anyHover.matches,
+      pointerFine: media.pointerFine.matches,
+      anyPointerFine: media.anyPointerFine.matches,
+      maxTouchPoints: navigator.maxTouchPoints
+    });
+    if (snapshot === lastEnvironment) return;
+    lastEnvironment = snapshot;
+    send('env', snapshot);
+  };
+  const scheduleEnvironment = () => {
+    window.clearTimeout(environmentTimer);
+    environmentTimer = window.setTimeout(reportEnvironment, 250);
+  };
+  window.addEventListener('resize', scheduleEnvironment, { passive: true });
+  for (const query of Object.values(media)) query.addEventListener('change', scheduleEnvironment);
+  reportEnvironment();
 })();`
 
 interface ConsoleMessageEvent extends Event {
   message: string
+}
+
+/** A page can forge console messages; never copy arbitrary environment fields. */
+function environmentSummary(value: unknown): Record<string, boolean | number> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const env = value as Record<string, unknown>
+  const summary: Record<string, boolean | number> = {}
+  for (const key of ['pdfViewerEnabled', 'cookieEnabled', 'hover', 'anyHover', 'pointerFine', 'anyPointerFine']) {
+    if (typeof env[key] === 'boolean') summary[key] = env[key]
+  }
+  for (const [key, maximum] of [['viewportWidth', 100_000], ['viewportHeight', 100_000], ['maxTouchPoints', 100]] as const) {
+    const number = env[key]
+    if (typeof number === 'number' && Number.isInteger(number) && number >= 0 && number <= maximum) summary[key] = number
+  }
+  const ratio = env['devicePixelRatio']
+  if (typeof ratio === 'number' && Number.isFinite(ratio) && ratio > 0 && ratio <= 100) summary['devicePixelRatio'] = ratio
+  return summary
 }
 
 function parse(
@@ -148,8 +188,8 @@ function parse(
       return null
     }
     if (kind === 'env') {
-      const env = JSON.parse(text) as Record<string, unknown>
-      const summary = { pdfViewerEnabled: env['pdfViewerEnabled'] === true, cookieEnabled: env['cookieEnabled'] === true }
+      const summary = environmentSummary(JSON.parse(text))
+      if (summary === null) return null
       return { kind, message: JSON.stringify(summary), url: diagnosticAddress(url) }
     }
     const labels = { error: 'Page script error', rejection: 'Unhandled page promise rejection', console: 'Page console error', 'open-null': 'window.open returned null' }

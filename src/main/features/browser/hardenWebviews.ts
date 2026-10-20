@@ -178,7 +178,7 @@ export function hardenBrowsingSession(partition: string): void {
         callback(remembered === 'granted')
         return
       }
-      void askSitePermission(origin, permission, persistent, partition).then(callback)
+      void askSitePermission(origin, permission, persistent, partition).then(callback, () => callback(false))
     }
   )
   // SYNCHRONOUS — it cannot prompt. It answers from what the student already
@@ -546,17 +546,22 @@ export function attachNavigationPolicies(
    */
   webContents.on('select-client-certificate', (event, url, list, callback) => {
     event.preventDefault()
-    if (list.length === 0) return
+    // This is the app event's optional-certificate callback too, although
+    // Electron's WebContents declaration currently marks its argument required.
+    const decline = (): void => (callback as (certificate?: Electron.Certificate) => void)()
+    if (list.length === 0) { decline(); return }
     if (list.length === 1) {
       // Still worth confirming: this is an identity being asserted.
       void confirmCertificate(navigationHost(webContents), url, list[0]).then((ok) => {
         if (ok && list[0] !== undefined) callback(list[0])
-      })
+        else decline()
+      }, decline)
       return
     }
     void chooseCertificate(navigationHost(webContents), url, list).then((chosen) => {
       if (chosen !== null) callback(chosen)
-    })
+      else decline()
+    }, decline)
   })
 
   // HTTP Basic / Digest / NTLM / Negotiate. With NO listener Electron

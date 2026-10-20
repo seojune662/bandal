@@ -210,7 +210,7 @@ function TierDropZone({
   )
 }
 
-export function UniversityShortcuts(): JSX.Element | null {
+export function UniversityShortcuts(): JSX.Element {
   const t = useT()
   const loaded = useUniversityStore((state) => state.loaded)
   const university = useUniversityStore((state) => state.university)
@@ -249,7 +249,7 @@ export function UniversityShortcuts(): JSX.Element | null {
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
   useDismissableMenu(contextMenu !== null, contextMenuRef, closeContextMenu)
 
-  if (!loaded) return null
+  if (!loaded) return <section className="university-section" aria-hidden="true" />
 
   if (university === null) {
     return (

@@ -4,12 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BrowserAuthProbeIdentity, BrowserAuthProbeMode } from '../../../src/main/features/browser/authProbe'
 
-const electronMocks = vi.hoisted(() => ({ fromPartition: vi.fn(), getName: vi.fn(() => 'Bandal') }))
+const electronMocks = vi.hoisted(() => ({
+  fromPartition: vi.fn(),
+  getName: vi.fn(() => 'Bandal'),
+  showMessageBox: vi.fn()
+}))
 const settings = vi.hoisted(() => ({ browser: { popupBehavior: 'balanced', trackingProtection: 'balanced', doNotTrack: true } }))
 vi.mock('electron', () => ({
   app: { getName: electronMocks.getName, on: vi.fn() },
   BrowserWindow: { fromWebContents: vi.fn(() => null), getFocusedWindow: vi.fn(() => null) },
-  dialog: { showMessageBox: vi.fn(), showMessageBoxSync: vi.fn() },
+  dialog: { showMessageBox: electronMocks.showMessageBox, showMessageBoxSync: vi.fn() },
   session: { fromPartition: electronMocks.fromPartition },
   shell: { openExternal: vi.fn() }
 }))
@@ -69,6 +73,20 @@ function probe(mode: BrowserAuthProbeMode, identity?: BrowserAuthProbeIdentity):
   }, installed, executablePath)
 }
 const harden = () => hardenBrowsingSession(`persist:identity-regression-${++partition}`)
+
+test('a failed site-permission dialog denies the request and permits a later retry', async () => {
+  electronMocks.showMessageBox
+    .mockRejectedValueOnce(new Error('Owner window closed'))
+    .mockResolvedValueOnce({ response: 1 })
+  harden()
+  const request = browsingSession.setPermissionRequestHandler.mock.calls[0]![0]
+  const denied = vi.fn()
+  request(null, 'geolocation', denied, { requestingUrl: 'https://portal.example.edu/' })
+  await vi.waitFor(() => expect(denied).toHaveBeenCalledExactlyOnceWith(false))
+  const allowed = vi.fn()
+  request(null, 'geolocation', allowed, { requestingUrl: 'https://portal.example.edu/' })
+  await vi.waitFor(() => expect(allowed).toHaveBeenCalledExactlyOnceWith(true))
+})
 
 function expectInheritedIdentity(): void {
   expect(browsingSession.setUserAgent).not.toHaveBeenCalled()

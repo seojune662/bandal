@@ -98,6 +98,43 @@ describe('attachNavigationPolicies', () => {
     expect(denied.preventDefault).toHaveBeenCalledOnce()
   })
 
+  test.each([
+    { certificates: [] },
+    { certificates: [{ subjectName: 'Student', issuerName: 'University' }] },
+    { certificates: [
+      { subjectName: 'Student', issuerName: 'University' },
+      { subjectName: 'Other', issuerName: 'University' }
+    ] }
+  ])('settles a declined client certificate request for $certificates', async ({ certificates }) => {
+    const page = new FakeWebContents()
+    attachNavigationPolicies(page as unknown as Electron.WebContents, { openInTab: vi.fn() })
+    const event = { preventDefault: vi.fn() }, callback = vi.fn()
+    page.emit('select-client-certificate', event, page.getURL(), certificates, callback)
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledExactlyOnceWith())
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+  })
+
+  test('settles a failed client certificate dialog without asserting an identity', async () => {
+    electronMocks.showMessageBox.mockRejectedValueOnce(new Error('Window closed'))
+    const page = new FakeWebContents(), callback = vi.fn()
+    attachNavigationPolicies(page as unknown as Electron.WebContents, { openInTab: vi.fn() })
+    page.emit('select-client-certificate', { preventDefault: vi.fn() }, page.getURL(),
+      [{ subjectName: 'Student', issuerName: 'University' }], callback)
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledExactlyOnceWith())
+  })
+
+  test('sends only the selected client certificate', async () => {
+    electronMocks.showMessageBox.mockResolvedValueOnce({ response: 2 })
+    const page = new FakeWebContents(), callback = vi.fn()
+    attachNavigationPolicies(page as unknown as Electron.WebContents, { openInTab: vi.fn() })
+    const certificates = [
+      { subjectName: 'Student', issuerName: 'University' },
+      { subjectName: 'Other', issuerName: 'University' }
+    ]
+    page.emit('select-client-certificate', { preventDefault: vi.fn() }, page.getURL(), certificates, callback)
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledExactlyOnceWith(certificates[1]))
+  })
+
   test('preserves a cross-site popup including its original POST request', () => {
     const webContents = new FakeWebContents()
     const openInTab = vi.fn()

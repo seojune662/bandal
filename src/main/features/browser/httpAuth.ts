@@ -90,6 +90,10 @@ export async function resolveAuthPrompt(
   inFlight.add(key)
   try {
     return await deps.ask(request)
+  } catch {
+    // A dialog can fail when its owner closes. Finish Chromium's challenge
+    // as cancelled instead of leaving the request waiting indefinitely.
+    return null
   } finally {
     inFlight.delete(key)
   }
@@ -183,8 +187,9 @@ async function promptLine(
         finish(null)
         return
       }
+      if (!raw.startsWith('submit/')) return
       try {
-        finish(decodeURIComponent(raw))
+        finish(decodeURIComponent(raw.slice('submit/'.length)))
       } catch {
         finish(null)
       }
@@ -221,7 +226,7 @@ function promptDataUrl(label: string, masked: boolean): string {
 </div>
 <script>
  const input = document.getElementById('v');
- const send = () => { location.href = 'bandal-auth:' + encodeURIComponent(input.value); };
+ const send = () => { location.href = 'bandal-auth:submit/' + encodeURIComponent(input.value); };
  document.getElementById('o').addEventListener('click', send);
  document.getElementById('c').addEventListener('click', () => { location.href = 'bandal-auth:cancel'; });
  input.addEventListener('keydown', (e) => {
