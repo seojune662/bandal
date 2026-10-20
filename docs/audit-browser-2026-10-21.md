@@ -228,3 +228,26 @@ OS 입력만의 성공을 독립 증명한다고 해석하지 않는다. 실제 
 보완 후 macOS의 해당 회귀 1개를 통과했고, [Windows 전용 반복 검사](https://github.com/seojune662/bandal/actions/runs/39486862994)에서
 패키징한 앱의 hover 회귀 5회가 모두 통과했다(재시도 0회). 진단용 브랜치의
 검사 수정만 v0.87.4에 포함하며 임시 워크플로는 main에 포함하지 않는다.
+
+## v0.87.4 최종 검증
+
+배포 앱 커밋은 `123bcfb9ccd611da04f6bfa29d39cd260e93cc04`이며
+태그 `v0.87.4`와 `package.json`의 `0.87.4`가 일치한다.
+
+- [최종 CI](https://github.com/seojune662/bandal/actions/runs/39487619899):
+  182개 파일·1,169개 단위 검사 통과(1개 파일·11개 검사 건너뜀), 별도 백엔드
+  통합 11개, 검사 선택 스크립트 68개·대비 검사 1개, 관련 타입 검사 통과.
+- [최종 패키지 검사](https://github.com/seojune662/bandal/actions/runs/39487620348):
+  macOS 60개·Windows 60개 모두 통과했다. 양쪽에서 hover, 사이드바, 자료 검색을
+  포함한 변경 기능을 검증했으며, 릴리스는 같은 커밋의 성공한 CI를 재사용했다.
+- macOS arm64·x64 설치 파일의 서명·공증, 캘린더·사진 선택·공유 확장·브라우저
+  가져오기 도우미 검증을 통과했다. Windows 가져오기 도우미도 검증했다.
+  Windows 설치 파일은 기존과 같이 미서명이다.
+- [v0.87.4 릴리스](https://github.com/seojune662/bandal/releases/tag/v0.87.4)는
+  2026-10-21 05:16 KST에 공개됐다. 업로드 단계에서 12개 파일의 크기·SHA-256을
+  검증했으며, 공개 후 인증 없는 HEAD 요청 12개가 모두 HTTP 200이었다.
+  `latest-mac.yml`과 `latest.yml`을 직접 읽어 버전 `0.87.4`를 확인했다.
+- 웹 커밋 `f2d671f0f70167ada8c2df418a3d364e30a454d5`의 Production 배포
+  `7210061986`이 성공했다. `bandal.io/`, `/en/`, `/changelog`, `/en/changelog`는
+  모두 HTTP 200·v0.87.4를 표시하며, ARM·Intel·Windows 최신 다운로드 링크는
+  모두 v0.87.4 설치 파일로 이동한다. 이미 진행된 웹 반영을 확인해 중복 실행하지 않았다.
