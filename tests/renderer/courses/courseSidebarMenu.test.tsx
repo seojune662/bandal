@@ -151,7 +151,7 @@ describe('CourseSidebar course menu', () => {
     expect(invokeMock).toHaveBeenCalledWith('update:status', {})
     expect(container.querySelector('.rail-update-button')).toBeNull()
     expect(labels).toEqual([
-      '과목', '학습', '학업 보드 열기', 'AI', '도구', '마켓플레이스', '더 보기', '내 프로필', '설정'
+      '과목', '학습', '학업 보드 열기', 'AI', '도구', '커뮤니티', '더 보기', '내 프로필', '설정'
     ])
   })
 
