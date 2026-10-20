@@ -8,6 +8,7 @@ import type { ChatEventBatch, PushChannel, PushPayload } from '../src/shared/ipc
 import type { IpcAdapter } from '../src/renderer/src/lib/ipc'
 import type { ChatMessage } from '../src/shared/types/chat'
 import { data, commit, settings, stamp, id, key, ko, PDF, NOTE, courseId as defaultCourseId } from './state'
+import { PDF_FINGERPRINT } from './sample'
 
 type Handlers = { [K in IpcChannel]?: (req: IpcRequest<K>) => IpcResponse<K> | Promise<IpcResponse<K>> }
 const listeners = new Map<string, Set<(value: never) => void>>()
@@ -81,6 +82,7 @@ const handlers: Handlers = {
   'materials:search': ({ courseId, query }) => nodeList(courseId).filter(n => n.name.toLowerCase().includes(query.toLowerCase())).map(n => ({ ...n, score: 1 })),
   'materials:watch': () => ok,
   'materials:unwatch': () => ok,
+  'share:list': () => [],
   'materials:readFile': ({ courseId, relPath }) => ({ encoding: 'utf8', data: readNote(courseId, relPath).markdown }),
   'materials:hoverPreview': ({ courseId, relPath }) => {
     const note = readNote(courseId, relPath)
@@ -112,6 +114,9 @@ const handlers: Handlers = {
     materialChanged(courseId)
     return { relPath: nextPath, mtime: data.notes[key(courseId, nextPath)]!.mtime, title, markdown }
   },
+  // The demo always serves the same landscape sample PDF; its revision is stable.
+  'pdfNotes:info': () => ({ documentRevision: PDF_FINGERPRINT, paper: null, surface: 'light', orientation: 'landscape' }),
+  'pdfNotes:migrateLegacy': () => ({ migrated: [], failed: [] }),
   'pdf:getViewState': ({ courseId, relPath }) => data.views[key(courseId, relPath)] ?? null,
   'pdf:setViewState': req => { const view = { ...req, updatedAt: stamp() }; commit(next => { next.views[key(req.courseId, req.relPath)] = view }); return view },
   'annotations:listForFile': ({ courseId, relPath }) => data.annotations.filter(a => a.courseId === courseId && a.relPath === relPath),
