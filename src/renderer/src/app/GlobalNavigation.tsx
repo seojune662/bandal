@@ -1,4 +1,4 @@
-import { openStudyMarket } from './studyMarketNavigation'
+import { openCommunity } from './communityNavigation'
 import { useAuthStore } from '../stores/authStore'
 import { useUiStore } from '../stores/uiStore'
 import { SidebarAccountEntry } from '../features/account/SidebarAccountEntry'
@@ -81,12 +81,12 @@ export function GlobalNavigation(): JSX.Element {
       </Tooltip>
       <Tooltip label="도구" placement="right">
         <button className="rail-nav__item" aria-label="도구"
-          aria-expanded={surface !== 'study-market' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}
+          aria-expanded={surface !== 'study-market' && surface !== 'community' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}
           aria-controls="plugins-panel"
-          data-active={surface !== 'study-market' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}
+          data-active={surface !== 'study-market' && surface !== 'community' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}
           onPointerDown={event => { if (event.button === 0) { event.preventDefault(); void captureLauncherContext() } }}
           onClick={event => {
-            if (surface === 'study-market') {
+            if (surface === 'study-market' || surface === 'community') {
               useWorkspaceStore.getState().showCourseWorkspace(useWorkspaceStore.getState().activeCourseId)
               useUiStore.setState({ courseRailOpen: false })
             }
@@ -96,10 +96,10 @@ export function GlobalNavigation(): JSX.Element {
           <Icon name="puzzle" />
         </button>
       </Tooltip>
-      <Tooltip label="마켓플레이스" placement="right">
-        <button className="rail-nav__item" aria-label="마켓플레이스" aria-pressed={surface === 'study-market' && !boardOpen && !settingsOpen && !graphOpen}
-          data-active={surface === 'study-market' && !boardOpen && !settingsOpen && !graphOpen || undefined} onClick={openStudyMarket}>
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M9 20v-6h6v6" /></svg>
+      <Tooltip label="커뮤니티" placement="right">
+        <button className="rail-nav__item" aria-label="커뮤니티" aria-pressed={surface === 'community' && !boardOpen && !settingsOpen && !graphOpen}
+          data-active={surface === 'community' && !boardOpen && !settingsOpen && !graphOpen || undefined} onClick={() => openCommunity()}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11a8 8 0 0 1-8 8H7l-4 3v-7a8 8 0 1 1 18-4Z" /><path d="M8 10h8M8 14h5" /></svg>
         </button>
       </Tooltip>
       <HelpHub />

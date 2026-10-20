@@ -1,5 +1,7 @@
 import { ShareImportDialog } from '../features/share/ShareImportDialog'
 import { openStudyMarket } from './studyMarketNavigation'
+import { openCommunity } from './communityNavigation'
+import { CommunityPromotion } from '../features/community/CommunityPromotion'
 import {
   lazy,
   Suspense,
@@ -126,7 +128,7 @@ export function AppShell(): JSX.Element {
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const workspaceSurface = useWorkspaceStore((state) => state.surface)
   const activeTabKind = useWorkspaceStore((state) => state.activePanelSource()?.descriptor.kind ?? null)
-  const courseRailVisible = courseRailOpen && workspaceSurface !== 'study-market'
+  const courseRailVisible = courseRailOpen && workspaceSurface !== 'study-market' && workspaceSurface !== 'community'
   const materialsRailVisible = rightRailOpen && workspaceSurface === 'course' && activeTabKind !== 'learning'
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
@@ -156,6 +158,16 @@ export function AppShell(): JSX.Element {
 
   // Auto-update toasts. Inert in `pnpm dev` (main reports phase 'unsupported').
   useUpdateNotifications()
+  useEffect(() => {
+    const consume = (): void => {
+      void invoke('community:takeIntent', {}).then(intent => {
+        if (intent) openCommunity(intent)
+      }).catch(() => {})
+    }
+    const off = onPush('community:open', consume)
+    consume()
+    return off
+  }, [])
   useEffect(() => {
     window.addEventListener('bandal:open-study-market', openStudyMarket)
     return () => window.removeEventListener('bandal:open-study-market', openStudyMarket)
@@ -451,6 +463,7 @@ export function AppShell(): JSX.Element {
       {isOnboardingVisible && <OnboardingOverlay />}
       <ToastHost />
       <ShareImportDialog />
+      {!isOnboardingVisible && !settingsPresent && <CommunityPromotion />}
       <LearningDialogsHost />
       <PresentationProgress />
       {settingsPresent && (

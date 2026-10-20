@@ -32,7 +32,7 @@ export interface AgentWorkspaceSyncPayload {
 }
 
 export interface WorkspaceSyncSources {
-  surface?: 'course' | 'learning-home' | 'study-market'
+  surface?: 'course' | 'learning-home' | 'study-market' | 'community'
   openTabs: Record<string, TabDescriptor>
   activeDescriptor: TabDescriptor | null
   selectedCourseId: string | null

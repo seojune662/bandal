@@ -2,6 +2,7 @@ import type { SharedMaterialRequest } from '../types/share'
 import type { ExternalSourceLocation } from '../types/externalSources'
 import type { BillingState, RuntimeSyncState, RuntimeSyncConflict } from '../types/subscription'
 import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'
+import { COMMUNITY_CHANNELS, type CommunityIpcContract } from './communityContract'
 import { LEARNING_CHANNELS, type LearningIpcContract } from './learningContract'
 import type { MaterialHoverPreview } from '../types/materialHoverPreview'
 import type { BrowserPageState, BrowserPageAction } from '../types/browserNative'
@@ -179,7 +180,7 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
   followUpOf?: string
 }
 
-export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
+export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
   'share:list': { req: Record<string, never>; res: SharedMaterialRequest[] }
   'share:import': { req: { id: string; courseId: string; dirRelPath: string }; res: { relPaths: string[] } }
   'share:dismiss': { req: { id: string }; res: { ok: true } }
@@ -1677,6 +1678,7 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
 export const IPC_CHANNELS = [
   'pdfNotes:create', 'pdfNotes:info', 'pdf:restructure', 'pdfNotes:migrateLegacy', 'pdfNotes:migrationStatus',
   ...STUDY_MARKET_CHANNELS,
+  ...COMMUNITY_CHANNELS,
   ...LEARNING_CHANNELS,
   ...RECORDING_CHANNELS,
   'presentation:runtime', 'presentation:installRuntime', 'presentation:cancelRuntime',

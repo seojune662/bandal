@@ -10,6 +10,9 @@ import { installIPadCompanion } from '../features/ipadSync/runtime'
 import { createStudyMarketClient } from '../features/studyMarket/client'
 import { createStudyMarketBundles } from '../features/studyMarket/bundles'
 import { registerStudyMarketHandlers } from './studyMarketHandlers'
+import { createCommunityClient } from '../features/community/client'
+import { parseCommunityDeepLink, type CommunityDeepLink } from '../features/community/deepLink'
+import { registerCommunityHandlers } from './communityHandlers'
 import { assertAppRendererSender } from './appRendererSender'
 import { createWorkspaceTransitions } from './workspaceTransition'
 import { forgetGoogleAccountNavigation } from '../features/browser/googleAccountNavigation'
@@ -396,6 +399,12 @@ function screenPermissionState(access: ScreenAccess): ScreenPermissionState {
 }
 
 export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
+  let pendingCommunityIntent: CommunityDeepLink | null = null
+  handle('community:takeIntent', () => {
+    const intent = pendingCommunityIntent
+    pendingCommunityIntent = null
+    return intent
+  })
   const mail = createGmailService(app.getPath('userData'))
   handle('mail:state', () => mail.state())
   handle('mail:connect', () => mail.connect())
@@ -3244,6 +3253,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   const pluginData = createPluginDataStore({ userDataDir: deps.userDataPath })
   const studyMarketClient = createStudyMarketClient({ getClient: () => account.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })
+  registerCommunityHandlers(handle, { client: createCommunityClient({ getClient: () => account.getClient() }) })
   const studyMarketBundles = createStudyMarketBundles({
     getCourseFolder: courseId => coursesRepo.getFolder(courseId),
     exportAnnotated: (input, path) => pdfExporter.exportAnnotated(input, path),
@@ -3845,6 +3855,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   return {
     miniPlayer,
     handleDeepLink(url) {
+      const communityIntent = parseCommunityDeepLink(url)
+      if (communityIntent) {
+        pendingCommunityIntent = communityIntent
+        revealMainWindow(createMainWindow())
+        broadcast('community:open', {})
+        return
+      }
       if (shareInbox.receive(url)) {
         revealMainWindow(createMainWindow())
         return

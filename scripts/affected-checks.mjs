@@ -113,6 +113,97 @@ export function onlyAddedLinesChanged(before, after, additions) {
   return previous === next
 }
 
+// Exact feature registrations and retired sell-menu removals. Each accepted
+// file must equal this transformation byte for byte outside normalized CRLF.
+// Changes to existing host behavior retain the ordinary broad E2E selection.
+const COMMUNITY_REGISTRATION_EDITS = {
+  "src/main/ipc/registerHandlers.ts": [
+    ["import { registerStudyMarketHandlers } from './studyMarketHandlers'\n", "import { registerStudyMarketHandlers } from './studyMarketHandlers'\nimport { createCommunityClient } from '../features/community/client'\nimport { parseCommunityDeepLink, type CommunityDeepLink } from '../features/community/deepLink'\nimport { registerCommunityHandlers } from './communityHandlers'\n"],
+    ["export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {\n", "export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {\n  let pendingCommunityIntent: CommunityDeepLink | null = null\n  handle('community:takeIntent', () => {\n    const intent = pendingCommunityIntent\n    pendingCommunityIntent = null\n    return intent\n  })\n"],
+    ["  const studyMarketClient = createStudyMarketClient({ getClient: () => account.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })\n", "  const studyMarketClient = createStudyMarketClient({ getClient: () => account.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })\n  registerCommunityHandlers(handle, { client: createCommunityClient({ getClient: () => account.getClient() }) })\n"],
+    ["    handleDeepLink(url) {\n", "    handleDeepLink(url) {\n      const communityIntent = parseCommunityDeepLink(url)\n      if (communityIntent) {\n        pendingCommunityIntent = communityIntent\n        revealMainWindow(createMainWindow())\n        broadcast('community:open', {})\n        return\n      }\n"],
+  ],
+  "src/preload/index.ts": [
+    ["const PUSH_CHANNELS = [\n", "const PUSH_CHANNELS = [\n  'community:open',\n"],
+  ],
+  "src/shared/ipc/contract.ts": [
+    ["import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'\n", "import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'\nimport { COMMUNITY_CHANNELS, type CommunityIpcContract } from './communityContract'\n"],
+    ["\nexport interface IpcContract extends StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {\n", "\nexport interface IpcContract extends CommunityIpcContract, StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {\n"],
+    ["  ...STUDY_MARKET_CHANNELS,\n", "  ...STUDY_MARKET_CHANNELS,\n  ...COMMUNITY_CHANNELS,\n"],
+  ],
+  "src/shared/ipc/events.ts": [
+    ["export interface PushEvents {\n", "export interface PushEvents {\n  'community:open': Record<string, never>\n"],
+  ],
+  "src/renderer/src/app/AppShell.tsx": [
+    ["import { openStudyMarket } from './studyMarketNavigation'\n", "import { openStudyMarket } from './studyMarketNavigation'\nimport { openCommunity } from './communityNavigation'\nimport { CommunityPromotion } from '../features/community/CommunityPromotion'\n"],
+    ["  const activeTabKind = useWorkspaceStore((state) => state.activePanelSource()?.descriptor.kind ?? null)\n  const courseRailVisible = courseRailOpen && workspaceSurface !== 'study-market'\n", "  const activeTabKind = useWorkspaceStore((state) => state.activePanelSource()?.descriptor.kind ?? null)\n  const courseRailVisible = courseRailOpen && workspaceSurface !== 'study-market' && workspaceSurface !== 'community'\n"],
+    ["  useUpdateNotifications()\n", "  useUpdateNotifications()\n  useEffect(() => {\n    const consume = (): void => {\n      void invoke('community:takeIntent', {}).then(intent => {\n        if (intent) openCommunity(intent)\n      }).catch(() => {})\n    }\n    const off = onPush('community:open', consume)\n    consume()\n    return off\n  }, [])\n"],
+    ["      <ShareImportDialog />\n", "      <ShareImportDialog />\n      {!isOnboardingVisible && !settingsPresent && <CommunityPromotion />}\n"],
+  ],
+  "src/renderer/src/app/GlobalNavigation.tsx": [
+    ["import { openStudyMarket } from './studyMarketNavigation'\n", "import { openCommunity } from './communityNavigation'\n"],
+    ["        <button className=\"rail-nav__item\" aria-label=\"도구\"\n          aria-expanded={surface !== 'study-market' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}\n", "        <button className=\"rail-nav__item\" aria-label=\"도구\"\n          aria-expanded={surface !== 'study-market' && surface !== 'community' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}\n"],
+    ["          aria-controls=\"plugins-panel\"\n          data-active={surface !== 'study-market' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}\n", "          aria-controls=\"plugins-panel\"\n          data-active={surface !== 'study-market' && surface !== 'community' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}\n"],
+    ["          onClick={event => {\n            if (surface === 'study-market') {\n", "          onClick={event => {\n            if (surface === 'study-market' || surface === 'community') {\n"],
+    ["      </Tooltip>\n      <Tooltip label=\"마켓플레이스\" placement=\"right\">\n        <button className=\"rail-nav__item\" aria-label=\"마켓플레이스\" aria-pressed={surface === 'study-market' && !boardOpen && !settingsOpen && !graphOpen}\n          data-active={surface === 'study-market' && !boardOpen && !settingsOpen && !graphOpen || undefined} onClick={openStudyMarket}>\n          <svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" width=\"1em\" height=\"1em\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.75\" strokeLinecap=\"round\" strokeLinejoin=\"round\"><path d=\"M4 10v10h16V10M3 10l2-6h14l2 6M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M9 20v-6h6v6\" /></svg>\n", "      </Tooltip>\n      <Tooltip label=\"커뮤니티\" placement=\"right\">\n        <button className=\"rail-nav__item\" aria-label=\"커뮤니티\" aria-pressed={surface === 'community' && !boardOpen && !settingsOpen && !graphOpen}\n          data-active={surface === 'community' && !boardOpen && !settingsOpen && !graphOpen || undefined} onClick={() => openCommunity()}>\n          <svg aria-hidden=\"true\" viewBox=\"0 0 24 24\" width=\"1em\" height=\"1em\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.75\" strokeLinecap=\"round\" strokeLinejoin=\"round\"><path d=\"M21 11a8 8 0 0 1-8 8H7l-4 3v-7a8 8 0 1 1 18-4Z\" /><path d=\"M8 10h8M8 14h5\" /></svg>\n"],
+  ],
+  "src/renderer/src/features/workspace/WorkspaceHost.tsx": [
+    ["const StudyMarketHome = lazy(() => import('../studyMarket/StudyMarketHome'))\n", "const StudyMarketHome = lazy(() => import('../studyMarket/StudyMarketHome'))\nconst CommunityHome = lazy(() => import('../community/CommunityHome'))\n"],
+    ["    const focus = (): boolean => {\n      const heading = hostRef.current?.querySelector<HTMLElement>(surface === 'study-market' ? '.study-market h1' : '.learning-global-home h1')\n", "    const focus = (): boolean => {\n      const heading = hostRef.current?.querySelector<HTMLElement>(surface === 'community' ? '.community h1' : surface === 'study-market' ? '.study-market h1' : '.learning-global-home h1')\n"],
+    ["    {surface === 'learning-home' && <LearningHome />}\n", "    {surface === 'learning-home' && <LearningHome />}\n    {surface === 'community' && <Suspense fallback={<div role=\"status\">커뮤니티 불러오는 중…</div>}><CommunityHome /></Suspense>}\n"],
+  ],
+  "src/renderer/src/stores/workspaceStore.ts": [
+    ["export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'\nexport type WorkspaceSurface = 'course' | 'learning-home' | 'study-market'\n", "export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'\nexport type WorkspaceSurface = 'course' | 'learning-home' | 'study-market' | 'community'\n"],
+    ["  showStudyMarket: () => void\n", "  showStudyMarket: () => void\n  showCommunity: () => void\n"],
+    ["  return {\n    surface: 'course',\n", "  return {\n    surface: 'course',\n    showCommunity: () => {\n      if (get().surface === 'community') return\n      get().notifyLayoutChanged()\n      flush()\n      set({ surface: 'community', activePanelId: null })\n    },\n"],
+  ],
+  "src/renderer/src/features/courses/CourseSidebar.tsx": [
+    ["import { CourseListItem } from './CourseListItem'\nimport { openStudyMarketSell } from '../studyMarket/controller'\n", "import { CourseListItem } from './CourseListItem'\n"],
+    ["            role=\"menuitem\"\n            disabled={contextMenu.course.missing}\n            onClick={() => {\n              openStudyMarketSell({ courseId: contextMenu.course.id })\n              setContextMenu(null)\n            }}\n          >\n            <Icon name=\"fileText\" />\n            자료 판매하기\n          </button>\n          <button\n            type=\"button\"\n            role=\"menuitem\"\n", "            role=\"menuitem\"\n"],
+  ],
+  "src/renderer/src/features/materials/MaterialsContextMenu.tsx": [
+    ["import { convertPresentationToPdf } from '../file/pptx/presentationJobs'\nimport { openStudyMarketSell } from '../studyMarket/controller'\nimport { isSellableMaterial } from '../studyMarket/presentation'\n", "import { convertPresentationToPdf } from '../file/pptx/presentationJobs'\n"],
+    ["      />\n      {activeCourseId !== null && (target === null || target.kind === 'dir' || isSellableMaterial(target.relPath)) && (\n        <button type=\"button\" role=\"menuitem\" onClick={() => {\n          openStudyMarketSell({ courseId: activeCourseId, ...(target === null ? {} : { relPath: target.relPath }) })\n          onClose()\n        }}><Icon name=\"fileText\" />자료 판매하기</button>\n      )}\n", "      />\n"],
+  ],
+  "src/renderer/src/features/agent/workspaceSync.ts": [
+    ["export interface WorkspaceSyncSources {\n  surface?: 'course' | 'learning-home' | 'study-market'\n", "export interface WorkspaceSyncSources {\n  surface?: 'course' | 'learning-home' | 'study-market' | 'community'\n"],
+  ],
+  "src/renderer/src/features/assistantPanel/assistantController.ts": [
+    ["  const workspace = useWorkspaceStore.getState()\n  if (workspace.surface === 'study-market') {\n", "  const workspace = useWorkspaceStore.getState()\n  if (workspace.surface === 'study-market' || workspace.surface === 'community') {\n"],
+  ],
+  "src/renderer/src/features/onboarding/tour/tourStore.ts": [
+    ["  else if (previous.surface === 'study-market') workspace.showStudyMarket()\n", "  else if (previous.surface === 'study-market') workspace.showStudyMarket()\n  else if (previous.surface === 'community') workspace.showCommunity()\n"],
+  ],
+}
+
+export function onlyCommunityRegistrationChanged(file, before, after) {
+  if (!Object.hasOwn(COMMUNITY_REGISTRATION_EDITS, file)) return false
+  const edits = COMMUNITY_REGISTRATION_EDITS[file]
+  if (!edits || typeof before !== 'string' || typeof after !== 'string') return false
+  let expected = before.replaceAll('\r\n', '\n')
+  const next = after.replaceAll('\r\n', '\n')
+  if (expected === next) return false
+  for (const [previous, replacement] of edits) {
+    if (expected.split(previous).length !== 2) return false
+    expected = expected.replace(previous, () => replacement)
+  }
+  return expected === next
+}
+
+/** Only E2E inputs are scoped; type and related-unit checks keep every real file. */
+export function communityE2eFiles(files, readBefore, readAfter) {
+  const isolated = new Set(files.filter(file => {
+    if (!Object.hasOwn(COMMUNITY_REGISTRATION_EDITS, file)) return false
+    try { return onlyCommunityRegistrationChanged(file, readBefore(file), readAfter(file)) }
+    catch { return false } // Missing history, deletes and unreadable files remain broad.
+  }))
+  if (isolated.size === 0) return files
+  return [...new Set(files.filter(file => !isolated.has(file)).concat(
+    'src/renderer/src/features/community/CommunityHome.tsx',
+    'src/renderer/src/features/studyMarket/StudyMarketHome.tsx'
+  ))]
+}
+
 /** The exact installed PDF library only moves into the packaged runtime. */
 export function onlyLockedPdfDependencyPromoted(before, after, beforeLock, afterLock) {
   const name = 'pdf-lib', specifier = '^1.17.1', version = '1.17.1'
@@ -257,6 +348,7 @@ export function planChecks(files, full = false) {
   // Global runtime/toolchain changes justify a broad check; routine features do not.
   full ||= has(/^(package\.json|pnpm-lock\.yaml|electron\.vite\.config\.ts|vitest\.config\.ts|tests\/setup\.ts)$/)
   const sharedBackendConfig = has(/^supabase\/(?:config\.toml|functions\/deno\.(?:json|lock))$/)
+  const communityBackend = full || has(/^(?:supabase\/migrations\/.*community|tests\/backend\/community\/)/)
   const studyMarketBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/study-market\/|study-market(?:-webhook|-cron)?\/)|migrations\/.*study_market)|tests\/backend\/studyMarket\/|src\/shared\/types\/studyMarket\.ts$)/)
   const paddleBillingBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/paddle-billing\/|paddle-(?:billing|webhook)(?:-live)?\/)|migrations\/.*paddle_billing)|tests\/backend\/paddleBilling\/)/)
   const appleBillingBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/apple-billing\/|apple-(?:billing|notifications)(?:-sandbox)?\/)|migrations\/.*apple_billing)|tests\/backend\/appleBilling\/(?!deletion))/)
@@ -296,6 +388,7 @@ export function planChecks(files, full = false) {
   }
   if (has(/^src\/(?:main\/ipc\/(?:workspaceTransition|registerHandlers)\.ts|renderer\/src\/(?:features\/documents\/workspaceTransition|main)\.tsx?|preload\/index\.ts|shared\/ipc\/(?:events|contract)\.ts)$/)) e2e.add('e2e/accountProfileBackup.spec.ts')
   if (studyMarketBackend || has(/^src\/(?:main\/(?:features\/studyMarket\/|ipc\/studyMarketHandlers\.ts$)|shared\/(?:types\/studyMarket\.ts$|ipc\/studyMarketContract\.ts$)|renderer\/src\/(?:features\/studyMarket\/|app\/studyMarketNavigation\.ts$))/)) e2e.add('e2e/studyMarket.spec.ts')
+  if (communityBackend || has(/^src\/(?:main\/(?:features\/community\/|ipc\/communityHandlers\.ts$)|shared\/(?:types\/community\.ts$|ipc\/communityContract\.ts$)|renderer\/src\/(?:features\/community\/|app\/communityNavigation\.ts$))/)) e2e.add('e2e/community.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/materials\/(?:MaterialAffordances|materialAffordances|materialStatus|preview\/)|main\/features\/materials\/(?:hoverPreview|materialAdded)|shared\/types\/materialHoverPreview)/)) {
     e2e.add('e2e/materialPreview.spec.ts')
     e2e.add('e2e/materialsDrag.spec.ts')
@@ -305,7 +398,7 @@ export function planChecks(files, full = false) {
   const packSettings = /^src\/renderer\/src\/features\/settings\/PacksPanel\.tsx$/
   const settingsShell = /^src\/renderer\/src\/features\/settings\/(?:SettingsApp|SettingsPanels)\.tsx$/
   const pluginSettings = /^src\/renderer\/src\/features\/settings\/(?:catalog\/|pluginCenter\/|(?:PluginsCategoryPanel|PluginConfiguration|PluginDevelopmentPanel|ExtensionsPanel|PacksPanel|McpServersPanel|McpQuickAdd|MarketplacePanel|PluginFeatureMark|pluginCenterModel|mcpPresets|mcpImport|packImport)\.tsx?$|settings-(?:plugins|packs|mcp)\.css$|plugin-center)/
-  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && !pluginSettings.test(file) && file !== 'src/renderer/src/features/settings/settingsSearchIndex.ts' && file !== 'src/renderer/src/components/BandalMark.tsx' && file !== 'src/renderer/src/app/tabCommands.ts' && file !== 'src/renderer/src/app/studyMarketNavigation.ts' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
+  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && !pluginSettings.test(file) && file !== 'src/renderer/src/features/settings/settingsSearchIndex.ts' && file !== 'src/renderer/src/components/BandalMark.tsx' && file !== 'src/renderer/src/app/tabCommands.ts' && file !== 'src/renderer/src/app/studyMarketNavigation.ts' && file !== 'src/renderer/src/app/communityNavigation.ts' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
   if (has(launcherShell) || has(/^src\/renderer\/src\/(features\/launcher\/|stores\/(workflowPacksStore|uiStore)\.ts$)/) || has(packSettings)) e2e.add('e2e/featureLauncher.spec.ts')
   if (has(launcherShell)) {
     e2e.add('e2e/sidebars.spec.ts')
@@ -420,7 +513,7 @@ export function planChecks(files, full = false) {
   }
   const e2eGrep = partial.size ? [...e2e].map(f => partial.get(f) ?? f.replace('e2e/', '').replaceAll('.', '\\.')).join('|') : null
 
-  return { e2eGrep, full, studyMarketBackend, paddleBillingBackend, appleBillingBackend, accountDeletionBackend, syncAccessBackend, types: [...types], scriptTests: [...scriptTests], pythonTests, unitInputs, e2e: [...e2e] }
+  return { e2eGrep, full, communityBackend, studyMarketBackend, paddleBillingBackend, appleBillingBackend, accountDeletionBackend, syncAccessBackend, types: [...types], scriptTests: [...scriptTests], pythonTests, unitInputs, e2e: [...e2e] }
 }
 
 function run(command, args, env = process.env) {
@@ -441,12 +534,18 @@ export function main(args) {
   const baseFlag = args.indexOf('--base')
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
   const plan = planChecks(files, args.includes('--full'))
-  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend || plan.paddleBillingBackend || plan.appleBillingBackend || plan.accountDeletionBackend || plan.syncAccessBackend)); return }
+  if (args.includes('--backend-plan')) { console.log(String(plan.communityBackend || plan.studyMarketBackend || plan.paddleBillingBackend || plan.appleBillingBackend || plan.accountDeletionBackend || plan.syncAccessBackend)); return }
+  const e2eFiles = plan.full ? files : communityE2eFiles(files, file => gitBlob(base, file), file => readFileSync(file, 'utf8'))
+  if (e2eFiles !== files) {
+    const scoped = planChecks(e2eFiles)
+    plan.e2e = scoped.e2e
+    plan.e2eGrep = scoped.e2eGrep
+  }
   const nativeTabs = 'src/main/features/browser/nativeTabs.ts'
-  if (!plan.full && files.includes(nativeTabs) && onlySwipeRegistrationChanged(
+  if (!plan.full && e2eFiles.includes(nativeTabs) && onlySwipeRegistrationChanged(
     git('show', `${base}:${nativeTabs}`), readFileSync(nativeTabs, 'utf8')
   )) {
-    const gesturePlan = planChecks(files.filter(file => file !== nativeTabs).concat('src/main/features/browser/swipeNavigation.ts'))
+    const gesturePlan = planChecks(e2eFiles.filter(file => file !== nativeTabs).concat('src/main/features/browser/swipeNavigation.ts'))
     plan.e2e = gesturePlan.e2e
     plan.e2eGrep = gesturePlan.e2eGrep
   }
@@ -461,6 +560,7 @@ export function main(args) {
   for (const config of plan.types) run('pnpm', ['exec', 'tsc', '--noEmit', '-p', config])
   for (const test of plan.scriptTests.filter(existsSync)) run(...scriptTestCommand(test))
   for (const test of plan.pythonTests) run(process.platform === 'win32' ? 'python' : 'python3', ['-B', test])
+  if (plan.communityBackend) run('node', ['tests/backend/community/run-local.mjs'])
   if (plan.studyMarketBackend) {
     run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', 'supabase/functions/study-market/index.ts', 'supabase/functions/study-market-webhook/index.ts', 'supabase/functions/study-market-cron/index.ts'])
     run('node', ['tests/backend/studyMarket/run-local.mjs'])

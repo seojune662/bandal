@@ -6,6 +6,125 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyAddedLinesChanged, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
+import { onlyCommunityRegistrationChanged, communityE2eFiles, main as runAffectedChecks } from './affected-checks.mjs'
+
+const communityPreload = {
+  file: 'src/preload/index.ts',
+  before: "const PUSH_CHANNELS = [\n  'workspace:prepareTransition',\n]\nassertAppRendererSender(event)\n",
+  after: "const PUSH_CHANNELS = [\n  'community:open',\n  'workspace:prepareTransition',\n]\nassertAppRendererSender(event)\n"
+}
+const communityWorkspace = {
+  file: 'src/renderer/src/stores/workspaceStore.ts',
+  before: `export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'
+export type WorkspaceSurface = 'course' | 'learning-home' | 'study-market'
+interface WorkspaceState {
+  showStudyMarket: () => void
+  showCourseWorkspace: () => void
+}
+function createWorkspace(set, get, flush) {
+  return {
+    surface: 'course',
+    showCourseWorkspace: () => set({ surface: 'course' }),
+  }
+}
+`,
+  after: `export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'
+export type WorkspaceSurface = 'course' | 'learning-home' | 'study-market' | 'community'
+interface WorkspaceState {
+  showStudyMarket: () => void
+  showCommunity: () => void
+  showCourseWorkspace: () => void
+}
+function createWorkspace(set, get, flush) {
+  return {
+    surface: 'course',
+    showCommunity: () => {
+      if (get().surface === 'community') return
+      get().notifyLayoutChanged()
+      flush()
+      set({ surface: 'community', activePanelId: null })
+    },
+    showCourseWorkspace: () => set({ surface: 'course' }),
+  }
+}
+`
+}
+
+test('only complete community wiring narrows scope; mixed, partial, moved and repeated edits stay broad', () => {
+  for (const fixture of [communityPreload, communityWorkspace]) {
+    const { file, before, after } = fixture
+    assert.equal(onlyCommunityRegistrationChanged(file, before, after), true)
+    assert.equal(onlyCommunityRegistrationChanged(file, before, after.replaceAll('\n', '\r\n')), true)
+    assert.equal(onlyCommunityRegistrationChanged(file, before, after + 'unrelatedMutation()\n'), false)
+    assert.equal(onlyCommunityRegistrationChanged(file, before, before), false)
+    assert.equal(onlyCommunityRegistrationChanged(file, after, after), false)
+    assert.equal(onlyCommunityRegistrationChanged(file, before + before, after + after), false)
+  }
+  assert.equal(onlyCommunityRegistrationChanged('toString', '', ''), false)
+  assert.equal(onlyCommunityRegistrationChanged('src/main/index.ts', communityPreload.before, communityPreload.after), false)
+  assert.equal(onlyCommunityRegistrationChanged(communityPreload.file, communityPreload.before, communityPreload.after.replace('assertAppRendererSender(event)', '')), false)
+  assert.equal(onlyCommunityRegistrationChanged(communityPreload.file, communityPreload.before, "  'community:open',\n" + communityPreload.before), false)
+  assert.equal(onlyCommunityRegistrationChanged(communityWorkspace.file, communityWorkspace.before, communityWorkspace.after.replace('      flush()\n', '')), false)
+  assert.equal(onlyCommunityRegistrationChanged(communityWorkspace.file, communityWorkspace.before, communityWorkspace.after.replace("set({ surface: 'course' })", "set({ surface: 'community' })")), false)
+})
+
+test('community E2E scoping preserves unrecognized files and fails closed on missing history', () => {
+  const files = [communityPreload.file, 'src/main/features/pdf/exportPdf.ts']
+  const scoped = communityE2eFiles(files, () => communityPreload.before, () => communityPreload.after)
+  assert.deepEqual(files, [communityPreload.file, 'src/main/features/pdf/exportPdf.ts'])
+  assert.ok(scoped.includes('src/main/features/pdf/exportPdf.ts'))
+  assert.ok(!scoped.includes(communityPreload.file))
+  assert.deepEqual(planChecks(scoped).e2e, ['e2e/studyMarket.spec.ts', 'e2e/community.spec.ts', 'e2e/pdfExport.spec.ts'])
+  assert.equal(communityE2eFiles(files, () => { throw new Error('missing blob') }, () => communityPreload.after), files)
+  assert.equal(communityE2eFiles(files, () => communityPreload.before, () => { throw new Error('deleted file') }), files)
+})
+
+test('community backend and navigation select their own packaged regression without appearance suites', () => {
+  for (const file of ['supabase/migrations/20261021000000_community.sql', 'tests/backend/community/policy.sql']) {
+    const plan = planChecks([file])
+    assert.equal(plan.communityBackend, true)
+    assert.deepEqual(plan.e2e, ['e2e/community.spec.ts'])
+  }
+  const plan = planChecks(['src/renderer/src/app/communityNavigation.ts'])
+  assert.equal(plan.communityBackend, false)
+  assert.deepEqual(plan.e2e, ['e2e/community.spec.ts'])
+  assert.ok(!plan.scriptTests.includes('scripts/check-contrast.mjs'))
+})
+
+test('CLI scopes only E2E while retaining original type and unit inputs, mixed changes and --full', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bandal-community-scope-'))
+  const originalDirectory = process.cwd(), originalLog = console.log
+  const write = (file, value) => { mkdirSync(join(directory, file, '..'), { recursive: true }); writeFileSync(join(directory, file), value) }
+  try {
+    process.chdir(directory)
+    execFileSync('git', ['init', '-q'])
+    for (const fixture of [communityPreload, communityWorkspace]) write(fixture.file, fixture.before)
+    execFileSync('git', ['add', '.'])
+    execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'])
+    for (const fixture of [communityPreload, communityWorkspace]) write(fixture.file, fixture.after)
+    const plan = (...extra) => {
+      let output
+      console.log = value => { output = value }
+      runAffectedChecks(['--base', 'HEAD', '--plan', ...extra])
+      return JSON.parse(output)
+    }
+    const isolated = plan()
+    assert.deepEqual(isolated.e2e, ['e2e/studyMarket.spec.ts', 'e2e/community.spec.ts'])
+    assert.deepEqual(isolated.types, ['tsconfig.node.json', 'tsconfig.web.json'])
+    for (const fixture of [communityPreload, communityWorkspace]) assert.ok(isolated.unitInputs.includes(fixture.file))
+    assert.ok(plan('--full').e2e.includes('e2e/tabs.spec.ts'))
+    write(communityWorkspace.file, communityWorkspace.after.replace("set({ surface: 'course' })", "set({ surface: 'community' })"))
+    const mixed = plan()
+    assert.ok(mixed.e2e.includes('e2e/tabs.spec.ts'))
+    assert.ok(mixed.e2e.includes('e2e/coursePerformance.spec.ts'))
+    assert.ok(mixed.e2e.includes('e2e/community.spec.ts'))
+    assert.ok(mixed.unitInputs.includes(communityWorkspace.file))
+  } finally {
+    console.log = originalLog
+    process.chdir(originalDirectory)
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 
 const publishedRelease = (tag_name, published_at, extra = {}) => ({ tag_name, published_at, draft: false, prerelease: false, ...extra })
 test('the CI baseline excludes failed drafts, unpublished/current tags and other branches', () => {

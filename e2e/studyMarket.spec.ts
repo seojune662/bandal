@@ -8,6 +8,9 @@ import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 const rail = (page: Page) => page.getByRole('navigation', { name: '앱 메뉴' })
 const market = (page: Page) => page.getByRole('main', { name: '공부 마켓플레이스' })
+// The public navigation is retired. Exercise historical fulfillment through
+// the retained internal screen, never reintroduce a marketplace entry point.
+const openLegacyMarket = (page: Page) => page.evaluate(() => { window.dispatchEvent(new Event('bandal:open-study-market')) })
 const remoteNote = '# Purchased study\n\nThis copy is safe to keep.\n'
 
 /** Mock the remote service/identity only; preparation, rendering, upload and import use real IPC. */
@@ -97,10 +100,10 @@ test('market navigation preserves live study state, clears AI context, and stays
     await expect.poll(async () => Object.keys((await page.evaluate(id => window.bandal.invoke('layout:get', { courseId: id }), course.id)).layout?.panels ?? {}).length).toBeGreaterThan(0)
     const panelIds = await page.evaluate(async id => Object.keys((await window.bandal.invoke('layout:get', { courseId: id })).layout!.panels), course.id)
     const labels = await rail(page).getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))
-    expect(labels.slice(labels.indexOf('도구'), labels.indexOf('도구') + 3)).toEqual(['도구', '마켓플레이스', '더 보기'])
+    expect(labels.slice(labels.indexOf('도구'), labels.indexOf('도구') + 3)).toEqual(['도구', '커뮤니티', '더 보기'])
     await rail(page).getByRole('button', { name: '도구', exact: true }).click()
     await expect(page.getByRole('complementary', { name: '학습 도구' })).toBeVisible()
-    await rail(page).getByRole('button', { name: '마켓플레이스', exact: true }).click()
+    await openLegacyMarket(page)
     await expect(market(page)).toBeVisible(); await expect(page.locator('.app-shell')).toHaveAttribute('data-course-rail', 'closed'); await expect(page.locator('.app-shell')).toHaveAttribute('data-right-rail', 'closed')
     expect(await market(page).evaluate(element => Math.abs(element.getBoundingClientRect().width - document.querySelector('.workspace-host')!.getBoundingClientRect().width))).toBeLessThan(2)
     await expect.poll(() => app.evaluate(() => (globalThis as any).__studyMarketFixture.workspace)).toMatchObject({ selectedCourseId: null, tabs: [], documents: [], selection: '' })
@@ -142,7 +145,7 @@ test('market navigation preserves live study state, clears AI context, and stays
     const browserId = await app.evaluate(async ({ webContents }, url) => { const contents = webContents.getAllWebContents().find(contents => contents.getURL() === url)!; await contents.executeJavaScript('document.querySelector("#draft").value = "Keep browser draft"'); return contents.id }, browserUrl)
     const browserVisible = () => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.contentView.children.some(view => 'webContents' in view && (view as Electron.WebContentsView).webContents.id === id && view.getVisible()), browserId)
     await expect.poll(browserVisible).toBe(true)
-    await rail(page).getByRole('button', { name: '마켓플레이스', exact: true }).click(); await expect.poll(browserVisible).toBe(false)
+    await openLegacyMarket(page); await expect.poll(browserVisible).toBe(false)
     await rail(page).getByRole('button', { name: '과목', exact: true }).click(); await expect.poll(browserVisible).toBe(true)
     expect(await app.evaluate(({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('document.querySelector("#draft").value'), browserId)).toBe('Keep browser draft')
   } finally { await bandal.close() }
@@ -159,7 +162,7 @@ test('seller prepares and rasterizes a real PDF, and a paid buyer can retry a fa
     writeFileSync(join(course.folderPath, '판매.pdf'), await document.save())
     writeFileSync(join(course.folderPath, 'private.md'), '# Do not publish without selection\n')
     await page.getByRole('button', { name: '자료 새로고침', exact: true }).click()
-    await rail(page).getByRole('button', { name: '마켓플레이스', exact: true }).click()
+    await openLegacyMarket(page)
     await expect(market(page).getByRole('button', { name: '내 공부 판매', exact: true })).toBeVisible()
     await market(page).getByRole('button', { name: '내 공부 판매', exact: true }).click()
     const sale = page.getByRole('dialog', { name: '내 공부 판매하기' })

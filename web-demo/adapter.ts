@@ -145,6 +145,11 @@ const handlers: Handlers = {
   'window:setPrintEnabled': () => ok,
   'browser:setHostOccluded': () => ok,
   'auth:getState': () => ({ phase: 'unconfigured', profile: null, email: null, avatarUrl: null, online: true, errorCode: null }),
+  'community:takeIntent': () => null,
+  'community:request': ({ action }) => {
+    if (action === 'context') return { configured: false, signedIn: false, operator: false, campaign: null }
+    throw new Error('커뮤니티는 반달 앱에서 로그인한 뒤 이용할 수 있어요.')
+  },
   'plugins:list': () => ({ plugins: [] }),
   'plugins:devFolders': () => ({ folders: [] }),
   'packs:list': () => ({ packs: [] }),

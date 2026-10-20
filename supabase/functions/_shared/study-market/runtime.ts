@@ -8,7 +8,7 @@ export function runtime(env:(key:string)=>string|undefined) {
   const webUrl=new URL(webOrigin)
   if(webUrl.protocol!=='https:' || webUrl.origin!==webOrigin)throw new Error('Invalid marketplace web origin')
   const config:MarketConfig={
-    supabaseUrl:env('SUPABASE_URL')??'',webOrigin,environment,enabled:env('STUDY_MARKET_ENABLED')==='true',
+    supabaseUrl:env('SUPABASE_URL')??'',webOrigin,environment,enabled:env('STUDY_MARKET_ENABLED')==='true',retired:true,
     clientKey:env(`${prefix}CLIENT_KEY`)??'',secretKey:env(`${prefix}SECRET_KEY`)??'',
     payoutSecretKey:env(`${prefix}PAYOUT_SECRET_KEY`)??'',securityKey:env(`${prefix}SECURITY_KEY`)??'',cronSecret:env('STUDY_MARKET_CRON_SECRET')??''
   }

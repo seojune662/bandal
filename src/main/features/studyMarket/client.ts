@@ -37,6 +37,7 @@ export function createStudyMarketClient(deps: { getClient(): SupabaseClient | nu
     const result: unknown = await response.json().catch(() => null)
     if (!response.ok) {
       const error = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string' ? result.error : '마켓 요청을 처리하지 못했어요. 다시 시도해 주세요.'
+      if (error === 'market_retired') throw new ValidationError('자료 마켓 운영을 종료했습니다. 커뮤니티에서 공부법을 나눠 주세요.')
       throw new ValidationError(error.slice(0, 500))
     }
     return result as StudyMarketApi[K]['res']

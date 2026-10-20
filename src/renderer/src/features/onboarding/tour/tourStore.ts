@@ -89,6 +89,7 @@ async function restoreLocation(): Promise<void> {
   }
   if (previous.surface === 'learning-home') workspace.showLearningHome()
   else if (previous.surface === 'study-market') workspace.showStudyMarket()
+  else if (previous.surface === 'community') workspace.showCommunity()
   useUiStore.setState(previous.ui)
   previousLocation = null
 }

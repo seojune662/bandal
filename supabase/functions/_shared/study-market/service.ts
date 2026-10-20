@@ -8,6 +8,8 @@ import { createToss, verifyWebhook, unwrap } from './toss.ts'
 type Row = Record<string, any>
 export interface MarketConfig {
   supabaseUrl: string; webOrigin: string; environment: 'test'|'live'; enabled: boolean;
+  /** Production keeps historical fulfillment, refunds and reconciliation available. */
+  retired?: boolean;
   clientKey: string; secretKey: string; payoutSecretKey: string; securityKey: string; cronSecret: string
 }
 export function paymentConfigured(c: MarketConfig): boolean {
@@ -40,13 +42,14 @@ export function createStudyMarketService(db:SupabaseClient,config:MarketConfig,f
     return data.user.id
   }
   async function isOperator(user:string):Promise<boolean>{return (await one('operators','user_id',user))!==null}
-  async function ready():Promise<boolean>{
+  async function ready(allowRetired=false):Promise<boolean>{
+    if(config.retired&&!allowRetired)return false
     if(!paymentConfigured(config))return false
     if(config.environment==='test')return true
     const r=await one('readiness','id','true')
     return !!(r?.live_enabled&&r.contracts_verified&&r.policies_verified&&r.webhook_verified&&r.payout_verified)
   }
-  async function requireTrading(){if(!await ready())throw new MarketError('trading_not_ready',503)}
+  async function requireTrading(allowRetired=false){if(!await ready(allowRetired))throw new MarketError('trading_not_ready',503)}
   async function membership(user:string,school?:string):Promise<string>{
     if(!user&&school){const s=await one('schools','id',school);if(s?.enabled)return school;throw new MarketError('school_not_registered',404)}
     const m=await one('members','user_id',user)
@@ -100,12 +103,12 @@ export function createStudyMarketService(db:SupabaseClient,config:MarketConfig,f
   }
   async function dispatch(action:string,input:Row,user:string|null):Promise<unknown>{
     if(action==='checkoutSession'){
-      await requireTrading();const o=await tokenOrder(input)
+      await requireTrading(true);const o=await tokenOrder(input)
       if(o.status!=='pending')return {order:await orderDto(o)}
       return {orderId:o.id,orderName:o.title,amount:o.amount,customerKey:`buyer_${o.buyer_id}`,clientKey:config.clientKey,successUrl:`${config.webOrigin}/checkout/success`,failUrl:`${config.webOrigin}/checkout/fail`,expiresAt:o.checkout_expires_at}
     }
     if(action==='confirmPayment'){
-      await requireTrading();const o=await tokenOrder(input)
+      await requireTrading(true);const o=await tokenOrder(input)
       if(input.orderId!==o.id||input.amount!==o.amount)throw new MarketError('payment_mismatch',409)
       const key=requiredText(input.paymentKey,200)
       if(o.payment_key&&o.payment_key!==key)throw new MarketError('payment_mismatch',409)
@@ -124,7 +127,7 @@ export function createStudyMarketService(db:SupabaseClient,config:MarketConfig,f
         if(!school?.enabled)throw new MarketError('school_not_registered',409)
         if(user)checked(await table('members').upsert({user_id:user,school_id:school.id,updated_at:clock().toISOString()}))
       }
-      return {universities:checked(await table('schools').select('id,name').eq('enabled',true).order('name')),tradingEnabled:await ready(),notice:await ready()?'':'결제·정산 운영 준비 중입니다. 자료를 둘러보고 판매 초안을 준비할 수 있어요.'}
+      return {universities:checked(await table('schools').select('id,name').eq('enabled',true).order('name')),tradingEnabled:await ready(),notice:config.retired?'자료 마켓 운영을 종료했습니다. 커뮤니티에서 공부법을 나눠 주세요.':await ready()?'':'결제·정산 운영 준비 중입니다. 자료를 둘러보고 판매 초안을 준비할 수 있어요.'}
     }
     if(action==='requestUniversity'){
       const name=requiredText(input.name,100)
@@ -375,7 +378,7 @@ export function createStudyMarketService(db:SupabaseClient,config:MarketConfig,f
       }catch{/* retry latest provider state next tick */}finally{checked(await table('payouts').update({last_reconciled_at:clock().toISOString()}).eq('id',p.id))}
     }
     if(exhausted())return {ok:true,deferred:true}
-    if(!await ready())return {ok:true,payouts:'disabled'}
+    if(!await ready(true))return {ok:true,payouts:'disabled'}
     const today=koreaDate(clock()),from=new Date(clock().getTime()-8*86400000).toISOString().slice(0,10)
     const days=checked(await table('business_days').select('*').gte('date',from).lte('date',today)),calendar=new Map<string,boolean>(days.map((d:Row)=>[d.date,d.is_business_day]))
     const years=checked(await table('calendar_years').select('year').in('year',[Number(from.slice(0,4)),Number(today.slice(0,4))]))
@@ -439,6 +442,7 @@ export function createStudyMarketService(db:SupabaseClient,config:MarketConfig,f
       if(kind==='webhook')return response(await webhook(request,raw))
       const body=JSON.parse(raw) as Row
       if(!body||typeof body.action!=='string'||!body.input||typeof body.input!=='object'||Array.isArray(body.input))throw new MarketError('invalid_request')
+      if(config.retired&&['requestUniversity','createCourse','saveDraft','uploadGrant','finalizeFile','publish','registerSeller','order'].includes(body.action))throw new MarketError('market_retired',410)
       const publicAction=['checkoutSession','confirmPayment'].includes(body.action)
       const anonymousRead=['context','courses','listings','listing'].includes(body.action)&&!request.headers.has('authorization')
       const user=publicAction||anonymousRead?null:await actor(request)

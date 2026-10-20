@@ -46,12 +46,13 @@ import {
 } from '../features/workspace/layoutPersistence'
 
 export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'
-export type WorkspaceSurface = 'course' | 'learning-home' | 'study-market'
+export type WorkspaceSurface = 'course' | 'learning-home' | 'study-market' | 'community'
 
 interface WorkspaceState {
   /** Global home keeps the selected course and its live layout intact. */
   surface: WorkspaceSurface
   showStudyMarket: () => void
+  showCommunity: () => void
   showLearningHome: () => void
   showCourseWorkspace: (courseId: string | null) => void
   prepareCloseLearningSpace: (binding: LearningBinding, standalone: boolean) => Promise<boolean>
@@ -429,6 +430,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
   return {
     surface: 'course',
+    showCommunity: () => {
+      if (get().surface === 'community') return
+      get().notifyLayoutChanged()
+      flush()
+      set({ surface: 'community', activePanelId: null })
+    },
     prepareCloseLearningSpace: (binding, standalone) => prepareCloseLearningSpace(binding, standalone),
     closeLearningSpace: (binding, standalone) => closeLearningSpace(binding, standalone),
     showStudyMarket: () => {

@@ -24,7 +24,7 @@ function browserTab(tabId: string): TabDescriptor {
 }
 
 describe('workspaceSyncPayload', () => {
-  test.each(['learning-home', 'study-market'] as const)('%s explicitly clears previously selected course, document and selection context, even during pending hydration', surface => {
+  test.each(['learning-home', 'study-market', 'community'] as const)('%s explicitly clears previously selected course, document and selection context, even during pending hydration', surface => {
     expect(workspaceSyncPayload({ surface, openTabs: { pdf: pdfTab('private.pdf') }, activeDescriptor: pdfTab('private.pdf'), selectedCourseId: 'ds', hydration: 'loading' }))
       .toEqual({ selectedCourseId: null, tabs: [], documents: [], selection: '' })
   })

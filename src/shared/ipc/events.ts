@@ -181,6 +181,7 @@ export interface ShortcutPassthrough {
 }
 
 export interface PushEvents {
+  'community:open': Record<string, never>
   'share:changed': Record<string, never>
   'workspace:prepareTransition': { requestId: string }
   'workspace:releaseTransition': { requestId: string }

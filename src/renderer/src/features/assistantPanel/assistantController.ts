@@ -66,7 +66,7 @@ function focusPanel(panelId: string): void {
 /** Opening never creates a replacement conversation for an existing document. */
 export function openActiveAssistant(): void {
   const workspace = useWorkspaceStore.getState()
-  if (workspace.surface === 'study-market') {
+  if (workspace.surface === 'study-market' || workspace.surface === 'community') {
     workspace.showCourseWorkspace(useCoursesStore.getState().selectedCourseId)
     useUiStore.getState().showCourses()
   }
