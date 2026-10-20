@@ -29,9 +29,11 @@ const HOVER_FIXTURE = `<!doctype html><html><head><title>Pointer compatibility</
     }));
   }
   home.addEventListener('pointerenter', event => {
+    const enterIndex = window.pointerEvents.length - 1;
     if (event.pointerType === 'mouse') timer = setTimeout(() => {
       sidebar.classList.add('open');
       window.hoverOpens.push({
+        enterIndex,
         display: getComputedStyle(sidebar).display,
         background: getComputedStyle(home).backgroundColor
       });
@@ -52,6 +54,21 @@ function read(bandal: BandalApp, id: number, source: string) {
 async function move(bandal: BandalApp, id: number, x: number, y: number) {
   // Target the native guest, not Playwright's app-shell page.mouse, which
   // sends to a different WebContents even where a native guest is visible.
+  if (process.platform === 'win32') {
+    const target = await bandal.app.evaluate(({ BrowserWindow, screen, webContents }, point) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      host.focus()
+      const bounds = host.getContentBounds()
+      const view = host.contentView.children.find((view: any) => view.webContents?.id === point.id)!
+      const guestBounds = view.getBounds()
+      const zoom = webContents.fromId(point.id)!.getZoomFactor()
+      return screen.dipToScreenPoint({
+        x: Math.round(bounds.x + guestBounds.x + point.x * zoom),
+        y: Math.round(bounds.y + guestBounds.y + point.y * zoom)
+      })
+    }, { id, x, y })
+    await syncWindowsPointer(bandal, target)
+  }
   await bandal.app.evaluate(({ app, BrowserWindow, webContents }, point) => {
     const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
     if (process.platform === 'darwin') app.focus({ steal: true })
@@ -78,6 +95,17 @@ function nativeVisible(bandal: BandalApp, id: number) {
   }, id)
 }
 
+async function syncWindowsPointer(bandal: BandalApp, target: { x: number; y: number }) {
+  // Synthetic input does not move the Windows cursor. Native view hide/show,
+  // resize and reload can re-hit-test that OS position, so align both inputs.
+  execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    `Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class BrowserHoverCursor { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); }'; if (-not [BrowserHoverCursor]::SetCursorPos(${target.x}, ${target.y})) { throw 'SetCursorPos failed' }`
+  ], { timeout: 15_000 })
+  const actual = await bandal.app.evaluate(({ screen }) => screen.dipToScreenPoint(screen.getCursorScreenPoint()))
+  expect(Math.abs(actual.x - target.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(actual.y - target.y)).toBeLessThanOrEqual(1)
+}
+
 async function moveChromePointer(bandal: BandalApp, x: number, y: number) {
   if (process.platform === 'win32') {
     const target = await bandal.app.evaluate(({ BrowserWindow, screen }, point) => {
@@ -88,15 +116,7 @@ async function moveChromePointer(bandal: BandalApp, x: number, y: number) {
         x: Math.round(bounds.x + point.x * zoom), y: Math.round(bounds.y + point.y * zoom)
       })
     }, { x, y })
-    // CDP moves only Chromium's pointer. On Windows, hiding the native guest
-    // for a tooltip re-hit-tests the actual OS cursor and cancels a synthetic
-    // hover elsewhere. Align both inputs, as in materialPreview's native hover.
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class BrowserHoverCursor { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); }'; if (-not [BrowserHoverCursor]::SetCursorPos(${target.x}, ${target.y})) { throw 'SetCursorPos failed' }`
-    ], { timeout: 15_000 })
-    const actual = await bandal.app.evaluate(({ screen }) => screen.dipToScreenPoint(screen.getCursorScreenPoint()))
-    expect(Math.abs(actual.x - target.x)).toBeLessThanOrEqual(1)
-    expect(Math.abs(actual.y - target.y)).toBeLessThanOrEqual(1)
+    await syncWindowsPointer(bandal, target)
   }
   await bandal.page.mouse.move(x, y)
 }
@@ -128,18 +148,23 @@ test('native pages suppress website window drag and preserve trusted hover throu
     const observations: unknown[] = []
     const expectHover = async (pageId = id) => {
       await expect.poll(() => nativeVisible(bandal, pageId)).toBe(true)
+      // Record before exit, and never clear a log while an earlier enter's
+      // timer is pending. Each open retains the index of its actual enter.
+      const firstEvent = await read(bandal, pageId, 'window.pointerEvents.length')
       await move(bandal, pageId, 300, 150)
-      await expect.poll(() => read(bandal, pageId, 'getComputedStyle(document.querySelector("#sidebar")).display')).toBe('none')
-      await read(bandal, pageId, 'window.pointerEvents = []; window.hoverOpens = []')
+      await expect.poll(() => read(bandal, pageId, `({
+        display: getComputedStyle(document.querySelector('#sidebar')).display,
+        hovered: document.querySelector('#home').matches(':hover')
+      })`)).toEqual({ display: 'none', hovered: false })
       // Native view restoration/resizing can resynchronize the physical OS
       // cursor, and a person may move it while this test runs. Keep sending
       // native moves and assert that the delayed hover actually opened, with
       // its CSS state captured then, even if the real pointer later leaves.
       await expect.poll(async () => {
         await move(bandal, pageId, 32, 32)
-        return read(bandal, pageId, 'window.hoverOpens')
-      }).toContainEqual({ display: 'block', background: 'rgb(0, 128, 0)' })
-      const events = await read(bandal, pageId, 'window.pointerEvents')
+        return read(bandal, pageId, `window.hoverOpens.filter(open => open.enterIndex >= ${firstEvent})`)
+      }).toContainEqual(expect.objectContaining({ display: 'block', background: 'rgb(0, 128, 0)' }))
+      const events = await read(bandal, pageId, `window.pointerEvents.slice(${firstEvent})`)
       expect(events).toEqual(expect.arrayContaining([
         { type: 'pointerenter', trusted: true, pointerType: 'mouse' },
         { type: 'mouseenter', trusted: true, pointerType: null },
@@ -225,7 +250,7 @@ test('native pages suppress website window drag and preserve trusted hover throu
     await expect.poll(async () => {
       await move(bandal, id, 112, 332)
       return read(bandal, id, 'document.querySelector("iframe").contentWindow.hoverOpens')
-    }).toContainEqual({ display: 'block', background: 'rgb(0, 128, 0)' })
+    }).toContainEqual(expect.objectContaining({ display: 'block', background: 'rgb(0, 128, 0)' }))
     expect(await read(bandal, id,
       'document.querySelector("iframe").contentWindow.pointerEvents.some(event => event.type === "pointerenter" && event.trusted && event.pointerType === "mouse")'
     )).toBe(true)
@@ -242,6 +267,9 @@ test('native pages suppress website window drag and preserve trusted hover throu
       page.reload()
     }), id)
     await expectNoWindowDrag(bandal, id)
+    // A real cursor can already be over Home when a reloaded document appears.
+    // Establish that hover before the new recorded exit/entry cycle on purpose.
+    await move(bandal, id, 32, 32)
     await expectHover()
 
     const childUrl = `${origin}/child`
