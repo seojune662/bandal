@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { createServer } from 'node:http'
+import { execFileSync } from 'node:child_process'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 const HOVER_FIXTURE = `<!doctype html><html><head><title>Pointer compatibility</title>
@@ -75,6 +76,29 @@ function nativeVisible(bandal: BandalApp, id: number) {
     const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
     return host.contentView.children.some((view: any) => view.webContents?.id === id && view.getVisible())
   }, id)
+}
+
+async function moveChromePointer(bandal: BandalApp, x: number, y: number) {
+  if (process.platform === 'win32') {
+    const target = await bandal.app.evaluate(({ BrowserWindow, screen }, point) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      const bounds = host.getContentBounds()
+      const zoom = host.webContents.getZoomFactor()
+      return screen.dipToScreenPoint({
+        x: Math.round(bounds.x + point.x * zoom), y: Math.round(bounds.y + point.y * zoom)
+      })
+    }, { x, y })
+    // CDP moves only Chromium's pointer. On Windows, hiding the native guest
+    // for a tooltip re-hit-tests the actual OS cursor and cancels a synthetic
+    // hover elsewhere. Align both inputs, as in materialPreview's native hover.
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      `Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class BrowserHoverCursor { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); }'; if (-not [BrowserHoverCursor]::SetCursorPos(${target.x}, ${target.y})) { throw 'SetCursorPos failed' }`
+    ], { timeout: 15_000 })
+    const actual = await bandal.app.evaluate(({ screen }) => screen.dipToScreenPoint(screen.getCursorScreenPoint()))
+    expect(Math.abs(actual.x - target.x)).toBeLessThanOrEqual(1)
+    expect(Math.abs(actual.y - target.y)).toBeLessThanOrEqual(1)
+  }
+  await bandal.page.mouse.move(x, y)
 }
 
 test('native pages suppress website window drag and preserve trusted hover through chrome, navigation and child tabs', async ({}, info) => {
@@ -161,12 +185,17 @@ test('native pages suppress website window drag and preserve trusted hover throu
 
     // A tooltip over the page temporarily uses a still preview. Crossing
     // from browser chrome into that preview must restore the native guest.
-    await bandal.page.getByRole('button', { name: '새로고침', exact: true }).hover()
+    const reload = bandal.page.getByRole('button', { name: '새로고침', exact: true })
+    await expect(reload).toBeVisible()
+    const reloadBounds = await reload.boundingBox()
+    expect(reloadBounds).not.toBeNull()
+    await moveChromePointer(bandal, reloadBounds!.x + reloadBounds!.width / 2, reloadBounds!.y + reloadBounds!.height / 2)
+    await reload.hover()
     await expect(bandal.page.locator('[role="tooltip"]').filter({ hasText: '새로고침' })).toBeVisible()
     await expect.poll(() => nativeVisible(bandal, id)).toBe(false)
     const anchor = await bandal.page.locator('.browser-native-anchor:visible').boundingBox()
     expect(anchor).not.toBeNull()
-    await bandal.page.mouse.move(anchor!.x + 32, anchor!.y + 32)
+    await moveChromePointer(bandal, anchor!.x + 32, anchor!.y + 32)
     await expect(bandal.page.locator('[role="tooltip"]')).toHaveCount(0)
     await expect.poll(() => nativeVisible(bandal, id)).toBe(true)
     await expectHover()
