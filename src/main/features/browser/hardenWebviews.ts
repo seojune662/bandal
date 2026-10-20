@@ -52,6 +52,7 @@ import {
 import { browsingContext, registerBrowsingContext, forgetBrowsingContext } from './browsingContext'
 import { trackPopupDownload } from './popupLifecycle'
 import { confirmPageUnload } from './pageClose'
+import { attachBrowserPageInputPolicy } from './pageInput'
 import { getSettings } from '../../settingsStore'
 import {
   attachPluginPanelGuest,
@@ -432,6 +433,7 @@ export function attachNavigationPolicies(
 ): void {
   if (policyAttached.has(webContents)) return
   policyAttached.add(webContents)
+  attachBrowserPageInputPolicy(webContents)
   if (!browsingContext(webContents.id)) registerBrowsingContext(webContents.id)
   const rootId = browsingContext(webContents.id)!.rootId
   if (!isCleanBrowserAuthProbe()) attachEmbeddedAuthFallback(webContents, (status) => {

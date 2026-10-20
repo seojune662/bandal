@@ -48,6 +48,7 @@ type Listener = (...args: any[]) => void
 class FakeWebContents {
   readonly id = 701
   readonly send = vi.fn()
+  readonly insertCSS = vi.fn(async () => 'page-input-style')
   readonly listeners = new Map<string, Listener[]>()
   windowOpenHandler: ((details: any) => any) | null = null
 
@@ -96,6 +97,17 @@ describe('attachNavigationPolicies', () => {
     const denied = { preventDefault: vi.fn() }
     webContents.emit('will-redirect', denied, 'file:///Users/student/private')
     expect(denied.preventDefault).toHaveBeenCalledOnce()
+  })
+
+  test('attaches input protection once and restores it for a replacement document', () => {
+    const page = new FakeWebContents()
+    const options = { openInTab: vi.fn() }
+    attachNavigationPolicies(page as unknown as Electron.WebContents, options)
+    attachNavigationPolicies(page as unknown as Electron.WebContents, options)
+    expect(page.insertCSS).toHaveBeenCalledOnce()
+    expect(page.insertCSS).toHaveBeenCalledWith(expect.any(String), { cssOrigin: 'user' })
+    page.emit('dom-ready')
+    expect(page.insertCSS).toHaveBeenCalledTimes(2)
   })
 
   test.each([
@@ -182,6 +194,7 @@ describe('attachNavigationPolicies', () => {
     expect(result.action).toBe('allow')
     expect(result.createWindow(options)).toBe(child)
     expect(createTab).toHaveBeenCalledExactlyOnceWith(options, details)
+    expect(child.insertCSS).toHaveBeenCalledOnce()
     child.emit('will-navigate', { preventDefault: vi.fn() }, details.url)
     rememberGoogleAccountNavigation(session, parent.getURL())
     expect(googleAccountRequestUrl(session, child, { url: details.url, method: 'GET', resourceType: 'mainFrame' }))

@@ -3,19 +3,37 @@
 검토 시작 기준은 `282a0af` / v0.86.0이다. 사용자 요청은 왼쪽 사이드바의
 상단 여백 축소와 ChatGPT 홈 아이콘 hover 실패 조사, 브라우저 관련 코드 점검이다.
 이 문서는 브라우저 코드 감사와 단위 회귀 결과를 기록한다. 릴리스 버전·커밋,
-서명된 앱 E2E와 공개 배포 결과는 최종 통합 검증에서 별도로 확인한다.
+패키지 E2E와 공개 배포 결과는 최종 통합 검증에서 별도로 확인한다.
 
-## ChatGPT hover 조사 상태
+## ChatGPT hover 원인과 확인 증거
 
-**실제 ChatGPT 계정 화면에서 홈 아이콘에 마우스를 올려 사이드바가 열리는지는
-아직 검증하지 않았다. 원인과 해결 여부를 이 기록에서 확정하지 않는다.**
+**로그인된 실제 ChatGPT에서 문제를 재현했다. 사이트 상단 `HEADER`의
+`app-region: drag`가 Electron의 네이티브 창 드래그 영역으로 해석되어
+홈 아이콘 위의 실제 마우스 입력에 간섭했다. 해당 영역을 해제한 뒤 사용자가
+사이드바가 열린다고 직접 확인했다.**
 
-인증·권한 수정은 아래에서 독립적으로 재현한 결함이다. 이 수정이 ChatGPT
-hover 문제를 해결했다는 근거는 없다. 네이티브 페이지의 위치·가림 처리·포인터
-전달과 viewport/hover 환경은 별도 조사 중이다. 로컬 재현 페이지의 DOM 이벤트
-검사, 실제 외부 페이지 검사, 서명된 앱 검사는 서로 다른 증거로 기록해야 한다.
+사용자가 로그인한 별도 테스트 앱에서 확인한 `HEADER`는 높이 52px,
+`pointer-events: none`, `app-region: drag`였다. DOM의 `pointer-events`와 별도로
+Electron/Cocoa의 네이티브 hit test에 드래그 영역이 남았다. 이 때문에 DOM 이벤트
+핸들러나 마우스 capability 값만 점검해서는 결함이 드러나지 않았다.
 
-입력 담당의 추가 확인:
+원인 확인을 위해 해당 페이지 전체의 app-region을 해제하는 CSS를 주입했다.
+사용자는 변경 뒤 **“이제 열림”**이라고 확인했다. 이 증거는 실제 계정의 실제
+커서 경로에서 얻었으며, 아래 초기 로컬 `sendInputEvent` 검사보다 강한 근거다.
+다만 런타임 주입 확인과 저장된 수정의 릴리스 패키지 검증은 구분한다.
+영구 수정은 `pageInput.ts`를 `attachNavigationPolicies`에서 연결하여 현재 문서와
+새 `dom-ready` 문서에 user-origin 스타일을 적용한다. author의 inline
+`!important`보다 우선하도록 설계했으며 CSS 값과 실제 native hit test의 효력은
+Electron 실행 검증으로 확인한다. 단위 검사만으로 shadow DOM이나 모든 iframe의
+스타일 적용 범위를 보장하지 않는다.
+
+이후 영구 수정이 포함된 개발 앱을 같은 로그인 테스트 프로필로 다시 실행했다.
+로그인된 Home 아이콘이 있는 문서에서 `temporaryStyle: false`로 임시 주입
+스타일이 없음을 확인했고, 원인 `HEADER`의 계산된 app-region은 `none`이었다.
+새로고침 뒤에도 동일했다. 따라서 단발성 콘솔 주입에만 의존하는 상태가 아님을
+확인했다. 최종 배포 패키지와 Windows에서의 확인은 별도 릴리스 검증 대상이다.
+
+초기 조사와 당시 검사의 한계:
 
 - nativeTabs·guest input·gesture preload와 selection/login/video/diagnostics
   브리지에서 mouse/pointer 이벤트를 차단하는 `stopPropagation` 경로 또는
@@ -27,7 +45,10 @@ hover 문제를 해결했다는 근거는 없다. 네이티브 페이지의 위�
 - 이 검사는 `WebContents.sendInputEvent`로 guest에 입력을 보낸다.
   **OS 커서가 앱 창을 통과하여 해당 view를 선택하는 경로까지 증명하지 않는다.**
 - 로그인되지 않은 실제 ChatGPT 페이지의 viewport 너비 704px에서 hover/fine
-  미디어 쿼리가 true인 것은 확인했다. 로그인된 홈 아이콘 동작은 미확인이다.
+  미디어 쿼리가 true인 것은 확인했다. 이 초기 관찰만으로 로그인된 홈 아이콘의
+  문제를 판정하지 않았고, 이후 위 실제 계정·커서 경로에서 원인을 확인했다.
+
+아래 인증·권한 수정은 독립적으로 재현한 추가 결함이며 hover 수정의 원인은 아니다.
 
 ## 점검 파일군과 확인한 동작
 
@@ -37,6 +58,7 @@ hover 문제를 해결했다는 근거는 없다. 네이티브 페이지의 위�
 | 파일군 | 코드에서 확인한 보존 동작 | 검증 범위 |
 | --- | --- | --- |
 | `nativeTabs.ts`, `browsingContext.ts`, `managedPages.ts`, `nativePageHandle.ts` | 네이티브 페이지는 앱 창·탭 소유권을 확인한다. 화면 배치 변경은 페이지를 다시 탐색하지 않는다. 이벤트의 WebContents ID·상태 revision으로 오래된 응답을 구분한다. | nativeTabs/nativePageHandle 및 browserAgent registry 회귀 |
+| `pageInput.ts`, `hardenWebviews.ts` 입력 정책 연결 | 웹사이트의 app-region이 반달 창 드래그 영역으로 사용되지 않도록 user-origin 스타일을 적용한다. 이미 열린 문서와 새 문서를 모두 처리하고 탐색·종료 중 삽입 실패를 처리한다. | 아래 35개 직접 영향 회귀, 실제 로그인 ChatGPT에서 사용자 hover 확인, 영구 수정 개발 앱 재실행·새로고침 뒤 계산값 확인; 배포 패키지 검증은 별도 |
 | `hardenWebviews.ts`, `webviewPolicy.ts`, `popupLifecycle.ts`, `popupLimiter.ts` | 사이트가 연 팝업은 Chromium의 원래 WebContents·POST·referrer·opener 연결을 유지한다. 실제 다운로드 완료 뒤 빈 다운로드 창만 닫는다. 작성된 `about:blank` 문서는 보존한다. 팝업 제한과 외부 스킴 처리는 별도로 유지한다. | 탐색 정책·팝업 제한·네이티브 탭·다운로드 회귀; 실제 인증 사이트 POST는 실행하지 않음 |
 | `profiles.ts`, `sessionStore.ts`, `permissionsRepo.ts`, 관련 `registerHandlers.ts` 경로 | 일반·시크릿·프로필 세션을 분리한다. 마지막 시크릿 페이지와 다운로드가 종료된 뒤 저장소·캐시·인증 캐시를 정리하고, 정리 중 새 페이지가 앞서 생성되지 않도록 기다린다. 사이트 데이터 삭제는 쿠키 외 저장소 삭제 경로를 제공한다. | privateSession/sessionStore/profile 및 IPC 계약 회귀 |
 | `browserIdentity.ts`, `embeddedAuth.ts`, `googleAccountNavigation.ts`, `browserAuthForwarding.ts` | 실제 Chromium 엔진·플랫폼 UA를 보존한다. 알려진 인증 제공자의 명시적 거절만 외부 인증 안내 대상으로 삼는다. Google 계정 선택은 제한된 원래 탐색 경로에만 전달하고 재탐색·POST를 자동 반복하지 않는다. | identity/auth observer/account navigation 및 renderer forwarding 회귀 |
@@ -70,6 +92,12 @@ hover 문제를 해결했다는 근거는 없다. 네이티브 페이지의 위�
    같은 비동기 오류 경로를 코드 추적으로 확인했다. `resolveAuthPrompt`는
    오류 시 취소 결과를 반환하고 기존 `finally`에서 진행 중 상태를 정리한다.
    실패 뒤 다음 인증 요청이 정상 완료되는 회귀를 추가했다.
+5. **사이트의 `app-region: drag`가 실제 브라우저 마우스 입력을 가로챘다.**
+   로그인된 ChatGPT에서 확인한 사이트 CSS가 Electron 창의 native drag region을
+   만들어 hover를 막았다. 브라우저 콘텐츠에만 입력 정책을 적용하고 반달 자체
+   창 제목 표시줄은 기존 드래그 동작을 유지한다. 원인·사용자 확인 증거는 위에
+   기록했다. 일반 DOM hover 테스트 성공을 실제 OS 마우스 경로 성공으로
+   간주하지 않는다.
 
 ## 로컬 검사 결과
 
@@ -98,6 +126,25 @@ pnpm exec vitest run \
 이는 이 감사 담당 범위의 실행 시점 결과이고 이후 통합 변경의 최종 검사 수치와
 구분한다. 변경 파일의 `git diff --check`도 통과했다. 타입 검사와 패키지 E2E는
 통합 담당이 수행하므로 이 단계에서 중복 실행하지 않았다.
+이후 통합 담당이 영구 입력 수정의 앱 빌드와 main·renderer 타입 검사 통과를
+확인했다.
+
+실제 hover 원인을 확인한 뒤 직접 영향을 받는 검사만 추가 실행했다.
+`pageInput.test.ts` 6개와 입력 정책 연결을 포함한 `hardenWebviews.test.ts`,
+`hardenWebviewsIdentity.test.ts`의 **3개 파일·35개 테스트 통과**다.
+기존 검사와 겹치므로 위 969개에 이 실행 수치를 그대로 합산하지 않는다.
+새 회귀는 이미 열린 팝업의 즉시 적용, 문서 교체, 이전 문서의 늦은 rejection,
+종료 도중 rejection, 이미 닫힌 페이지, 중복 정책 연결을 검사한다.
+mock 객체로 확인하는 수명 검사이며 CSS cascade와 native hit test는 실행 앱에서
+검증해야 한다.
+
+영구 수정 앱에서 브라우저 호환성 E2E 23개를 통과했다. 확장한 hover 회귀는
+실제와 같은 52px 드래그 헤더, inline `!important`·가상 요소·동적으로 추가한
+요소의 계산값 `none`, 주소 제안·툴팁 복원·크기 변경·iframe·탐색·새로고침·자식
+탭의 지연 hover를 검사한다. 첫 실행에서는 페이지에 trusted hover가 도착한 뒤
+OS 실제 커서로 재동기화되어 닫히는 시험 경합을 확인했다. native view 복원을
+기다리고 지연 표시 시점의 실제 계산된 CSS 상태를 기록하도록 검사를 보완했다.
+수정 후 해당 검사 5회 모두 통과했으며 제품 코드를 추가로 바꾸지 않았다.
 
 ## Chromium 엔진과 Chrome 제품의 차이
 
@@ -120,14 +167,17 @@ Chromium 렌더링 엔진을 사용해도 탭·팝업·권한·화면 공유·�
 - `displayMedia.ts`는 화면·창 선택 후 영상 소스를 반환하며 시스템 오디오는
   반환하지 않는다. 이번 수정에서 이 동작은 변경하지 않았다.
 
-이 차이들은 확인 가능한 범위 제한이다. 그 자체로 ChatGPT 홈 아이콘 hover 실패의
-원인을 설명하지는 않는다. 원인은 포인터 이벤트·실제 페이지 레이아웃·앱 가림 상태의
-재현 증거로 판단해야 한다.
+이 차이들은 확인 가능한 범위 제한이다. ChatGPT 홈 아이콘 hover 실패는 위의
+사이트 app-region과 Electron native drag 처리의 조합으로 따로 재현·확인했다.
 
 ## 실제 환경 검증의 경계
 
 단위 검사는 모의 Electron 객체, DOM, 테스트용 파일·데이터를 사용한다.
-로그인된 실제 ChatGPT 홈 화면, 사용자 키체인의 TLS 인증서, OS 카메라·마이크·화면
+로그인된 실제 ChatGPT의 hover는 사용자가 테스트 창에 로그인한 뒤 제한된
+런타임 수정으로 확인했다. 영구 수정 개발 앱은 같은 프로필의 재실행·새로고침에서
+임시 스타일 없이 원인 CSS가 초기화됨을 확인했다.
+사용자 키체인의 TLS 인증서, OS 카메라·마이크·화면
 권한 허용, 학교 SSO, 개인 쿠키·저장 로그인 가져오기, 실제 DRM 재생은 실행하지
-않았다. macOS·Windows 서명된 설치 파일과 자동 업데이트 피드 공개 확인은
-릴리스 절차의 결과로 별도 기록해야 한다.
+않았다. 영구 수정이 포함된 macOS 서명·공증 설치 파일과 Windows 미서명 설치
+파일, 업데이트 피드 공개 확인과 최종 앱 E2E는 릴리스 절차의 결과로 별도
+기록해야 한다. Windows 코드 서명은 현재 적용되지 않는다.
