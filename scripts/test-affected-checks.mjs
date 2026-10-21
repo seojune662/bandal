@@ -27,12 +27,7 @@ test('tab-picker function scoping retains every unchanged host declaration and i
   assert.equal(onlyTabPickerChanged('src/main/index.ts', before, after), false)
 })
 
-test('tab-picker IPC and layout narrowing accept only their isolated additions or removals', () => {
-  const field = "  /** Hold Cmd/Ctrl and repeat T; opening a tab waits for modifier release. */\n  newTabCycle?: 'advance' | 'commit' | 'cancel'\n"
-  const before = "export interface ShortcutPassthrough {\n  action: 'new-tab'\n}\nexport interface PushEvents { workspace: {} }\n"
-  const after = before.replace('ShortcutPassthrough {\n', 'ShortcutPassthrough {\n' + field)
-  assert.equal(onlyTabPickerChanged('src/shared/ipc/events.ts', before, after), true)
-  assert.equal(onlyTabPickerChanged('src/shared/ipc/events.ts', before, after.replace('workspace: {}', 'workspace: string')), false)
+test('tab-picker layout narrowing accepts only its isolated removals', () => {
   const block = ".app-shell[data-left-panel='courses'] > .shell-course-rail {\n  grid-row: 1 / -1;\n}\n"
   assert.equal(onlyTabPickerChanged('src/renderer/src/app/app-shell.css', block + '.shell { display: grid; }', '.shell { display: grid; }'), true)
   assert.equal(onlyTabPickerChanged('src/renderer/src/app/app-shell.css', block + '.shell { display: grid; }', '.shell { display: flex; }'), false)

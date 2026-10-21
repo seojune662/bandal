@@ -138,8 +138,6 @@ export interface BrowserDownloadUpdate {
 }
 
 export interface ShortcutPassthrough {
-  /** Hold Cmd/Ctrl and repeat T; opening a tab waits for modifier release. */
-  newTabCycle?: 'advance' | 'commit' | 'cancel'
   action:
     | 'new-tab'
     | 'new-markdown'

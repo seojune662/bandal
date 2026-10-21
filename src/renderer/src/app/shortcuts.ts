@@ -532,14 +532,11 @@ export function useGlobalShortcuts(): void {
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('blur', cancelCycle)
 
-    // ⌘T/⌘W typed INSIDE a browser guest arrive via main's
-    // before-input-event interception (the guest never sees the chord).
+    // Guest commands arrive via IPC, except default Cmd/Ctrl+T: main
+    // focuses the host and forwards T into its ordinary keydown stream.
     const unsubscribe = onPush(
       'shortcut:passthrough',
-      ({ action, webContentsId, newTabCycle }) => {
-        if (newTabCycle === 'advance') { useNewTabMenu.getState().advanceCycle(); return }
-        if (newTabCycle === 'commit') { commitCycle(); return }
-        if (newTabCycle === 'cancel') { cancelCycle(); return }
+      ({ action, webContentsId }) => {
         cancelCycle()
         const originTabId = tabIdForWebContents(webContentsId) ?? undefined
         const resolved = passthroughAction(action)

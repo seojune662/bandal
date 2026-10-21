@@ -46,8 +46,10 @@ import { googleAccountRequestUrl, rememberGoogleAccountNavigation } from '../../
 type Listener = (...args: any[]) => void
 
 class FakeWebContents {
-  readonly id = 701
+  constructor(readonly id = 701) {}
   readonly send = vi.fn()
+  readonly focus = vi.fn()
+  readonly sendInputEvent = vi.fn()
   readonly insertCSS = vi.fn(async () => 'page-input-style')
   readonly listeners = new Map<string, Listener[]>()
   windowOpenHandler: ((details: any) => any) | null = null
@@ -223,77 +225,44 @@ describe('attachGuestInput', () => {
     return event.preventDefault
   }
 
-  test.each(['darwin', 'win32'] as const)('cycles each distinct T press and commits only on modifier release on %s', platform => {
+  test.each(['darwin', 'win32'] as const)('focuses the host before forwarding native T into its DOM input stream on %s', platform => {
     const host = new FakeWebContents(), guest = new FakeWebContents()
     attachGuestInput(host as unknown as Electron.WebContents, guest as unknown as Electron.WebContents, undefined, platform)
     const modifiers = { meta: platform === 'darwin', control: platform !== 'darwin' }
-    expect(input(guest, modifiers)).toHaveBeenCalledOnce()
-    input(guest, { ...modifiers, isAutoRepeat: true })
-    expect(host.send).toHaveBeenCalledExactlyOnceWith('shortcut:passthrough', {
-      action: 'new-tab', newTabCycle: 'advance', webContentsId: guest.id
+    const prevented = input(guest, modifiers)
+    expect(prevented).toHaveBeenCalledOnce()
+    expect(host.focus).toHaveBeenCalledOnce()
+    expect(host.sendInputEvent).toHaveBeenCalledExactlyOnceWith({
+      type: 'keyDown', keyCode: 'T', modifiers: [platform === 'darwin' ? 'meta' : 'control']
     })
-    input(guest, { ...modifiers, type: 'keyUp' })
-    expect(host.send).toHaveBeenCalledTimes(1)
-    input(guest, modifiers)
-    expect(host.send).toHaveBeenCalledTimes(2)
-    input(guest, { type: 'keyUp', key: platform === 'darwin' ? 'Meta' : 'Control', code: platform === 'darwin' ? 'MetaLeft' : 'ControlLeft', meta: false, control: false })
-    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
-      action: 'new-tab', newTabCycle: 'commit', webContentsId: guest.id
-    })
-    input(guest, { type: 'keyUp', key: 'Meta', meta: false })
-    expect(host.send).toHaveBeenCalledTimes(3)
+    expect(prevented.mock.invocationCallOrder[0]).toBeLessThan(host.focus.mock.invocationCallOrder[0]!)
+    expect(host.focus.mock.invocationCallOrder[0]).toBeLessThan(host.sendInputEvent.mock.invocationCallOrder[0]!)
+    expect(host.send).not.toHaveBeenCalled()
+    // Host keydowns must remain DOM-owned. Preventing them in main would
+    // suppress every following keyup in Chromium, including the modifier.
+    expect(host.listeners.get('before-input-event')).toBeUndefined()
+    expect(input(host, modifiers)).not.toHaveBeenCalled()
+    expect(input(host, { type: 'keyUp', key: platform === 'darwin' ? 'Meta' : 'Control', meta: false })).not.toHaveBeenCalled()
   })
 
-  test('accepts the physical T key with a Korean layout and follows focus to the host renderer', () => {
+  test('normalizes physical Korean T and consumes guest auto-repeat without forwarding it', () => {
     const host = new FakeWebContents(), guest = new FakeWebContents()
     attachGuestInput(host as unknown as Electron.WebContents, guest as unknown as Electron.WebContents, undefined, 'darwin')
     input(guest, { key: 'ㅅ' })
-    guest.emit('blur')
-    expect(host.send).toHaveBeenCalledExactlyOnceWith('shortcut:passthrough', {
-      action: 'new-tab', newTabCycle: 'advance', webContentsId: guest.id
-    })
-    input(host, { type: 'keyUp', key: 'Meta', code: 'MetaLeft', meta: false })
-    // The host renderer handles its own release. Do not queue a duplicate
-    // commit that could accidentally confirm the following key sequence.
-    expect(host.send).toHaveBeenCalledTimes(1)
-    input(guest, { type: 'keyUp', key: 'Meta', meta: false })
-    guest.emit('destroyed')
-    expect(host.send).toHaveBeenCalledTimes(1)
+    expect(input(guest, { key: 'ㅅ', isAutoRepeat: true })).toHaveBeenCalledOnce()
+    expect(host.focus).toHaveBeenCalledOnce()
+    expect(host.sendInputEvent).toHaveBeenCalledExactlyOnceWith({ type: 'keyDown', keyCode: 'T', modifiers: ['meta'] })
+    expect(host.send).not.toHaveBeenCalled()
   })
 
-  test('Escape and actual window blur cancel without creating a tab on later release', () => {
-    const host = new FakeWebContents(), guest = new FakeWebContents(), owner = new FakeWebContents()
-    electronMocks.fromWebContents.mockReturnValue(owner as unknown as Electron.BrowserWindow)
+  test('a remapped guest new-tab chord keeps legacy IPC and does not synthesize T', () => {
+    const host = new FakeWebContents(), guest = new FakeWebContents()
     attachGuestInput(host as unknown as Electron.WebContents, guest as unknown as Electron.WebContents, undefined, 'darwin')
-    input(guest)
-    expect(input(guest, { key: 'Escape', code: 'Escape' })).toHaveBeenCalledOnce()
-    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
-      action: 'new-tab', newTabCycle: 'cancel', webContentsId: guest.id
-    })
-    input(guest, { type: 'keyUp', key: 'Meta', meta: false })
-    expect(host.send).toHaveBeenCalledTimes(2)
-    input(guest)
-    owner.emit('blur')
-    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
-      action: 'new-tab', newTabCycle: 'cancel', webContentsId: guest.id
-    })
-    input(host, { type: 'keyUp', key: 'Meta', meta: false })
-    expect(host.send).toHaveBeenCalledTimes(4)
-    host.emit('destroyed')
-    expect(owner.listeners.get('blur')).toHaveLength(0)
-  })
-
-  test('uses one host observer across native pages and cancels when the initiating page closes', () => {
-    const host = new FakeWebContents(), guest = new FakeWebContents(), other = new FakeWebContents()
-    for (const page of [guest, other]) attachGuestInput(host as unknown as Electron.WebContents, page as unknown as Electron.WebContents, undefined, 'darwin')
-    expect(host.listeners.get('before-input-event')).toHaveLength(1)
-    input(guest)
-    other.emit('destroyed')
-    expect(host.send).toHaveBeenCalledTimes(1)
-    guest.emit('destroyed')
-    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
-      action: 'new-tab', newTabCycle: 'cancel', webContentsId: guest.id
-    })
+    settingsMocks.keybindings = { 'new-tab': 'mod+alt+n' }
+    expect(input(guest, { key: 'n', code: 'KeyN', alt: true })).toHaveBeenCalledOnce()
+    expect(host.send).toHaveBeenCalledExactlyOnceWith('shortcut:passthrough', { action: 'new-tab', webContentsId: guest.id })
+    expect(host.focus).not.toHaveBeenCalled()
+    expect(host.sendInputEvent).not.toHaveBeenCalled()
   })
 
   test('does not cycle nonplatform modifiers or a reassigned T command', () => {

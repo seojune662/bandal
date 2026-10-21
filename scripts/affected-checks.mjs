@@ -211,8 +211,8 @@ export function communityE2eFiles(files, readBefore, readAfter) {
 // inputs and type checks always retain the original files.
 const TAB_PICKER_SCOPES = {
   'src/main/features/browser/hardenWebviews.ts': {
-    names: ['GuestNewTabCycle', 'guestNewTabCycles', 'guestNewTabCycle', 'attachGuestInput'],
-    imports: ['Input'], required: ['attachGuestInput'],
+    names: ['attachGuestInput'],
+    imports: [], required: ['attachGuestInput'],
     e2e: ['newTabCycle', 'browserPlacement']
   },
   'src/renderer/src/app/shortcuts.ts': {
@@ -270,11 +270,6 @@ export function onlyTabPickerChanged(file, before, after) {
     const previous = tabPickerRemainder(file, before, scope), next = tabPickerRemainder(file, after, scope)
     return previous !== null && next !== null && previous === next
   }
-  if (file === 'src/shared/ipc/events.ts') {
-    const anchor = 'export interface ShortcutPassthrough {\n'
-    const field = "  /** Hold Cmd/Ctrl and repeat T; opening a tab waits for modifier release. */\n  newTabCycle?: 'advance' | 'commit' | 'cancel'\n"
-    return before.split(anchor).length === 2 && before.replace(anchor, anchor + field) === after
-  }
   if (file === 'src/renderer/src/app/app-shell.css') {
     const block = ".app-shell[data-left-panel='courses'] > .shell-course-rail {\n  grid-row: 1 / -1;\n}\n"
     return before.split(block).length === 2 && before.replace(block, '') === after
@@ -295,7 +290,7 @@ export function onlyTabPickerChanged(file, before, after) {
 export function tabPickerE2eFiles(files, readBefore, readAfter) {
   const isolated = new Set(files.filter(file => {
     if (!Object.hasOwn(TAB_PICKER_SCOPES, file) && ![
-      'src/shared/ipc/events.ts', 'src/renderer/src/app/app-shell.css',
+      'src/renderer/src/app/app-shell.css',
       'src/renderer/src/features/workspace/workspace.css', 'src/renderer/src/features/settings/TabsSettingsPanel.tsx'
     ].includes(file)) return false
     try { return onlyTabPickerChanged(file, readBefore(file), readAfter(file)) }

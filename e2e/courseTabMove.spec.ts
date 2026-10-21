@@ -199,7 +199,7 @@ test('real folder drag moves a live browser into an empty course without replaci
     // Restore only the harmless start page eagerly; Gemini stays lazy until the
     // HTTPS fixture is reinstalled in the next process (including packaged runs).
     await visibleTab(page, 'Move browser fixture').click()
-    await page.locator('.workspace-add-tab').click()
+    await page.locator('.workspace-course:not([hidden]) .workspace-add-tab').click()
     await page.getByRole('option', { name: /^브라우저(?:\s|$)/ }).click()
     await expect(page.locator('.workspace-course:not([hidden]) .dv-tab')).toHaveCount(2)
     await expect.poll(async () => Object.keys((await persistedPanels(page, source.id, target.id))[1]).length).toBe(2)

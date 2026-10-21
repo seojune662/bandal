@@ -1,6 +1,6 @@
 name: Verify targeted Windows package
 
-# Run the three release regressions before repeating macOS signing/notarization.
+# Run focused release regressions before repeating macOS signing/notarization.
 # This builds a local unpacked app and never creates or publishes a release.
 on:
   workflow_dispatch:
@@ -8,6 +8,13 @@ on:
       source_sha:
         description: 'Exact 40-character desktop commit already on main'
         required: true
+      suite:
+        description: 'Packaged regressions to verify'
+        type: choice
+        options:
+          - release-regressions
+          - tab-cycle
+        default: release-regressions
 
 permissions:
   contents: read
@@ -23,6 +30,7 @@ jobs:
     timeout-minutes: 25
     env:
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_SUITE: ${{ inputs.suite || 'release-regressions' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -39,13 +47,15 @@ jobs:
           const { execFileSync } = require('node:child_process');
           const { readFileSync, writeFileSync } = require('node:fs');
           const sha = process.env.QA_SOURCE_SHA;
+          const suite = process.env.QA_SUITE;
           if (!/^[0-9a-f]{40}$/.test(sha ?? '') || process.env.GITHUB_REF !== 'refs/heads/main' || process.env.GITHUB_REPOSITORY !== 'seojune662/bandal') throw new Error('Invalid source scope');
+          if (!['release-regressions', 'tab-cycle'].includes(suite)) throw new Error('Invalid verification suite');
           const git = args => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
           if (git(['rev-parse', 'HEAD']) !== sha) throw new Error('Source SHA mismatch');
           try { git(['merge-base', '--is-ancestor', sha, 'refs/remotes/origin/main']); }
           catch { throw new Error('Source commit is not on main'); }
           const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
-          writeFileSync('windows-package-source.json', JSON.stringify({ sourceSHA: sha, version }, null, 2));
+          writeFileSync('windows-package-source.json', JSON.stringify({ sourceSHA: sha, version, suite }, null, 2));
           console.log('Exact main commit verified:', sha);
           '@ | node
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -67,14 +77,18 @@ jobs:
         run: pnpm exec electron-builder --win --x64 --dir --publish never
       - name: Verify the bundled browser helper without changing its timeout
         run: node scripts/verify-browser-import.mjs release/win-unpacked
-      - name: Verify recovery, recording anchors and tab shortcuts in the package
+      - name: Verify the selected regressions in the Windows package
         id: targeted_tests
         shell: pwsh
         run: |
           $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'
-          pnpm exec playwright test -c e2e e2e/accountNotes.spec.ts e2e/recording.spec.ts e2e/recordingUx.spec.ts
+          if ($env:QA_SUITE -eq 'tab-cycle') {
+            pnpm exec playwright test -c e2e e2e/courseTabMove.spec.ts e2e/newTabCycle.spec.ts --grep 'real folder drag moves a live browser|starts from a native browser guest'
+          } else {
+            pnpm exec playwright test -c e2e e2e/accountNotes.spec.ts e2e/recording.spec.ts e2e/recordingUx.spec.ts
+          }
       - name: Repeat the new PDF note page-edit regression ten times
-        if: ${{ !cancelled() && (steps.targeted_tests.outcome == 'success' || steps.targeted_tests.outcome == 'failure') }}
+        if: ${{ !cancelled() && inputs.suite != 'tab-cycle' && (steps.targeted_tests.outcome == 'success' || steps.targeted_tests.outcome == 'failure') }}
         shell: pwsh
         run: |
           $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'

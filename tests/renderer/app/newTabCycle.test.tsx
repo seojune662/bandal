@@ -31,7 +31,7 @@ const key = (type: string, key: string, options: KeyboardEventInit = {}) =>
   window.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...options }))
 const pressT = (extra: KeyboardEventInit = {}) => key('keydown', 't', { code: 'KeyT', metaKey: true, ...extra })
 const release = () => key('keyup', 'Meta')
-const push = (phase: string) => mocks.listeners.get('shortcut:passthrough')!({ action: 'new-tab', webContentsId: 42, newTabCycle: phase })
+
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -75,13 +75,28 @@ describe('hold modifier and tap T', () => {
     expect(useNewTabMenu.getState().isOpen).toBe(false)
   })
 
-  test('guest and host events share one selection across native focus handoff', () => {
-    push('advance'); pressT(); release(); push('commit')
-    expect(mocks.markdown).toHaveBeenCalledTimes(1)
+  test('focused shortcut recorder consumes the chord before global handling', async () => {
+    const captured = vi.fn()
+    await act(async () => root.render(<><Harness /><button className="settings-shortcuts-row__main" data-recording="true" onKeyDown={event => { event.preventDefault(); event.stopPropagation(); captured(event.key) }} /></>))
+    host.querySelector('button')!.focus()
+    host.querySelector('button')!.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', metaKey: true, bubbles: true, cancelable: true }))
+    release()
+    expect(captured).toHaveBeenCalledExactlyOnceWith('t')
+    expect(useNewTabMenu.getState().isOpen).toBe(false)
     expect(mocks.browser).not.toHaveBeenCalled()
-    push('advance'); push('commit')
-    expect(mocks.browser).toHaveBeenCalledTimes(1)
-    push('advance'); push('cancel'); release()
+  })
+
+  test('capture guards block the chord and an unhandled chord creates only once', () => {
+    const block = (event: KeyboardEvent) => { event.preventDefault(); event.stopImmediatePropagation() }
+    window.addEventListener('keydown', block, true)
+    try {
+      pressT(); release()
+      expect(useNewTabMenu.getState().isOpen).toBe(false)
+      expect(mocks.browser).not.toHaveBeenCalled()
+    } finally { window.removeEventListener('keydown', block, true) }
+    pressT()
+    expect(useNewTabMenu.getState().cycleIndex).toBe(0)
+    release()
     expect(mocks.browser).toHaveBeenCalledTimes(1)
   })
 

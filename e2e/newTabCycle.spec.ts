@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { writeFileSync } from 'node:fs'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { startFileServer } from './helpers/fileServer'
 
@@ -16,6 +17,34 @@ async function chooseWithKeyboard(page: Page, presses: number): Promise<void> {
   await page.keyboard.down(MODIFIER)
   for (let index = 0; index < presses; index++) await page.keyboard.press('KeyT')
   await page.keyboard.up(MODIFIER)
+}
+
+async function dispatchNativeCycleKeys(app: BandalApp['app'], guestId: number, steps: Array<'modifier-down' | 't-down' | 't-up' | 'modifier-up'>): Promise<void> {
+  await app.evaluate(async ({ BrowserWindow, webContents }, { guestId, steps }) => {
+    const guest = webContents.fromId(guestId)!
+    const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents
+    const mac = process.platform === 'darwin'
+    const modifiers: Array<'meta' | 'control'> = [mac ? 'meta' : 'control']
+    const inputs = {
+      'modifier-down': { type: 'keyDown', keyCode: mac ? 'Meta' : 'Control', modifiers },
+      't-down': { type: 'keyDown', keyCode: 'T', modifiers },
+      't-up': { type: 'keyUp', keyCode: 'T', modifiers },
+      'modifier-up': { type: 'keyUp', keyCode: mac ? 'Meta' : 'Control' }
+    } satisfies Record<string, Electron.KeyboardInputEvent>
+    for (const step of steps) {
+      const input = inputs[step]
+      const target = webContents.getFocusedWebContents()
+      if (target !== guest && target !== host) throw new Error(`Unexpected native keyboard target: ${target?.id ?? 'none'}`)
+      ;(globalThis as any).__nativeTabCycleProbe.events.push({ at: Date.now(), phase: 'dispatch', id: target.id, type: input.type, code: input.keyCode, modifiers: 'modifiers' in input ? input.modifiers : [] })
+      target.sendInputEvent(input)
+      // Flush through the renderer before choosing the next focused native
+      // target. There is no chooser-rendering wait or timing-based delay.
+      await target.executeJavaScript('void 0')
+      const focused = webContents.getFocusedWebContents()
+      ;(globalThis as any).__nativeTabCycleProbe.events.push({ at: Date.now(), phase: 'renderer-barrier', id: target.id, focusedId: focused?.id ?? null, type: input.type, code: input.keyCode })
+      if (step === 't-down' && target === guest && focused !== host) throw new Error('Guest new-tab shortcut did not transfer keyboard focus to its host')
+    }
+  }, { guestId, steps })
 }
 
 test.describe('new tab keyboard cycle', () => {
@@ -126,7 +155,7 @@ test.describe('new tab keyboard cycle', () => {
     await expect(page.locator('.note-tab:visible .ProseMirror')).toBeVisible()
   })
 
-  test('starts from a native browser guest and finishes the cycle after focus moves to the host', async () => {
+  test('starts from a native browser guest and finishes the cycle after focus moves to the host', async ({}, testInfo) => {
     const server = await startFileServer({
       '/cycle': {
         fileName: 'cycle.html',
@@ -143,6 +172,37 @@ test.describe('new tab keyboard cycle', () => {
       await menu(page).getByRole('option', { name: `브라우저 ${url}`, exact: true }).click()
       await expect(tabs(page)).toContainText('Native cycle fixture')
       const guestId = await app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(contents => contents.getURL() === url)!.id, url)
+      await app.evaluate(({ BrowserWindow, webContents }, id) => {
+        const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents
+        const guest = webContents.fromId(id)!
+        const events: unknown[] = []
+        const capture = (source: 'host' | 'guest', sourceId: number) => (_event: unknown, input: Electron.Input): void => {
+          events.push({ at: Date.now(), phase: 'before-input', source, id: sourceId,
+            focusedId: webContents.getFocusedWebContents()?.id ?? null,
+            type: input.type, code: input.code, meta: input.meta, control: input.control,
+            alt: input.alt, shift: input.shift, isAutoRepeat: input.isAutoRepeat })
+        }
+        const hostInput = capture('host', host.id), guestInput = capture('guest', guest.id)
+        const captureInputEvent = (source: 'host' | 'guest', sourceId: number) => (_event: unknown, input: any): void => {
+          events.push({ at: Date.now(), phase: 'input-event', source, id: sourceId,
+            focusedId: webContents.getFocusedWebContents()?.id ?? null,
+            type: input.type, code: input.code, modifiers: input.modifiers })
+        }
+        const hostEvent = captureInputEvent('host', host.id), guestEvent = captureInputEvent('guest', guest.id)
+        host.prependListener('before-input-event', hostInput)
+        guest.prependListener('before-input-event', guestInput)
+        host.on('input-event', hostEvent)
+        guest.on('input-event', guestEvent)
+        ;(globalThis as any).__nativeTabCycleProbe = {
+          events,
+          restore: () => {
+            host.removeListener('before-input-event', hostInput)
+            guest.removeListener('before-input-event', guestInput)
+            host.removeListener('input-event', hostEvent)
+            guest.removeListener('input-event', guestEvent)
+          }
+        }
+      }, guestId)
       await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => {
         const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
         return host.contentView.children.some(view => 'webContents' in view &&
@@ -156,34 +216,21 @@ test.describe('new tab keyboard cycle', () => {
         webContents.fromId(id)!.focus()
       }, guestId)
       await expect.poll(() => app.evaluate(({ webContents }, id) => webContents.fromId(id)!.isFocused(), guestId)).toBe(true)
-      await app.evaluate(({ webContents }, id) => {
-        const guest = webContents.fromId(id)!
-        const modifiers: Array<'meta' | 'control'> = [process.platform === 'darwin' ? 'meta' : 'control']
-        guest.sendInputEvent({ type: 'keyDown', keyCode: process.platform === 'darwin' ? 'Meta' : 'Control', modifiers })
-        guest.sendInputEvent({ type: 'keyDown', keyCode: 'T', modifiers })
-        guest.sendInputEvent({ type: 'keyUp', keyCode: 'T', modifiers })
-      }, guestId)
+      await dispatchNativeCycleKeys(app, guestId, ['modifier-down', 't-down', 't-up'])
       await expectSelected(page, '브라우저')
       await expect(tabs(page)).toHaveCount(1)
-      await app.evaluate(({ BrowserWindow }) => {
-        const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
-        const modifiers: Array<'meta' | 'control'> = [process.platform === 'darwin' ? 'meta' : 'control']
-        host.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'T', modifiers })
-        host.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'T', modifiers })
-      })
+      await dispatchNativeCycleKeys(app, guestId, ['t-down', 't-up'])
       await expectSelected(page, '마크다운')
       await expect(tabs(page)).toHaveCount(1)
-      await app.evaluate(({ BrowserWindow }) => {
-        const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
-        host.webContents.sendInputEvent({ type: 'keyUp', keyCode: process.platform === 'darwin' ? 'Meta' : 'Control' })
-      })
+      await dispatchNativeCycleKeys(app, guestId, ['modifier-up'])
       await expect(menu(page)).toBeHidden()
       await expect(tabs(page)).toHaveCount(2)
       await expect(page.locator('.note-tab:visible .ProseMirror')).toBeVisible()
       expect(await app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('document.querySelector("#draft").value'), guestId)).toBe('native draft')
 
-      // Release can arrive in the guest before React mounts the chooser.
-      // A complete chord in one native dispatch must still create one browser.
+      // Do not wait for chooser rendering between key events. A renderer
+      // roundtrip lets subsequent events follow the actual keyboard focus;
+      // fire-and-forget input to a now-hidden guest can drop the final release.
       await page.getByRole('tab', { name: 'Native cycle fixture', exact: true }).click()
       await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => {
         const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
@@ -192,19 +239,22 @@ test.describe('new tab keyboard cycle', () => {
       }, guestId)).toBe(true)
       await app.evaluate(({ webContents }, id) => webContents.fromId(id)!.focus(), guestId)
       await expect.poll(() => app.evaluate(({ webContents }, id) => webContents.fromId(id)!.isFocused(), guestId)).toBe(true)
-      await app.evaluate(({ webContents }, id) => {
-        const guest = webContents.fromId(id)!
-        const modifiers: Array<'meta' | 'control'> = [process.platform === 'darwin' ? 'meta' : 'control']
-        guest.sendInputEvent({ type: 'keyDown', keyCode: process.platform === 'darwin' ? 'Meta' : 'Control', modifiers })
-        guest.sendInputEvent({ type: 'keyDown', keyCode: 'T', modifiers })
-        guest.sendInputEvent({ type: 'keyUp', keyCode: 'T', modifiers })
-        guest.sendInputEvent({ type: 'keyUp', keyCode: process.platform === 'darwin' ? 'Meta' : 'Control' })
-      }, guestId)
+      await dispatchNativeCycleKeys(app, guestId, ['modifier-down', 't-down', 't-up', 'modifier-up'])
       await expect(menu(page)).toBeHidden()
       await expect(tabs(page)).toHaveCount(3)
       await expect(page.locator('.browser-toolbar:visible')).toBeVisible()
       expect(await app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('document.querySelector("#draft").value'), guestId)).toBe('native draft')
     } finally {
+      const events = await bandal.app.evaluate(() => {
+        const probe = (globalThis as any).__nativeTabCycleProbe
+        if (!probe) return []
+        probe.restore()
+        delete (globalThis as any).__nativeTabCycleProbe
+        return probe.events
+      })
+      const inputLog = testInfo.outputPath('native-tab-cycle-input.json')
+      writeFileSync(inputLog, JSON.stringify(events, null, 2))
+      await testInfo.attach('native-tab-cycle-input', { path: inputLog, contentType: 'application/json' })
       await server.close()
     }
   })
