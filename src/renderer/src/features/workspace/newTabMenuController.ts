@@ -1,7 +1,6 @@
 /**
  * Open/close state for the "+" new-tab menu. Kept as a tiny standalone
- * store so the header "+" button, the watermark affordance, and a future
- * ⌘T shortcut can all call `openNewTabMenu()` without prop drilling.
+ * store shared by the pointer menu and the hold-⌘/Ctrl+T tab picker.
  */
 
 import { create } from 'zustand'
@@ -13,8 +12,14 @@ export interface MenuAnchor {
   target?: WorkspaceTarget
 }
 
+export const NEW_TAB_CYCLE_ACTIONS = [
+  'new-browser-tab', 'new-markdown', 'new-whiteboard', 'new-ai-tab', 'new-recording-tab'
+] as const
+
 interface NewTabMenuState {
   isOpen: boolean
+  cycleIndex: number | null
+  advanceCycle: () => void
   /** Fixed-position anchor (viewport coords); null = centered fallback. */
   anchor: MenuAnchor | null
   open: (anchor?: MenuAnchor) => void
@@ -23,16 +28,21 @@ interface NewTabMenuState {
 
 export const useNewTabMenu = create<NewTabMenuState>()((set) => ({
   isOpen: false,
+  cycleIndex: null,
+  advanceCycle: () => set(state => ({
+    isOpen: true, anchor: null,
+    cycleIndex: state.cycleIndex === null ? 0 : (state.cycleIndex + 1) % NEW_TAB_CYCLE_ACTIONS.length
+  })),
   anchor: null,
   open: (anchor) => {
-    set({ isOpen: true, anchor: anchor ?? null })
+    set({ isOpen: true, anchor: anchor ?? null, cycleIndex: null })
   },
   close: () => {
-    set({ isOpen: false })
+    set({ isOpen: false, cycleIndex: null })
   }
 }))
 
-/** Callable for keyboard shortcuts (⌘T wiring lands with the shell). */
+/** Pointer menus and custom shortcuts keep the searchable picker open. */
 export function openNewTabMenu(anchor?: MenuAnchor): void {
   useNewTabMenu.getState().open(anchor)
 }

@@ -20,9 +20,9 @@ import '../recordings/recording.css'
 import './tabs-settings.css'
 
 const TABS = [
-  { id: 'whiteboard', ko: '노트', en: 'Note', action: 'new-whiteboard' },
   { id: 'browser', ko: '브라우저', en: 'Browser', action: 'new-browser-tab' },
   { id: 'note', ko: '마크다운', en: 'Markdown', action: 'new-markdown' },
+  { id: 'whiteboard', ko: '노트', en: 'Note', action: 'new-whiteboard' },
   { id: 'chat', ko: 'AI', en: 'AI', action: 'new-ai-tab' },
   { id: 'recording', ko: '녹음', en: 'Recording', action: 'new-recording-tab' }
 ] as const
@@ -40,7 +40,7 @@ export function TabsSettingsPanel({
   onNavigate: (category: SettingsCategoryId) => void
 }): JSX.Element {
   const ko = useLocale() === 'ko-KR'
-  const [selected, setSelected] = useState<TabId>('whiteboard')
+  const [selected, setSelected] = useState<TabId>('browser')
   const id = useId()
   const current = TABS.find((tab) => tab.id === selected)!
   const [prefix, setPrefix] = useState(settings?.tabs.markdownTitlePrefix ?? '')

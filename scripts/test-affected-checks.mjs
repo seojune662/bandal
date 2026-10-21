@@ -6,7 +6,57 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyAddedLinesChanged, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
-import { onlyCommunityRegistrationChanged, communityE2eFiles, main as runAffectedChecks } from './affected-checks.mjs'
+import { onlyCommunityRegistrationChanged, communityE2eFiles, onlyTabPickerChanged, tabPickerE2eFiles, main as runAffectedChecks } from './affected-checks.mjs'
+
+test('tab-picker function scoping retains every unchanged host declaration and import', () => {
+  const file = 'src/renderer/src/app/shortcuts.ts'
+  const before = "import { openNewTabMenu } from './menu'\nfunction closeTab() { close() }\nexport function useGlobalShortcuts() { listen() }\n"
+  const after = "import { NEW_TAB_CYCLE_ACTIONS, openNewTabMenu, useNewTabMenu } from './menu'\nfunction closeTab() { close() }\nexport function useGlobalShortcuts() { cycle(); listen() }\n"
+  assert.equal(onlyTabPickerChanged(file, before, after), true)
+  assert.equal(onlyTabPickerChanged(file, before, after.replaceAll('\n', '\r\n')), true)
+  for (const changed of [
+    after.replace('close() }', 'deleteAll() }'),
+    after.replace("from './menu'", "from './other'"),
+    after.replace('NEW_TAB_CYCLE_ACTIONS,', 'dangerousImport, NEW_TAB_CYCLE_ACTIONS,'),
+    after.replace('NEW_TAB_CYCLE_ACTIONS,', 'dangerousImport as NEW_TAB_CYCLE_ACTIONS,'),
+    after + 'mutateWorkspace()\n',
+    after + 'export function useGlobalShortcuts() {}\n',
+    after.replace('function useGlobalShortcuts()', 'function otherHook()')
+  ]) assert.equal(onlyTabPickerChanged(file, before, changed), false, changed)
+  assert.equal(onlyTabPickerChanged(file, before, before), false)
+  assert.equal(onlyTabPickerChanged('src/main/index.ts', before, after), false)
+})
+
+test('tab-picker IPC and layout narrowing accept only their isolated additions or removals', () => {
+  const field = "  /** Hold Cmd/Ctrl and repeat T; opening a tab waits for modifier release. */\n  newTabCycle?: 'advance' | 'commit' | 'cancel'\n"
+  const before = "export interface ShortcutPassthrough {\n  action: 'new-tab'\n}\nexport interface PushEvents { workspace: {} }\n"
+  const after = before.replace('ShortcutPassthrough {\n', 'ShortcutPassthrough {\n' + field)
+  assert.equal(onlyTabPickerChanged('src/shared/ipc/events.ts', before, after), true)
+  assert.equal(onlyTabPickerChanged('src/shared/ipc/events.ts', before, after.replace('workspace: {}', 'workspace: string')), false)
+  const block = ".app-shell[data-left-panel='courses'] > .shell-course-rail {\n  grid-row: 1 / -1;\n}\n"
+  assert.equal(onlyTabPickerChanged('src/renderer/src/app/app-shell.css', block + '.shell { display: grid; }', '.shell { display: grid; }'), true)
+  assert.equal(onlyTabPickerChanged('src/renderer/src/app/app-shell.css', block + '.shell { display: grid; }', '.shell { display: flex; }'), false)
+})
+
+test('tab-picker E2E scoping preserves explicit regressions and original unit/type inputs', () => {
+  const file = 'src/renderer/src/app/shortcuts.ts'
+  const before = 'export function useGlobalShortcuts() { listen() }\n'
+  const after = 'export function useGlobalShortcuts() { cycle(); listen() }\n'
+  const files = [file, 'src/main/features/pdf/exportPdf.ts', 'e2e/accountNotes.spec.ts']
+  const scoped = tabPickerE2eFiles(files, () => before, () => after)
+  const originalPlan = planChecks(files), e2ePlan = planChecks(scoped)
+  assert.ok(originalPlan.unitInputs.includes(file))
+  assert.ok(originalPlan.types.includes('tsconfig.web.json'))
+  assert.ok(e2ePlan.e2e.includes('e2e/newTabCycle.spec.ts'))
+  assert.ok(e2ePlan.e2e.includes('e2e/browserPlacement.spec.ts'))
+  assert.ok(e2ePlan.e2e.includes('e2e/courseTabMove.spec.ts'))
+  assert.ok(e2ePlan.e2e.includes('e2e/pdfExport.spec.ts'))
+  assert.ok(e2ePlan.e2e.includes('e2e/accountNotes.spec.ts'))
+  assert.ok(!e2ePlan.e2e.includes('e2e/theme.spec.ts'))
+  assert.deepEqual(files, [file, 'src/main/features/pdf/exportPdf.ts', 'e2e/accountNotes.spec.ts'])
+  assert.equal(tabPickerE2eFiles(files, () => { throw new Error('missing') }, () => after), files)
+  assert.equal(tabPickerE2eFiles(files, () => before, () => { throw new Error('deleted') }), files)
+})
 
 const communityPreload = {
   file: 'src/preload/index.ts',

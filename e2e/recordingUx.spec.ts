@@ -187,18 +187,18 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
   try {
     const { page } = bandal
     await createCourse(page, '탭 설정 검증')
-    await page.keyboard.press(`${mod}+t`)
+    await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
     const menu = page.getByRole('dialog', { name: '새 탭 열기' })
     const options = menu.getByRole('option')
     await expect(options).toHaveCount(5)
-    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     for (const index of [0, 1, 2, 3, 4])
       await expect(options.nth(index)).toContainText(process.platform === 'darwin' ? '⌘' : 'Ctrl')
     await page.keyboard.press('Escape')
     await page.keyboard.press(`${mod}+,`)
     await page.locator('.settings-nav [data-category="tabs"]').click()
     const prefs = page.locator('.tab-settings')
-    await expect(prefs.getByRole('tablist', { name: '탭 종류' }).getByRole('tab')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    await expect(prefs.getByRole('tablist', { name: '탭 종류' }).getByRole('tab')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     await prefs.getByRole('tab', { name: '녹음', exact: true }).click()
     await prefs
       .getByRole('combobox', { name: '기본 재생 속도' })

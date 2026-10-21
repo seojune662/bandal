@@ -9,8 +9,8 @@ import {
   type ShortcutActionId
 } from '../../../shared/keymap'
 import { onPush } from '../lib/ipc'
-import { openNewTabMenu } from '../features/workspace/newTabMenuController'
-import { createBrowserTab, createMarkdownTab, createStudyTab } from './tabCommands'
+import { NEW_TAB_CYCLE_ACTIONS, openNewTabMenu, useNewTabMenu } from '../features/workspace/newTabMenuController'
+import { createBrowserTab, createDefaultNoteTab, createMarkdownTab, createStudyTab } from './tabCommands'
 import { showToast } from './toast'
 import { tabIdForWebContents } from '../features/browser/guestActions'
 import { viewerKindFor } from '../features/file/fileFormats'
@@ -483,7 +483,27 @@ export function useGlobalShortcuts(): void {
       }
     )
 
+    const cancelCycle = (): void => {
+      if (useNewTabMenu.getState().cycleIndex !== null) useNewTabMenu.getState().close()
+    }
+    const commitCycle = (): void => {
+      const index = useNewTabMenu.getState().cycleIndex
+      if (index === null) return
+      useNewTabMenu.getState().close()
+      const action = NEW_TAB_CYCLE_ACTIONS[index]!
+      if (action === 'new-whiteboard') void createDefaultNoteTab()
+      else runShortcutAction({ type: action })
+    }
+    const onKeyUp = (event: KeyboardEvent): void => {
+      const isMac = window.bandal?.platform === 'darwin'
+      if (event.key === (isMac ? 'Meta' : 'Control')) commitCycle()
+    }
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && useNewTabMenu.getState().cycleIndex !== null) {
+        event.preventDefault()
+        cancelCycle()
+        return
+      }
       // Editors and dialogs get the first chance to handle their own chords.
       if (event.defaultPrevented) return
       const action = resolveShortcut({
@@ -500,15 +520,27 @@ export function useGlobalShortcuts(): void {
       })
       if (action === null) return
       event.preventDefault()
+      const primaryModifier = window.bandal?.platform === 'darwin' ? event.metaKey : event.ctrlKey
+      if (action.type === 'new-tab' && primaryModifier && chordFromKeyboardEvent(event) === 'mod+t') {
+        if (!event.repeat) useNewTabMenu.getState().advanceCycle()
+        return
+      }
+      cancelCycle()
       runShortcutAction(action)
     }
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', cancelCycle)
 
     // ⌘T/⌘W typed INSIDE a browser guest arrive via main's
     // before-input-event interception (the guest never sees the chord).
     const unsubscribe = onPush(
       'shortcut:passthrough',
-      ({ action, webContentsId }) => {
+      ({ action, webContentsId, newTabCycle }) => {
+        if (newTabCycle === 'advance') { useNewTabMenu.getState().advanceCycle(); return }
+        if (newTabCycle === 'commit') { commitCycle(); return }
+        if (newTabCycle === 'cancel') { cancelCycle(); return }
+        cancelCycle()
         const originTabId = tabIdForWebContents(webContentsId) ?? undefined
         const resolved = passthroughAction(action)
         if (resolved !== null) runShortcutAction(resolved, originTabId)
@@ -524,6 +556,9 @@ export function useGlobalShortcuts(): void {
         onImportMaterials
       )
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', cancelCycle)
+      cancelCycle()
       unsubscribeSettings()
       unsubscribe()
     }

@@ -54,6 +54,7 @@ test('four browser panes retain their pages, route native clicks and restore unf
     }, clicked.id)
     await expect.poll(() => bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('window.clicks'), clicked.id)).toBe(1)
     await expect(bandal.page.locator('.dv-active-group .dv-active-tab')).toContainText('Pane 0')
+    await bandal.page.evaluate(homePage => window.bandal.invoke('settings:set', { browser: { homePage } }), `${origin}/shortcut`)
     await bandal.app.evaluate(({ webContents }, id) => {
       const page = webContents.fromId(id)!
       const modifiers: Array<'meta' | 'control'> = [process.platform === 'darwin' ? 'meta' : 'control']
@@ -61,8 +62,11 @@ test('four browser panes retain their pages, route native clicks and restore unf
       page.sendInputEvent({ type: 'keyUp', keyCode: 'T', modifiers })
     }, clicked.id)
     await expect(bandal.page.getByRole('dialog', { name: '새 탭 열기' })).toBeVisible()
-    await bandal.page.getByLabel('새 탭 검색').fill(`${origin}/shortcut`)
-    await bandal.page.getByRole('option', { name: `${origin}/shortcut 열기` }).click()
+    await bandal.app.evaluate(({ BrowserWindow }) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      host.webContents.sendInputEvent({ type: 'keyUp', keyCode: process.platform === 'darwin' ? 'Meta' : 'Control' })
+    })
+    await expect(bandal.page.getByRole('dialog', { name: '새 탭 열기' })).toBeHidden()
     await expect(bandal.page.locator('.dv-active-group .dv-tab')).toHaveCount(2)
     await expect(bandal.page.locator('.dv-active-group .dv-tab')).toContainText(['Pane 0', 'Pane shortcut'])
     await bandal.page.locator('.dv-active-group .dv-active-tab').click({ button: 'middle' })

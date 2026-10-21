@@ -604,6 +604,12 @@
   transform: translateX(-50%);
 }
 
+.new-tab-menu__cycle-hint {
+  padding: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
 .new-tab-menu__search {
   display: flex;
   align-items: center;

@@ -83,20 +83,12 @@
 .university-section {
   display: flex;
   flex-direction: column;
-  min-height: var(--chrome-height);
+  min-height: calc(var(--control-height) + var(--space-2));
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) 0;
 }
 
-/* The school is the rail identity: one quiet selector row, followed by its
-   shortcuts only when expanded. It shares the titlebar row, leaving room for
-   the native window controls and persistent sidebar toggle on macOS. */
-.university-section__heading,
-.university-section__pick {
-  margin-inline-start: max(0px, calc(var(--window-controls-width) - var(--navigation-width) - var(--space-3)));
-  -webkit-app-region: no-drag;
-}
-
+/* Keep the school in the sidebar content column, aligned with AI below it. */
 .university-section__heading {
   display: grid;
   grid-template-columns: var(--icon-size-sm) minmax(0, 1fr);

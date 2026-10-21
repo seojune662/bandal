@@ -53,6 +53,26 @@ export async function createMarkdownTab(title?: string, target?: WorkspaceTarget
   }
 }
 
+/** The keyboard picker creates a note immediately using the saved paper defaults. */
+export async function createDefaultNoteTab(target?: WorkspaceTarget): Promise<void> {
+  const courseId = target ? target.courseId : activeCourseId()
+  if (courseId === null) return
+  const now = new Date()
+  const title = `노트 ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const { notePaper: paper, noteOrientation: orientation } = settingsSnapshot().tabs
+  try {
+    const { relPath } = await invoke('pdfNotes:create', { courseId, title, paper, orientation })
+    const descriptor = descriptorFor('pdf', { courseId, relPath })
+    if (target) useWorkspaceStore.getState().openTab(descriptor, { target })
+    else if (activeCourseId() === courseId) useWorkspaceStore.getState().openTab(descriptor)
+    else showToast('원래 과목에 새 노트를 만들었어요.')
+    void useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
+  } catch (error) {
+    console.error('[Bandal] 노트를 만들지 못했습니다.', error)
+    showToast('노트를 만들지 못했어요. 다시 시도해 주세요.', 'danger')
+  }
+}
+
 export function createBrowserTab(url?: string, target?: WorkspaceTarget): void {
   const homePage = settingsSnapshot().browser.homePage
   const initialUrl = url ?? (homePage !== '' ? homePage : DEFAULT_BROWSER_URL)

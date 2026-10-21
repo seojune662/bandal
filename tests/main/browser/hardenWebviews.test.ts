@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const electronMocks = vi.hoisted(() => ({
-  fromWebContents: vi.fn(() => null),
+  fromWebContents: vi.fn<() => Electron.BrowserWindow | null>(() => null),
   openExternal: vi.fn(async () => undefined),
   showMessageBox: vi.fn(async () => ({ response: 0 })),
   showMessageBoxSync: vi.fn(() => 0)
@@ -59,6 +59,11 @@ class FakeWebContents {
 
   once(event: string, listener: Listener): this {
     return this.on(event, listener)
+  }
+
+  removeListener(event: string, listener: Listener): this {
+    this.listeners.set(event, (this.listeners.get(event) ?? []).filter(candidate => candidate !== listener))
+    return this
   }
 
   emit(event: string, ...args: unknown[]): void {
@@ -205,7 +210,100 @@ describe('attachNavigationPolicies', () => {
 describe('attachGuestInput', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    electronMocks.fromWebContents.mockReturnValue(null)
     settingsMocks.keybindings = {}
+  })
+
+  function input(guest: FakeWebContents, overrides: Record<string, unknown> = {}): ReturnType<typeof vi.fn> {
+    const event = { preventDefault: vi.fn() }
+    guest.emit('before-input-event', event, {
+      type: 'keyDown', key: 't', code: 'KeyT', meta: true, control: false,
+      alt: false, shift: false, isAutoRepeat: false, ...overrides
+    })
+    return event.preventDefault
+  }
+
+  test.each(['darwin', 'win32'] as const)('cycles each distinct T press and commits only on modifier release on %s', platform => {
+    const host = new FakeWebContents(), guest = new FakeWebContents()
+    attachGuestInput(host as unknown as Electron.WebContents, guest as unknown as Electron.WebContents, undefined, platform)
+    const modifiers = { meta: platform === 'darwin', control: platform !== 'darwin' }
+    expect(input(guest, modifiers)).toHaveBeenCalledOnce()
+    input(guest, { ...modifiers, isAutoRepeat: true })
+    expect(host.send).toHaveBeenCalledExactlyOnceWith('shortcut:passthrough', {
+      action: 'new-tab', newTabCycle: 'advance', webContentsId: guest.id
+    })
+    input(guest, { ...modifiers, type: 'keyUp' })
+    expect(host.send).toHaveBeenCalledTimes(1)
+    input(guest, modifiers)
+    expect(host.send).toHaveBeenCalledTimes(2)
+    input(guest, { type: 'keyUp', key: platform === 'darwin' ? 'Meta' : 'Control', code: platform === 'darwin' ? 'MetaLeft' : 'ControlLeft', meta: false, control: false })
+    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
+      action: 'new-tab', newTabCycle: 'commit', webContentsId: guest.id
+    })
+    input(guest, { type: 'keyUp', key: 'Meta', meta: false })
+    expect(host.send).toHaveBeenCalledTimes(3)
+  })
+
+  test('accepts the physical T key with a Korean layout and follows focus to the host renderer', () => {
+    const host = new FakeWebContents(), guest = new FakeWebContents()
+    attachGuestInput(host as unknown as Electron.WebContents, guest as unknown as Electron.WebContents, undefined, 'darwin')
+    input(guest, { key: 'ㅅ' })
+    guest.emit('blur')
+    expect(host.send).toHaveBeenCalledExactlyOnceWith('shortcut:passthrough', {
+      action: 'new-tab', newTabCycle: 'advance', webContentsId: guest.id
+    })
+    input(host, { type: 'keyUp', key: 'Meta', code: 'MetaLeft', meta: false })
+    // The host renderer handles its own release. Do not queue a duplicate
+    // commit that could accidentally confirm the following key sequence.
+    expect(host.send).toHaveBeenCalledTimes(1)
+    input(guest, { type: 'keyUp', key: 'Meta', meta: false })
+    guest.emit('destroyed')
+    expect(host.send).toHaveBeenCalledTimes(1)
+  })
+
+  test('Escape and actual window blur cancel without creating a tab on later release', () => {
+    const host = new FakeWebContents(), guest = new FakeWebContents(), owner = new FakeWebContents()
+    electronMocks.fromWebContents.mockReturnValue(owner as unknown as Electron.BrowserWindow)
+    attachGuestInput(host as unknown as Electron.WebContents, guest as unknown as Electron.WebContents, undefined, 'darwin')
+    input(guest)
+    expect(input(guest, { key: 'Escape', code: 'Escape' })).toHaveBeenCalledOnce()
+    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
+      action: 'new-tab', newTabCycle: 'cancel', webContentsId: guest.id
+    })
+    input(guest, { type: 'keyUp', key: 'Meta', meta: false })
+    expect(host.send).toHaveBeenCalledTimes(2)
+    input(guest)
+    owner.emit('blur')
+    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
+      action: 'new-tab', newTabCycle: 'cancel', webContentsId: guest.id
+    })
+    input(host, { type: 'keyUp', key: 'Meta', meta: false })
+    expect(host.send).toHaveBeenCalledTimes(4)
+    host.emit('destroyed')
+    expect(owner.listeners.get('blur')).toHaveLength(0)
+  })
+
+  test('uses one host observer across native pages and cancels when the initiating page closes', () => {
+    const host = new FakeWebContents(), guest = new FakeWebContents(), other = new FakeWebContents()
+    for (const page of [guest, other]) attachGuestInput(host as unknown as Electron.WebContents, page as unknown as Electron.WebContents, undefined, 'darwin')
+    expect(host.listeners.get('before-input-event')).toHaveLength(1)
+    input(guest)
+    other.emit('destroyed')
+    expect(host.send).toHaveBeenCalledTimes(1)
+    guest.emit('destroyed')
+    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
+      action: 'new-tab', newTabCycle: 'cancel', webContentsId: guest.id
+    })
+  })
+
+  test('does not cycle nonplatform modifiers or a reassigned T command', () => {
+    const host = new FakeWebContents(), guest = new FakeWebContents()
+    attachGuestInput(host as unknown as Electron.WebContents, guest as unknown as Electron.WebContents, undefined, 'darwin')
+    input(guest, { meta: false, control: true })
+    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', { action: 'new-tab', webContentsId: guest.id })
+    settingsMocks.keybindings = { 'new-tab': 'mod+alt+n', 'new-ai-tab': 'mod+t' }
+    input(guest)
+    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', { action: 'new-ai-tab', webContentsId: guest.id })
   })
 
   test('resolves the latest settings keymap for every guest keydown', () => {

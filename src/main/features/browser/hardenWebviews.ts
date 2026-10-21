@@ -17,7 +17,7 @@ import {
  */
 
 import { BrowserWindow, dialog, session, shell, webContents } from 'electron'
-import type { Event as ElectronEvent, WebContents } from 'electron'
+import type { Event as ElectronEvent, Input, WebContents } from 'electron'
 import type {
   BrowserOpenUrl,
   BrowserAuthEvent,
@@ -606,6 +606,61 @@ export function attachNavigationPolicies(
   })
 }
 
+interface GuestNewTabCycle {
+  advance(guest: WebContents): void
+  observe(input: Input, forward?: boolean): boolean
+  cancel(guest?: WebContents): void
+}
+
+const guestNewTabCycles = new WeakMap<WebContents, GuestNewTabCycle>()
+
+/** A menu can move keyboard focus from the native page to its renderer host. */
+function guestNewTabCycle(host: WebContents, platform: NodeJS.Platform): GuestNewTabCycle {
+  const existing = guestNewTabCycles.get(host)
+  if (existing) return existing
+  const modifier = platform === 'darwin' ? 'meta' : 'control'
+  let activeGuest: WebContents | null = null
+  const finish = (newTabCycle: 'commit' | 'cancel', forward = true): void => {
+    const guest = activeGuest
+    activeGuest = null
+    if (guest === null || !forward || host.isDestroyed()) return
+    host.send('shortcut:passthrough', { action: 'new-tab', newTabCycle, webContentsId: guest.id } satisfies ShortcutPassthrough)
+  }
+  const cycle: GuestNewTabCycle = {
+    advance(guest) {
+      activeGuest = guest
+      host.send('shortcut:passthrough', { action: 'new-tab', newTabCycle: 'advance', webContentsId: guest.id } satisfies ShortcutPassthrough)
+    },
+    observe(input, forward = true) {
+      if (activeGuest === null) return false
+      if (input.type === 'keyDown' && input.key === 'Escape') { finish('cancel', forward); return true }
+      const modifierKey = modifier === 'meta' ? 'Meta' : 'Control'
+      if (input.type === 'keyUp' && (input.key === modifierKey || input.code?.startsWith(modifierKey) || !input[modifier])) {
+        finish('commit', forward)
+        return true
+      }
+      // A release missed while another app had focus must not survive into
+      // a later key sequence. This key still belongs to its normal handler.
+      if (input.type === 'keyDown' && !input[modifier]) finish('cancel', forward)
+      return false
+    },
+    cancel(guest) { if (guest === undefined || guest === activeGuest) finish('cancel') }
+  }
+  guestNewTabCycles.set(host, cycle)
+  // Host events already reach the renderer's key handlers. Only clear our
+  // guest session: a duplicate IPC commit could arrive after its next T press.
+  host.on('before-input-event', (_event, input) => { cycle.observe(input, false) })
+  const owner = BrowserWindow.fromWebContents(host)
+  const onBlur = (): void => cycle.cancel()
+  owner?.on('blur', onBlur)
+  host.once('destroyed', () => {
+    activeGuest = null
+    owner?.removeListener('blur', onBlur)
+    guestNewTabCycles.delete(host)
+  })
+  return cycle
+}
+
 /**
  * Policies that only make sense for an embedded webview: replay app/browser
  * shortcuts in its host and harden real popup children created by that guest.
@@ -613,14 +668,18 @@ export function attachNavigationPolicies(
 export function attachGuestInput(
   host: WebContents,
   guest: WebContents,
-  partition = BROWSING_PARTITION
+  partition = BROWSING_PARTITION,
+  platform: NodeJS.Platform = process.platform
 ): void {
   navigationHosts.set(guest, host)
   navigationPartitions.set(guest, partition)
+  const cycle = guestNewTabCycle(host, platform)
+  guest.once('destroyed', () => cycle.cancel(guest))
 
   // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept
   // them before the guest page sees the chord and replay them in the host.
   guest.on('before-input-event', (event, input) => {
+    if (cycle.observe(input)) { event.preventDefault(); return }
     const settings = getSettings()
     const action = passthroughShortcut(
       input,
@@ -629,6 +688,13 @@ export function attachGuestInput(
     )
     if (action !== null && !host.isDestroyed()) {
       event.preventDefault()
+      const cycleChord = action === 'new-tab' && !input.alt && !input.shift &&
+        (platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta) &&
+        (input.key.toLowerCase() === 't' || input.code === 'KeyT')
+      if (cycleChord) {
+        if (!input.isAutoRepeat) cycle.advance(guest)
+        return
+      }
       const payload: ShortcutPassthrough = { action, webContentsId: guest.id }
       host.send('shortcut:passthrough', payload)
     }

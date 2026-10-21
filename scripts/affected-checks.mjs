@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import spawn from 'cross-spawn'
 import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import ts from 'typescript'
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 const gitBlob = (base, file) => execFileSync('git', ['show', `${base}:${file}`], { encoding: 'utf8' })
@@ -202,6 +203,109 @@ export function communityE2eFiles(files, readBefore, readAfter) {
     'src/renderer/src/features/community/CommunityHome.tsx',
     'src/renderer/src/features/studyMarket/StudyMarketHome.tsx'
   ))]
+}
+
+// Named input/menu entry points select their functional E2E coverage. Their
+// bodies may change; every declaration/import outside those scopes must stay
+// unchanged, otherwise the ordinary broader selection applies. Related-unit
+// inputs and type checks always retain the original files.
+const TAB_PICKER_SCOPES = {
+  'src/main/features/browser/hardenWebviews.ts': {
+    names: ['GuestNewTabCycle', 'guestNewTabCycles', 'guestNewTabCycle', 'attachGuestInput'],
+    imports: ['Input'], required: ['attachGuestInput'],
+    e2e: ['newTabCycle', 'browserPlacement']
+  },
+  'src/renderer/src/app/shortcuts.ts': {
+    names: ['useGlobalShortcuts'], imports: ['NEW_TAB_CYCLE_ACTIONS', 'useNewTabMenu', 'createDefaultNoteTab'],
+    required: ['useGlobalShortcuts'], e2e: ['newTabCycle', 'tabs', 'courseTabMove', 'browserPlacement']
+  },
+  'src/renderer/src/app/tabCommands.ts': {
+    names: ['createDefaultNoteTab'], imports: [], required: [], e2e: ['newTabCycle', 'accountNotes']
+  },
+  'src/renderer/src/features/workspace/NewTabMenu.tsx': {
+    names: ['NewTabMenu'], imports: ['NEW_TAB_CYCLE_ACTIONS'], required: ['NewTabMenu'],
+    e2e: ['newTabCycle', 'tabs', 'viewportMenus']
+  },
+  'src/renderer/src/features/workspace/newTabMenuController.ts': {
+    names: ['NewTabMenuState', 'NEW_TAB_CYCLE_ACTIONS', 'useNewTabMenu', 'openNewTabMenu'],
+    imports: [], required: ['NewTabMenuState', 'useNewTabMenu', 'openNewTabMenu'],
+    e2e: ['newTabCycle', 'tabs', 'viewportMenus']
+  }
+}
+
+function tabPickerRemainder(file, text, scope) {
+  if (file.endsWith('/newTabMenuController.ts')) text = text.replace(/^\/\*\*[\s\S]*?\*\//, '')
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true)
+  if (source.parseDiagnostics.length) return null
+  const edits = [], counts = new Map()
+  for (const statement of source.statements) {
+    const name = ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1
+      ? statement.declarationList.declarations[0].name.getText(source)
+      : statement.name?.getText(source)
+    if (scope.names.includes(name)) {
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+      edits.push([statement.getFullStart(), statement.end, ''])
+    } else if (ts.isImportDeclaration(statement) && statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings)) {
+      const clause = statement.importClause, bindings = clause.namedBindings
+      const elements = bindings.elements.filter(element => !scope.imports.includes(element.name.text) || element.propertyName !== undefined)
+      // Canonicalize both sides of these imports; all unlisted members and
+      // the module path remain part of the unchanged-remainder comparison.
+      const updated = ts.factory.updateImportDeclaration(statement, statement.modifiers,
+        ts.factory.updateImportClause(clause, clause.isTypeOnly, clause.name,
+          ts.factory.updateNamedImports(bindings, elements)), statement.moduleSpecifier, statement.attributes)
+      edits.push([statement.getStart(source), statement.end, ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, updated, source)])
+    }
+  }
+  if (scope.required.some(name => counts.get(name) !== 1) || [...counts.values()].some(count => count !== 1)) return null
+  for (const [start, end, replacement] of edits.sort((a, b) => b[0] - a[0])) text = text.slice(0, start) + replacement + text.slice(end)
+  return text
+}
+
+export function onlyTabPickerChanged(file, before, after) {
+  if (typeof before !== 'string' || typeof after !== 'string') return false
+  before = before.replaceAll('\r\n', '\n'); after = after.replaceAll('\r\n', '\n')
+  if (before === after) return false
+  if (Object.hasOwn(TAB_PICKER_SCOPES, file)) {
+    const scope = TAB_PICKER_SCOPES[file]
+    const previous = tabPickerRemainder(file, before, scope), next = tabPickerRemainder(file, after, scope)
+    return previous !== null && next !== null && previous === next
+  }
+  if (file === 'src/shared/ipc/events.ts') {
+    const anchor = 'export interface ShortcutPassthrough {\n'
+    const field = "  /** Hold Cmd/Ctrl and repeat T; opening a tab waits for modifier release. */\n  newTabCycle?: 'advance' | 'commit' | 'cancel'\n"
+    return before.split(anchor).length === 2 && before.replace(anchor, anchor + field) === after
+  }
+  if (file === 'src/renderer/src/app/app-shell.css') {
+    const block = ".app-shell[data-left-panel='courses'] > .shell-course-rail {\n  grid-row: 1 / -1;\n}\n"
+    return before.split(block).length === 2 && before.replace(block, '') === after
+  }
+  if (file === 'src/renderer/src/features/workspace/workspace.css') {
+    const block = '.new-tab-menu__cycle-hint {\n  padding: var(--space-3);\n  color: var(--text-secondary);\n  font-size: var(--text-sm);\n}\n\n'
+    return after.split(block).length === 2 && after.replace(block, '') === before
+  }
+  if (file === 'src/renderer/src/features/settings/TabsSettingsPanel.tsx') {
+    const scope = { names: ['TABS'], imports: [], required: ['TABS'] }
+    const previous = tabPickerRemainder(file, before, scope)
+    const next = tabPickerRemainder(file, after.replace("useState<TabId>('browser')", "useState<TabId>('whiteboard')"), scope)
+    return previous !== null && next !== null && previous === next
+  }
+  return false
+}
+
+export function tabPickerE2eFiles(files, readBefore, readAfter) {
+  const isolated = new Set(files.filter(file => {
+    if (!Object.hasOwn(TAB_PICKER_SCOPES, file) && ![
+      'src/shared/ipc/events.ts', 'src/renderer/src/app/app-shell.css',
+      'src/renderer/src/features/workspace/workspace.css', 'src/renderer/src/features/settings/TabsSettingsPanel.tsx'
+    ].includes(file)) return false
+    try { return onlyTabPickerChanged(file, readBefore(file), readAfter(file)) }
+    catch { return false }
+  }))
+  if (isolated.size === 0) return files
+  const specs = [...isolated].flatMap(file => TAB_PICKER_SCOPES[file]?.e2e ?? (
+    file.endsWith('/app-shell.css') ? ['sidebars', 'browserPlacement'] : ['newTabCycle', 'tabs', 'viewportMenus']
+  )).map(name => `e2e/${name}.spec.ts`)
+  return [...new Set(files.filter(file => !isolated.has(file)).concat(specs))]
 }
 
 /** The exact installed PDF library only moves into the packaged runtime. */
@@ -535,7 +639,8 @@ export function main(args) {
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
   const plan = planChecks(files, args.includes('--full'))
   if (args.includes('--backend-plan')) { console.log(String(plan.communityBackend || plan.studyMarketBackend || plan.paddleBillingBackend || plan.appleBillingBackend || plan.accountDeletionBackend || plan.syncAccessBackend)); return }
-  const e2eFiles = plan.full ? files : communityE2eFiles(files, file => gitBlob(base, file), file => readFileSync(file, 'utf8'))
+  const readBefore = file => gitBlob(base, file), readAfter = file => readFileSync(file, 'utf8')
+  const e2eFiles = plan.full ? files : tabPickerE2eFiles(communityE2eFiles(files, readBefore, readAfter), readBefore, readAfter)
   if (e2eFiles !== files) {
     const scoped = planChecks(e2eFiles)
     plan.e2e = scoped.e2e

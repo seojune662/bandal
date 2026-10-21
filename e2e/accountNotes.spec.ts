@@ -100,11 +100,11 @@ test('offline verified profile creates a ruled PDF note and edits its pages', as
       }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-busy', 'disabled'] })
     })
     await createCourse(page, '노트 통합 검증')
-    await page.keyboard.press('ControlOrMeta+KeyT')
+    await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
     const menu = page.getByRole('dialog', { name: '새 탭 열기' })
     await expect(menu).toBeVisible()
-    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
-    await menu.getByRole('option').first().click()
+    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
+    await menu.getByRole('option', { name: /^노트(?:\s|$)/ }).click()
     const sheet = page.getByRole('dialog', { name: '새 노트', exact: true })
     await expect(sheet).toBeVisible()
     await expect(sheet.locator('input[value="lines"]')).toBeChecked()
@@ -125,7 +125,7 @@ test('offline verified profile creates a ruled PDF note and edits its pages', as
     await page.screenshot({ path: testInfo.outputPath('notes-pages.png') })
     await page.keyboard.press('ControlOrMeta+,')
     await page.locator('.settings-nav [data-category="tabs"]').click()
-    await expect(page.getByRole('tablist', { name: '탭 종류', exact: true }).getByRole('tab')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    await expect(page.getByRole('tablist', { name: '탭 종류', exact: true }).getByRole('tab')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
   } catch (error) {
     failed = true
     throw error
@@ -171,8 +171,8 @@ test('an open old PDF revision retains late ink and recovers it without sync con
   try {
     const page = bandal.page
     await createCourse(page, '페이지 충돌 검증')
-    await page.keyboard.press('ControlOrMeta+KeyT')
-    await page.getByRole('dialog', { name: '새 탭 열기' }).getByRole('option').first().click()
+    await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
+    await page.getByRole('dialog', { name: '새 탭 열기' }).getByRole('option', { name: /^노트(?:\s|$)/ }).click()
     const sheet = page.getByRole('dialog', { name: '새 노트', exact: true })
     await sheet.getByLabel('제목').fill('페이지 보존')
     await sheet.getByRole('button', { name: '만들기', exact: true }).click()

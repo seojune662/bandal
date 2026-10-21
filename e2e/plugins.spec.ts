@@ -89,7 +89,7 @@ test.describe('third-party plugins', () => {
     await page.getByRole('button', { name: '새 탭 열기' }).click()
     const menu = page.getByRole('dialog', { name: '새 탭 열기' })
     await expect(menu.getByRole('option')).toHaveCount(5)
-    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    await expect(menu.locator('.new-tab-menu__label')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     await page.keyboard.press('Escape')
     await page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '도구', exact: true }).click()
     const launcher = page.getByRole('complementary', { name: '학습 도구' })

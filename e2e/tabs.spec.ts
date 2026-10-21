@@ -86,7 +86,7 @@ test.describe('workspace tabs', () => {
   test('keeps the existing study board tab available through its dedicated shortcut', async () => {
     const { page } = bandal
     await openNewTabMenu(page)
-    await expect(page.locator('.new-tab-menu__label')).toHaveText(['노트', '브라우저', '마크다운', 'AI', '녹음'])
+    await expect(page.locator('.new-tab-menu__label')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     await page.keyboard.press('Escape')
     // The global rail board is an overlay. This existing shortcut opens the
     // compatible course tab, which must still participate in saved layouts.
