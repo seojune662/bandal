@@ -2,21 +2,21 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
 
 const fixture = vi.hoisted(() => ({
-  tabs: [] as any[], nav: {} as Record<string, { url: string }>, courseId: null as string | null,
+  tabs: [] as any[], liveTabs: null as any[] | null, nav: {} as Record<string, { url: string }>, courseId: null as string | null,
   activeBrowserId: null as string | null, priorPanel: null as string | null,
   aiOpen: false, workspace: null as any,
-  selectCourse: vi.fn(), close: vi.fn(), closeTemporary: vi.fn(), activate: vi.fn(), settings: vi.fn(), toast: vi.fn(), showAssistant: vi.fn(), closeSettings: vi.fn()
+  selectCourse: vi.fn(), close: vi.fn(), closeTemporary: vi.fn(), activate: vi.fn(), settings: vi.fn(), toast: vi.fn(), showAssistant: vi.fn(), showWorkspace: vi.fn(), closeSettings: vi.fn()
 }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => ({ selectCourse: (id: string | null) => { fixture.selectCourse(id); fixture.courseId = id } }) } }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   retainedTabDescriptors: () => fixture.tabs,
-  workspaceApiForCourse: () => ({ panels: fixture.tabs.map(descriptor => ({ params: { descriptor }, api: { close: fixture.closeTemporary } })) }),
-  useWorkspaceStore: { getState: () => ({ surface: 'course', activeCourseId: fixture.courseId, activeWorkspace: fixture.workspace, activePanelSource: () => fixture.priorPanel ? { panelId: fixture.priorPanel } : null, activeBrowserTabId: () => fixture.activeBrowserId, closeTabsMatching: fixture.close, activatePanel: fixture.activate, notifyLayoutChanged: vi.fn() }) }
+  workspaceApiForCourse: () => ({ panels: (fixture.liveTabs ?? fixture.tabs).map(descriptor => ({ params: { descriptor }, api: { close: fixture.closeTemporary } })) }),
+  useWorkspaceStore: { getState: () => ({ surface: 'course', activeWorkspaceKey: fixture.workspace?.kind === 'project' ? `project:${JSON.stringify([fixture.workspace.courseId, fixture.workspace.rootRelPath])}` : fixture.courseId, activeCourseId: fixture.courseId, activeWorkspace: fixture.workspace, showWorkspace: (scope: any) => { fixture.showWorkspace(scope); fixture.workspace = scope; fixture.courseId = scope?.courseId ?? null }, activePanelSource: () => fixture.priorPanel ? { panelId: fixture.priorPanel } : null, activeBrowserTabId: () => fixture.activeBrowserId, closeTabsMatching: fixture.close, activatePanel: fixture.activate, notifyLayoutChanged: vi.fn() }) }
 }))
 vi.mock('../../../src/renderer/src/features/browser/browserGuestsStore', () => ({ useBrowserGuests: { getState: () => ({ nav: fixture.nav }) } }))
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: { getState: () => ({ openSettings: fixture.settings, closeSettings: fixture.closeSettings, showAssistant: fixture.showAssistant, rightRailOpen: fixture.aiOpen, rightRailTab: 'ai' }) } }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: fixture.toast }))
-import { getAgentLoginForTab, installAgentLoginTabLifecycle, isLoginTabUrl, prepareAgentLoginTab } from '../../../src/renderer/src/features/browser/agentLoginTabs'
+import { agentLoginOpenGuard, isAgentLoginOpenAllowed, getAgentLoginForTab, installAgentLoginTabLifecycle, isLoginTabUrl, prepareAgentLoginTab } from '../../../src/renderer/src/features/browser/agentLoginTabs'
 import { resetAgentConnectionsForTests, useAgentConnectionStore } from '../../../src/renderer/src/features/chat/agentConnectionStore'
 let stop: (() => void) | undefined
 let progress: ((payload: any) => void) | undefined
@@ -30,8 +30,31 @@ function begin() {
   fixture.activeBrowserId = 'owned-tab'
   return payload
 }
-afterEach(() => { stop?.(); stop = undefined; fixture.tabs = []; fixture.nav = {}; fixture.courseId = null; fixture.activeBrowserId = null; fixture.priorPanel = null; fixture.aiOpen = false; fixture.workspace = null; vi.clearAllMocks(); resetAgentConnectionsForTests(); setIpcAdapter(null) })
+afterEach(() => { stop?.(); stop = undefined; fixture.tabs = []; fixture.liveTabs = null; fixture.nav = {}; fixture.courseId = null; fixture.activeBrowserId = null; fixture.priorPanel = null; fixture.aiOpen = false; fixture.workspace = null; vi.clearAllMocks(); resetAgentConnectionsForTests(); setIpcAdapter(null) })
 describe('managed login tabs', () => {
+  test('finishes a live login panel before its next-frame retained snapshot has been published', () => {
+    begin(); fixture.liveTabs = fixture.tabs; fixture.tabs = []
+    progress!({ provider: 'codex', requestId: 'attempt', stage: 'done' })
+    expect(fixture.closeTemporary).toHaveBeenCalledOnce()
+    expect(fixture.settings).toHaveBeenCalledWith('ai')
+  })
+
+  test('terminal requests reject late open pushes and keep queued opens revoked after bounded history is evicted', () => {
+    const payload = begin(), queued = agentLoginOpenGuard(payload)!
+    expect(queued()).toBe(true)
+    progress!({ provider: 'codex', requestId: 'attempt', stage: 'done' })
+    expect(isAgentLoginOpenAllowed(payload)).toBe(false)
+    expect(isAgentLoginOpenAllowed({ url, openerTabId: 'owned-tab' })).toBe(false)
+    expect(isAgentLoginOpenAllowed({ url: 'https://example.com/ordinary' })).toBe(true)
+    for (let i = 0; i < 140; i++) progress!({ provider: 'codex', requestId: `later-${i}`, stage: 'cancelled' })
+    expect(queued()).toBe(false)
+  })
+  test('completion received before the open push rejects only that provider request', () => {
+    begin()
+    progress!({ provider: 'codex', requestId: 'not-open-yet', stage: 'done' })
+    expect(isAgentLoginOpenAllowed({ url, loginProvider: 'codex', loginRequestId: 'not-open-yet' })).toBe(false)
+    expect(isAgentLoginOpenAllowed({ url, loginProvider: 'codex', loginRequestId: 'next-attempt' })).toBe(true)
+  })
   test('returns to the global assistant when sign-in started without a central document panel', () => {
     fixture.aiOpen = true; fixture.courseId = 'course'; fixture.workspace = { kind: 'course', courseId: 'course' }; begin()
     progress!({ provider: 'codex', requestId: 'attempt', stage: 'done' })
@@ -59,6 +82,21 @@ describe('managed login tabs', () => {
     expect(prepareAgentLoginTab(payload, 'duplicate')).toEqual({ tabId: 'owned-tab', courseId: 'course-a' })
     expect(fixture.selectCourse).toHaveBeenCalledExactlyOnceWith('course-a')
     expect(fixture.courseId).toBe('course-a')
+  })
+  test('reopening from a sibling project returns to the exact owning project before focusing its login tab', () => {
+    const original = { kind: 'project', courseId: 'course-a', rootRelPath: 'first' }
+    fixture.courseId = 'course-a'; fixture.workspace = original
+    const payload = begin()
+    fixture.workspace = { ...original, rootRelPath: 'second' }
+    expect(prepareAgentLoginTab(payload, 'duplicate')).toEqual({ tabId: 'owned-tab', courseId: 'course-a' })
+    expect(fixture.showWorkspace).toHaveBeenCalledExactlyOnceWith(original)
+    expect(fixture.selectCourse).not.toHaveBeenCalled()
+  })
+  test('completion from settings does not reopen settings in a sibling project', () => {
+    fixture.courseId = 'course-a'; fixture.workspace = { kind: 'project', courseId: 'course-a', rootRelPath: 'first' }; begin()
+    fixture.workspace = { kind: 'project', courseId: 'course-a', rootRelPath: 'second' }
+    progress!({ provider: 'codex', requestId: 'attempt', stage: 'done' })
+    expect(fixture.settings).not.toHaveBeenCalled(); expect(fixture.activate).not.toHaveBeenCalled()
   })
   test('keeps popup identity while inheriting its managed OAuth request for external fallback', () => {
     begin()
@@ -91,6 +129,7 @@ describe('managed login tabs', () => {
     expect(fixture.close).not.toHaveBeenCalled()
     expect(fixture.closeTemporary).not.toHaveBeenCalled()
     expect(fixture.activate).not.toHaveBeenCalled()
+    expect(isAgentLoginOpenAllowed({ url: 'https://example.com/new-page', openerTabId: 'owned-tab' })).toBe(true)
   })
   test('preserves a local app tab when it no longer matches the OAuth callback', () => {
     begin()

@@ -30,7 +30,7 @@ import {
   useCloseTabRequests
 } from './agentTabSync'
 import { rememberOpenRequest } from './guestActions'
-import { installAgentLoginTabLifecycle, prepareAgentLoginTab } from './agentLoginTabs'
+import { agentLoginOpenGuard, installAgentLoginTabLifecycle, isAgentLoginOpenAllowed, prepareAgentLoginTab } from './agentLoginTabs'
 import { installBrowserAuthForwarding } from './browserAuthForwarding'
 import {
   isPointerPassthroughActive,
@@ -73,6 +73,10 @@ function useOpenUrlForwarding(): void {
     () =>
       onPush('browser:open-url', (payload) => {
         const { url, background, requestId, isPrivate, profileId, tabId: adoptedTabId } = payload
+        if (!isAgentLoginOpenAllowed(payload)) {
+          if (adoptedTabId) void invoke('browser:destroyPage', { tabId: adoptedTabId }).catch(() => undefined)
+          return
+        }
         const { tabId, courseId } = prepareAgentLoginTab(payload, adoptedTabId ?? uuidv4())
         // Main matched the new tab to the agent's request by URL prefix, which
         // a redirect breaks. Remember which request this tab belongs to so the
@@ -85,7 +89,7 @@ function useOpenUrlForwarding(): void {
               profileId: profileId ?? 'default',
               ...(isPrivate === true ? { isPrivate: true } : {})
             }),
-            courseId, background === true, payload.openerTabId
+            courseId, background === true, payload.openerTabId, agentLoginOpenGuard(payload)
           )
         if (!retained && adoptedTabId) {
           void invoke('browser:destroyPage', { tabId: adoptedTabId }).catch(() => undefined)

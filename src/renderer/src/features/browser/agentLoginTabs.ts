@@ -1,3 +1,4 @@
+import { isTabDescriptor, type TabDescriptor } from '../../../../shared/tabs'
 import type { BrowserOpenUrl } from '../../../../shared/ipc/events'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
 import { onPush } from '../../lib/ipc'
@@ -9,11 +10,46 @@ import { useBrowserGuests } from './browserGuestsStore'
 import { isAgentConnectionReady, useAgentConnectionStore } from '../chat/agentConnectionStore'
 import { agentConnectionCopy } from '../chat/agentConnectionCopy'
 import { getLocale } from '../../i18n/localeStore'
-import { sameWorkspace, type WorkspaceRef } from '../../../../shared/types/workspace'
+import { sameWorkspace, workspaceFromKey, type WorkspaceRef } from '../../../../shared/types/workspace'
 
-interface LoginTab { tabId: string; provider: AgentProvider; origin: string; callbackUrl: string | null; previousPanelId: string | null; courseId: string | null; assistantWorkspace: WorkspaceRef | null }
+interface LoginTab { tabId: string; provider: AgentProvider; origin: string; callbackUrl: string | null; previousPanelId: string | null; courseId: string | null; workspaceKey: string | null; assistantWorkspace: WorkspaceRef | null }
 const loginTabs = new Map<string, LoginTab>()
 const loginPopups = new Map<string, { provider: AgentProvider; requestId: string; origin: string }>()
+// A completed attempt must not open again if a renderer push or hydration replay
+// arrives late. Keep only a bounded, memory-only history of terminal requests.
+const finishedRequests = new Map<string, AgentProvider>()
+const finishedTabRequests = new Map<string, string>()
+const FINISHED_REQUEST_LIMIT = 128
+function rememberFinished(requestId: string, provider: AgentProvider): void {
+  finishedRequests.set(requestId, provider)
+  while (finishedRequests.size > FINISHED_REQUEST_LIMIT) {
+    const oldest = finishedRequests.keys().next().value!
+    finishedRequests.delete(oldest)
+    for (const [tabId, request] of finishedTabRequests) if (request === oldest) finishedTabRequests.delete(tabId)
+  }
+}
+/** Ordinary page requests have no login owner and remain unaffected. */
+export function isAgentLoginOpenAllowed(payload: BrowserOpenUrl): boolean {
+  if (payload.loginRequestId && payload.loginProvider && finishedRequests.get(payload.loginRequestId) === payload.loginProvider) return false
+  return !payload.openerTabId || !finishedTabRequests.has(payload.openerTabId)
+}
+/** A queued open holds this attempt's identity, not an expiring tombstone. */
+export function agentLoginOpenGuard(payload: BrowserOpenUrl): (() => boolean) | undefined {
+  const requestId = (payload.loginProvider ? payload.loginRequestId : undefined) ?? (payload.openerTabId ? getAgentLoginForTab(payload.openerTabId)?.requestId : undefined)
+  if (!requestId) return undefined
+  const owned = loginTabs.get(requestId)
+  return () => owned !== undefined && loginTabs.get(requestId) === owned
+}
+function liveLoginDescriptor(tabId: string, key: string | null): TabDescriptor | undefined {
+  // Dockview inserts panels synchronously; openTabs is deliberately published on
+  // the next animation frame and may still be empty when OAuth completes.
+  const descriptor = workspaceApiForCourse(key)?.panels.find(panel => {
+    const candidate = panel.params?.descriptor
+    return isTabDescriptor(candidate) && candidate.kind === 'browser' && candidate.payload.tabId === tabId
+  })?.params?.descriptor
+  return isTabDescriptor(descriptor) ? descriptor : retainedTabDescriptors().find(tab => tab.kind === 'browser' && tab.payload.tabId === tabId)
+}
+
 
 /** OAuth redirects may finish on loopback; never close a tab repurposed for another site. */
 export function isLoginTabUrl(initialOrigin: string, currentUrl: string, callbackUrl: string | null = null, provider?: AgentProvider): boolean {
@@ -51,12 +87,16 @@ export function prepareAgentLoginTab(payload: BrowserOpenUrl, proposedId: string
     return { tabId: proposedId, courseId: payload.courseId }
   }
   const previous = loginTabs.get(payload.loginRequestId)
-  const existing = previous && retainedTabDescriptors().find(tab => tab.kind === 'browser' && tab.payload.tabId === previous.tabId)
+  const existing = previous && liveLoginDescriptor(previous.tabId, previous.workspaceKey)
   if (existing && previous) {
     const workspace = useWorkspaceStore.getState()
-    // Selecting the owning course makes the normal open path focus the
-    // retained panel instead of adding a duplicate to an inactive Dockview.
-    if (workspace.activeCourseId !== previous.courseId || workspace.surface !== 'course') useCoursesStore.getState().selectCourse(previous.courseId)
+    // Select the exact placement, including sibling projects with one owner,
+    // before the normal open path focuses the existing private panel.
+    if (workspace.activeWorkspaceKey !== previous.workspaceKey || workspace.surface !== 'course') {
+      const scope = previous.workspaceKey === null ? null : workspaceFromKey(previous.workspaceKey)
+      if (scope?.kind === 'project') workspace.showWorkspace(scope)
+      else useCoursesStore.getState().selectCourse(previous.courseId)
+    }
     return { tabId: previous.tabId, courseId: previous.courseId }
   }
   const workspace = useWorkspaceStore.getState()
@@ -65,7 +105,7 @@ export function prepareAgentLoginTab(payload: BrowserOpenUrl, proposedId: string
     callbackUrl: new URL(payload.url).searchParams.get('redirect_uri'),
     previousPanelId: previous?.previousPanelId ?? workspace.activePanelSource()?.panelId ?? null,
     assistantWorkspace: previous?.assistantWorkspace ?? (useUiStore.getState().rightRailOpen && useUiStore.getState().rightRailTab === 'ai' ? workspace.activeWorkspace : null),
-    courseId: workspace.activeCourseId
+    courseId: workspace.activeCourseId, workspaceKey: workspace.activeWorkspaceKey
   })
   return { tabId: proposedId, courseId: workspace.activeCourseId }
 }
@@ -84,7 +124,9 @@ export function installAgentLoginTabLifecycle(): () => void {
   const stopProgress = onPush('agent:login-progress', event => {
     if (event.stage !== 'done' && event.stage !== 'cancelled' && event.stage !== 'error') return
     const owned = loginTabs.get(event.requestId)
-    if (!owned || owned.provider !== event.provider) return
+    if (owned && owned.provider !== event.provider) return
+    rememberFinished(event.requestId, event.provider)
+    if (!owned) return
     loginTabs.delete(event.requestId)
     if (event.stage === 'done') completed.add(event.provider)
     const targets = [{ tabId: owned.tabId, origin: owned.origin }]
@@ -96,10 +138,11 @@ export function installAgentLoginTabLifecycle(): () => void {
     const activeTabId = workspace.activeBrowserTabId()
     let wasActive = false
     for (const target of targets) {
-      const descriptor = retainedTabDescriptors().find(tab => tab.kind === 'browser' && tab.payload.tabId === target.tabId)
-      if (descriptor?.kind !== 'browser') continue
+      const descriptor = liveLoginDescriptor(target.tabId, owned.workspaceKey)
+      if (descriptor?.kind !== 'browser') { finishedTabRequests.set(target.tabId, event.requestId); continue }
       const currentUrl = useBrowserGuests.getState().nav[target.tabId]?.url ?? descriptor.payload.initialUrl
       if (!isLoginTabUrl(target.origin, currentUrl, owned.callbackUrl, owned.provider)) continue
+      finishedTabRequests.set(target.tabId, event.requestId)
       wasActive ||= activeTabId === target.tabId
       if (owned.courseId === null) {
         // Resource deletion skips the temporary no-course canvas. Managed
@@ -112,7 +155,8 @@ export function installAgentLoginTabLifecycle(): () => void {
         if (workspace.activeCourseId === null) workspace.notifyLayoutChanged()
       } else workspace.closeTabsMatching(descriptor)
     }
-    if (wasActive && owned.courseId === workspace.activeCourseId && (!owned.assistantWorkspace || sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace))) {
+    while (finishedTabRequests.size > FINISHED_REQUEST_LIMIT * 4) finishedTabRequests.delete(finishedTabRequests.keys().next().value!)
+    if (wasActive && owned.workspaceKey === workspace.activeWorkspaceKey && (!owned.assistantWorkspace || sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace))) {
       if (owned.previousPanelId) workspace.activatePanel(owned.previousPanelId)
       if (owned.assistantWorkspace && sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace)) {
         useUiStore.getState().closeSettings()
@@ -120,5 +164,5 @@ export function installAgentLoginTabLifecycle(): () => void {
       } else if (!owned.previousPanelId) useUiStore.getState().openSettings('ai')
     }
   })
-  return () => { stopProgress(); stopConnection(); completed.clear(); loginTabs.clear(); loginPopups.clear() }
+  return () => { stopProgress(); stopConnection(); completed.clear(); loginTabs.clear(); loginPopups.clear(); finishedRequests.clear(); finishedTabRequests.clear() }
 }

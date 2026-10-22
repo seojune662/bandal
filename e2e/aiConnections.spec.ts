@@ -198,7 +198,16 @@ test('first-time users can cancel, retry a failed sign-in, and finish before cre
     await expect(card.getByRole('button', { name: '다시 연결하기', exact: true })).toBeVisible()
     await expect(page.locator('.dv-tab:visible')).toHaveCount(0)
     await page.screenshot({ path: info.outputPath('first-connection-retry.png') })
-    await card.getByRole('button', { name: '다시 연결하기', exact: true }).click()
+    // Hold the next layout publication so a cached sign-in can finish while the
+    // live Dockview panel exists but openTabs still contains its previous snapshot.
+    await card.getByRole('button', { name: '다시 연결하기', exact: true }).evaluate(button => {
+      const request = window.requestAnimationFrame.bind(window), cancel = window.cancelAnimationFrame.bind(window)
+      const pending = new Map<number, FrameRequestCallback>(); let nextId = -1
+      window.requestAnimationFrame = callback => { const id = nextId--; pending.set(id, callback); return id }
+      window.cancelAnimationFrame = id => { if (id < 0) pending.delete(id); else cancel(id) }
+      ;(window as any).__releaseLoginLayout = () => { window.requestAnimationFrame = request; window.cancelAnimationFrame = cancel; for (const callback of pending.values()) request(callback); pending.clear() }
+      ;(button as HTMLButtonElement).click()
+    })
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).__firstConnection.logins)).toBe(3)
     await bandal.app.evaluate(({ BrowserWindow }) => {
       const state = (globalThis as any).__firstConnection
@@ -208,6 +217,8 @@ test('first-time users can cancel, retry a failed sign-in, and finish before cre
     })
     await expect(card).toContainText('ChatGPT 연결이 완료됐어요.')
     await expect(card).toContainText('사용 가능')
+    await expect(page.locator('.dv-tab:visible')).toHaveCount(0)
+    await page.evaluate(() => (window as any).__releaseLoginLayout())
     await expect(page.locator('.dv-tab:visible')).toHaveCount(0)
     await page.screenshot({ path: info.outputPath('first-connection-complete.png') })
   } finally { await bandal.close(); await new Promise<void>(resolve => server.close(() => resolve())) }

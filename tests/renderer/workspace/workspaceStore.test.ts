@@ -1090,6 +1090,21 @@ test('popups and site close requests update their evicted course without touchin
   expect(second.addPanelCalls).toHaveLength(0)
 })
 
+test('a managed browser open revoked during hydration never appears after restore', async () => {
+  let resolve!: (value: { layout: unknown }) => void
+  invokeMock.mockImplementation((channel: string) => channel === 'layout:get'
+    ? new Promise(r => { resolve = r }) : Promise.resolve({ ok: true }))
+  const dock = new FakeDockview(), state = useWorkspaceStore.getState()
+  state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi())
+  let activeAttempt = true
+  const login = descriptorFor('browser', { tabId: 'login', initialUrl: 'https://auth.openai.com/login', isPrivate: true })
+  expect(openBrowserTabInCourse(login, 'c1', false, undefined, () => activeAttempt)).toBe(true)
+  state.openTab(pdfB)
+  expect(dock.addPanelCalls).toHaveLength(0)
+  activeAttempt = false; resolve({ layout: singleLeafLayout([pdfA]) }); await settle()
+  expect(dock.addPanelCalls.map(panel => panel.id)).toEqual([tabPanelId(pdfB)])
+})
+
 test('a file selected during hydration opens after restore instead of being discarded', async () => {
   let resolve!: (value: { layout: unknown }) => void
   invokeMock.mockImplementation((channel: string) => channel === 'layout:get'

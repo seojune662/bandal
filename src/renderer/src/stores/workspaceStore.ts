@@ -91,6 +91,8 @@ interface WorkspaceState {
       /** ⌘-click: open it but stay where you are, as every browser does. */
       background?: boolean
       target?: WorkspaceTarget
+      /** Recheck request ownership when a delayed open is replayed after hydration. */
+      shouldOpen?: () => boolean
     }
   ) => void
   /** Opens one PDF and its page-matched note as a persisted 50:50 pair. */
@@ -573,6 +575,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     openTab: (descriptor, options) => {
+      if (options?.shouldOpen && !options.shouldOpen()) return
       const destination = options?.target ? { ...options.target, courseId: options.target.workspace === undefined ? options.target.courseId : options.target.workspace === null ? null : workspaceKey(options.target.workspace) } : undefined
       if (destination && destination.courseId !== get().activeWorkspaceKey) {
         const target = workspaceApiForCourse(destination.courseId)
@@ -1212,14 +1215,15 @@ export function browserTabWorkspace(tabId: string): WorkspaceRef | null {
 export function browserTabCourseId(tabId: string): string | null { return browserTabWorkspace(tabId)?.courseId ?? null }
 
 /** Site-created pages belong to their opener even while its course is hidden. */
-export function openBrowserTabInCourse(descriptor: TabDescriptor, ownerId: string | null | undefined, background: boolean, openerTabId?: string): boolean {
+export function openBrowserTabInCourse(descriptor: TabDescriptor, ownerId: string | null | undefined, background: boolean, openerTabId?: string, shouldOpen?: () => boolean): boolean {
+  if (shouldOpen && !shouldOpen()) return false
   const state = useWorkspaceStore.getState()
   const opener = openerTabId ? browserTabWorkspace(openerTabId) : null
   const courseId = opener ? workspaceKey(opener) : ownerId !== undefined && ownerId !== null && state.activeCourseId === ownerId ? state.activeWorkspaceKey : ownerId
   if (courseId !== undefined && courseId !== null && discardedCourses.has(courseId)) return false
   const target = courseId === undefined ? undefined : courseApis.get(courseId)
   if (courseId === undefined || courseId === state.activeWorkspaceKey) {
-    state.openTab(descriptor, { background })
+    state.openTab(descriptor, { background, ...(shouldOpen ? { shouldOpen } : {}) })
     return true
   }
   if (!target) {
