@@ -54,23 +54,34 @@ test('navigation invalidates the selection epoch before any screenshot is captur
   expect(fixture.captured).not.toHaveBeenCalled()
 })
 
-test('a scroll between click and drain does not pair old text with a new screenshot', async () => {
-  await invoke('annotation:browserStart', request)
+function expectOriginalSnapshotWithoutImage(result: AnnotationIpcContract['annotation:browserDrain']['res'], epoch: string): void {
+  expect(result.references).toHaveLength(1)
+  expect(result.references[0]).toMatchObject({
+    kind: 'browser', courseId: request.courseId, sourcePanelId: request.sourcePanelId, browserTabId: request.tabId,
+    quote: pick.quote, title: pick.title, url: pick.url, selector: pick.selector, documentEpoch: epoch,
+    rect: { x: .025, y: 40 / 600, width: .25, height: 100 / 600 }
+  })
+  expect(result.references[0]).not.toHaveProperty('imageDataUrl')
+}
+
+test('a scroll between click and drain preserves the original snapshot without pairing it with a new screenshot', async () => {
+  const { epoch } = await invoke('annotation:browserStart', request)
   fixture.script.mockResolvedValueOnce({ events: [pick], url: fixture.url, scrollX: 0, scrollY: 200, viewport: pick.viewport })
-  expect((await invoke('annotation:browserDrain', request)).references).toEqual([])
+  expectOriginalSnapshotWithoutImage(await invoke('annotation:browserDrain', request), epoch)
   expect(fixture.captured).not.toHaveBeenCalled()
 })
 
-test('navigation during capture discards the completed image', async () => {
-  await invoke('annotation:browserStart', request)
-  fixture.captured.mockImplementationOnce(async () => { fixture.document = 'document-b'; return 'data:image/jpeg;base64,YQ==' })
-  expect((await invoke('annotation:browserDrain', request)).references).toEqual([])
+test('navigation during capture preserves the accepted original source and discards the completed image', async () => {
+  const { epoch } = await invoke('annotation:browserStart', request)
+  fixture.captured.mockImplementationOnce(async () => { fixture.document = 'document-b'; fixture.url = 'https://example.test/b'; return 'data:image/jpeg;base64,YQ==' })
+  expectOriginalSnapshotWithoutImage(await invoke('annotation:browserDrain', request), epoch)
+  expect(fixture.captured).toHaveBeenCalledOnce()
 })
 
-test('a same-page source edit before capture cannot pair old text with a changed image', async () => {
-  await invoke('annotation:browserStart', request)
+test('a same-page source edit preserves the clicked quote without capturing the changed element', async () => {
+  const { epoch } = await invoke('annotation:browserStart', request)
   const baseline = fixture.script.getMockImplementation()!
   fixture.script.mockImplementation(async (world, scripts) => scripts[0].code.includes('p.valid(') ? false : baseline(world, scripts))
-  expect((await invoke('annotation:browserDrain', request)).references).toEqual([])
+  expectOriginalSnapshotWithoutImage(await invoke('annotation:browserDrain', request), epoch)
   expect(fixture.captured).not.toHaveBeenCalled()
 })
