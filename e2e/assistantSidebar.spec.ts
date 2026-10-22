@@ -88,10 +88,19 @@ test('unsent workspace drafts restore text, multiple materials and annotated ima
     await ai.getByRole('button', { name: '추가', exact: true }).click(); await page.getByRole('button', { name: /^자료 선택/ }).click()
     const picker = page.getByRole('dialog', { name: '대화에 추가' })
     await picker.getByRole('button', { name: /source.md/ }).click(); await picker.getByRole('button', { name: /source.pdf/ }).click(); await picker.getByRole('button', { name: '선택한 2개 추가' }).click()
+    // Force capture to finish after the user closes Annotate; this was a release-only race.
+    await bandal.app.evaluate(({ ipcMain }) => {
+      const capture = (ipcMain as any)._invokeHandlers.get('annotation:captureHost')
+      const gate = new Promise<void>(resolve => { (globalThis as any).__releaseAnnotationImage = resolve })
+      ipcMain.removeHandler('annotation:captureHost')
+      ipcMain.handle('annotation:captureHost', async (event, request) => { const result = await capture(event, request); await gate; return result })
+    })
     await ai.getByRole('button', { name: '화면에서 부분 선택' }).click()
     await page.locator('.pdf-page:visible .textLayer span').filter({ hasText: 'Persisted annotated PDF source.' }).click()
     await ai.getByRole('button', { name: '부분 선택 마치기' }).click()
     await ai.locator('.chat-annotation-reference input').fill('이 표식의 설명도 포함')
+    await expect(ai.locator('.chat-annotation-reference img')).toHaveCount(0)
+    await bandal.app.evaluate(() => (globalThis as any).__releaseAnnotationImage())
     const originalImage = await ai.locator('.chat-annotation-reference img').getAttribute('src')
     expect(originalImage).toMatch(/^data:image\//)
     await expect.poll(() => page.evaluate(async () => {

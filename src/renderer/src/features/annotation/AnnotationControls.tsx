@@ -8,6 +8,8 @@ export function AnnotationControls({ conversationId, courseId, disabled = false 
   const session = useAnnotationStore(state => state.session)
   const error = useAnnotationStore(state => state.error)
   const busy = useAnnotationStore(state => state.busy)
+  const pending = useAnnotationStore(state => state.pending[conversationId] ?? 0)
+  const captureError = useAnnotationStore(state => state.captureErrors[conversationId])
   const referenceCount = useComposerDraft(conversationId).references?.length ?? 0
   const active = session?.conversationId === conversationId
   useEffect(() => () => {
@@ -28,5 +30,7 @@ export function AnnotationControls({ conversationId, courseId, disabled = false 
       <span className="annotation-hint" role="status">{busy ? '추가하는 중…' : `${referenceCount ? `${referenceCount}개 추가 · ` : ''}${session.mode === 'region' ? '드래그로 선택' : '원하는 부분 클릭'} · Esc 종료`}</span>
       {error && <span className="annotation-error" role="alert">{error}</span>}
     </>}
+    {!active && pending > 0 && <span className="annotation-hint" role="status">선택한 부분을 추가하는 중…</span>}
+    {captureError && <span className="annotation-error" role="alert">{captureError}</span>}
   </div>
 }

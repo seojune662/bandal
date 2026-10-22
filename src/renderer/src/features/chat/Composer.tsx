@@ -1,5 +1,6 @@
 import { revealAnnotation } from '../annotation/revealAnnotation'
 import { AnnotationControls } from '../annotation/AnnotationControls'
+import { finishAnnotationSelection } from '../annotation/annotationStore'
 import { ContextChips } from './ContextChips'
 import { AccessPolicyMenu } from './AccessPolicyMenu'
 import {
@@ -293,14 +294,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       }
       submittingRef.current = true; setSubmitting(true); setAttachmentError(null)
       try {
-        const pendingFiles = draftState.files.filter((file) => file.path)
+        await finishAnnotationSelection(conversationId)
+        // Native picks may arrive in the final drain after Send was clicked.
+        const submittedDraft = { ...draftState, references: useComposerDraftStore.getState().drafts[conversationId]?.references ?? [] }
+        const pendingFiles = submittedDraft.files.filter((file) => file.path)
         const imported = pendingFiles.length ? await invoke('chat:importAttachments', { courseId, paths: pendingFiles.map((file) => file.path!) }) : []
         let index = 0
-        const files = draftState.files.map((file) => file.path ? imported[index++]! : file)
+        const files = submittedDraft.files.map((file) => file.path ? imported[index++]! : file)
         const importedByPath = new Map(pendingFiles.map((file, index) => [file.path, imported[index]!]))
         updateComposerDraft(conversationId, current => ({ files: current.files.map(file => file.path ? importedByPath.get(file.path) ?? file : file) }))
-        await onSend(attachments, draftContext({ ...draftState, files }))
-        consumeComposerDraft(conversationId, { ...draftState, text: value, quotes: [...quotes], files })
+        await onSend(attachments, draftContext({ ...submittedDraft, files }))
+        consumeComposerDraft(conversationId, { ...submittedDraft, text: value, quotes: [...quotes], files })
         setMention(null)
         window.requestAnimationFrame(resize)
       } catch (error) { setAttachmentError(error instanceof Error ? error.message : '전송하지 못했어요. 다시 시도해 주세요.') }
@@ -601,7 +605,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
           )}
           </div>
         </div>
-        <div className="chat-composer-toolbar"><div className="chat-composer-reference-tools"><AnnotationControls conversationId={conversationId} courseId={courseId} disabled={!draftReady} /><AccessPolicyMenu courseId={courseId} conversationId={conversationId} disabled={isStreaming || submitting} /></div><div className="chat-composer-model-row">{modelControl}</div></div>
+        <div className="chat-composer-toolbar"><div className="chat-composer-reference-tools"><AnnotationControls conversationId={conversationId} courseId={courseId} disabled={submitting || !draftReady} /><AccessPolicyMenu courseId={courseId} conversationId={conversationId} disabled={isStreaming || submitting} /></div><div className="chat-composer-model-row">{modelControl}</div></div>
         <div className="chat-composer__hint" aria-live="polite">
           {isWaitingPermission ? (
             <span className="chat-composer__hint-waiting">

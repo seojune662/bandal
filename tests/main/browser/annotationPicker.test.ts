@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { browserAnnotationPickerSource } from '../../../src/main/features/browser/annotationPickerSource'
 
-type Picker = { stop(): void; resume(): void; valid(pickId: number): boolean; drain(): Promise<{ events: { pickId: number; quote?: string; rect: { x: number; y: number; width: number; height: number }; cancelled?: boolean }[] }> }
+type Picker = { stop(remove?: boolean): void; resume(): void; valid(pickId: number): boolean; drain(): Promise<{ events: { pickId: number; quote?: string; rect: { x: number; y: number; width: number; height: number }; cancelled?: boolean }[] }> }
 const picker = (): Picker => (window as unknown as Record<string, Picker>)['__bandalAnnotationPickerV1']!
 const pointer = (type: string, x: number, y: number): void => { document.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 })) }
 
@@ -62,4 +62,20 @@ test('revalidates same-page source edits and keeps later selections when a captu
   const second = (await picker().drain()).events[0]!
   expect(picker().valid(second.pickId)).toBe(true)
   expect(second.quote).toBe('Changed after clicking')
+})
+
+
+test('ending selection flushes a queued drain even if the page stops painting and preserves its validation until final disposal', async () => {
+  const frames: FrameRequestCallback[] = []
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+  window.eval(browserAnnotationPickerSource({ sessionId: 'session-finish', mode: 'element' }))
+  pointer('pointerup', 30, 30)
+  const pending = picker().drain()
+  picker().stop(false)
+  const result = await pending
+  expect(result.events[0]?.quote).toBe('A source paragraph')
+  expect(picker().valid(result.events[0]!.pickId)).toBe(true)
+  expect(document.querySelector('[data-bandal-annotation]')).toBeNull()
+  picker().resume(); picker().stop()
+  expect(picker()).toBeUndefined()
 })
