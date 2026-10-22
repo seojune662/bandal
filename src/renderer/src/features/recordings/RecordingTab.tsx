@@ -41,6 +41,8 @@ import { savePreference } from '../settings/savePreference'
 import { RecordingPlayer } from './RecordingPlayer'
 import { SpeechModelPicker } from './SpeechModelPicker'
 import { registerRecordingView } from './recordingNavigation'
+import { AssistantPanelToggle } from '../assistantPanel/AssistantPanelToggle'
+import { MaterialExportButton } from '../materials/MaterialExportButton'
 import './recording.css'
 
 const STATUS: Record<RecordingSession['status'], string> = {
@@ -447,6 +449,16 @@ function RecordingWorkspace({
           <span className="recording__local">기기에서 처리</span>
         </div>
         <div className="recording__header-actions">
+          {session && session.samples > 0 && <>
+            <MaterialExportButton courseId={courseId} relPath={session.audioRelPath}
+              disabled={busy || isCapturing || session.status === 'processing'} title="공유 · 녹음 파일 내보내기" />
+            <button className="recording__text-button" title="공유 · 자막을 마크다운으로 내보내기"
+              disabled={busy || isCapturing || session.status === 'processing'}
+              onClick={() => void run(async () => {
+                await invoke('recordings:shareTranscript', { id: session.id })
+              })}>자막 내보내기</button>
+          </>}
+          <AssistantPanelToggle />
           <button
             className="recording__text-button recording__settings-button"
             aria-expanded={sidebarOpen}
@@ -832,24 +844,6 @@ function RecordingWorkspace({
           </section>
           {session && session.samples > 0 && (
             <section className="recording__side-section">
-              <button
-                className="recording__wide"
-                disabled={
-                  busy || isCapturing || session.status === 'processing'
-                }
-                onClick={() =>
-                  void run(async () => {
-                    const ref = await invoke('recordings:export', {
-                      id: session.id
-                    })
-                    useWorkspaceStore
-                      .getState()
-                      .openTab(descriptorFor('note', ref))
-                  })
-                }
-              >
-                ↗ 마크다운으로 내보내기
-              </button>
               <button
                 className="recording__text-button"
                 disabled={

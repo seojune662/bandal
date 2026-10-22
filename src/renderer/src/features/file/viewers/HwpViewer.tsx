@@ -1,3 +1,4 @@
+import { FileToolbarActions } from '../FileToolbarActions'
 import { useEffect, useState } from 'react'
 import { HwpUnsupportedError, readHwpText } from '../hwp/hwpContainer'
 import { parseHwpxSections, sortSectionPaths } from '../hwpx/parseHwpx'
@@ -116,6 +117,7 @@ export function HwpViewer({
         <span className="file-hwp__notice">
           텍스트 미리보기 — 서식은 표시되지 않습니다
         </span>
+        <FileToolbarActions />
       </header>
       {meaningful.length === 0 ? (
         <div className="file-status" role="status">

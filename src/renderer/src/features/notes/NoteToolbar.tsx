@@ -1,5 +1,7 @@
 import { editorViewCtx, type Editor } from '@milkdown/core'
 import { PluginMenuItems } from '../plugins/PluginMenuItems'
+import { AssistantPanelToggle } from '../assistantPanel/AssistantPanelToggle'
+import { MaterialExportButton } from '../materials/MaterialExportButton'
 import {
   createCodeBlockCommand,
   insertHrCommand,
@@ -27,6 +29,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
   type MouseEvent as ReactMouseEvent
 } from 'react'
 import { callCommand } from '@milkdown/utils'
@@ -89,6 +92,7 @@ export interface NoteToolbarProps {
   formatState: NoteFormatState
   fontScale: NoteFontScale
   onFontScaleChange: (scale: NoteFontScale) => void
+  documentActions?: ReactNode
 }
 
 export function NoteToolbar({
@@ -96,7 +100,8 @@ export function NoteToolbar({
   relPath,
   formatState,
   fontScale,
-  onFontScaleChange
+  onFontScaleChange,
+  documentActions
 }: NoteToolbarProps): JSX.Element {
   const [loading, getEditor] = useInstance()
   const t = useT()
@@ -422,6 +427,10 @@ export function NoteToolbar({
           )}
         </div>
       </div>
+
+      {documentActions}
+      <MaterialExportButton courseId={courseId} relPath={relPath} disabled={loading} title="공유 · 마크다운 내보내기" />
+      <AssistantPanelToggle />
 
       {linkOpen && (
         <form

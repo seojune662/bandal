@@ -1,3 +1,4 @@
+import { FileToolbarActions } from '../FileToolbarActions'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { showToast } from '../../../app/toast'
 import { invoke, onPush } from '../../../lib/ipc'
@@ -434,6 +435,7 @@ export function VideoViewer({
 
       {status === 'ready' && !handedOff && (
         <div className="file-video__toolbar">
+          <FileToolbarActions />
           <button
             type="button"
             className="file-video__pip"

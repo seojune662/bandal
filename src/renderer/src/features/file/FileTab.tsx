@@ -19,6 +19,7 @@ import './file-tab.css'
 import { PresentationLoader } from './pptx/PresentationLoader'
 import { PresentationContext } from './pptx/presentationContext'
 import { isPdfPageNotePairContext } from '../../../../shared/pdfPageNote'
+import { FileToolbarActions, FileToolbarContext } from './FileToolbarActions'
 
 type FileLoadState =
   | { status: 'loading' }
@@ -293,9 +294,13 @@ export default function FileTab(props: IDockviewPanelProps): JSX.Element {
 
   const { courseId, relPath } = candidate.payload
   const pair = isPdfPageNotePairContext(props.params['pageNotePair']) ? props.params['pageNotePair'] : null
+  const viewerKind = viewerKindFor(relPath)
+  const needsToolbar = viewerKind === 'docx' || viewerKind === 'text' || viewerKind === 'preview' || viewerKind === null
   return (
+    <FileToolbarContext.Provider value={{ courseId, relPath }}>
     <PresentationContext.Provider value={{ panelId: props.api.id, interactive: interactive && courseActive, pair }}>
     <div className="workspace-panel file-panel" data-kind="file">
+      {needsToolbar && <div className="file-toolbar" role="toolbar" aria-label="파일 도구"><FileToolbarActions /></div>}
       <FileLoader
         key={`${courseId}:${relPath}`}
         courseId={courseId}
@@ -303,5 +308,6 @@ export default function FileTab(props: IDockviewPanelProps): JSX.Element {
       />
     </div>
     </PresentationContext.Provider>
+    </FileToolbarContext.Provider>
   )
 }

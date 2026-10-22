@@ -1,3 +1,4 @@
+import { FileToolbarActions } from '../FileToolbarActions'
 import { usePanelAssistant } from '../../assistantPanel/panelContext'
 import { registerDocumentContext } from '../../agent/documentContext'
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -219,6 +220,7 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
       <button type="button" onClick={() => fileInput.current?.click()}>사진</button><input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { void addImages(Array.from(e.target.files ?? [])); e.target.value = '' }} />
       <button type="button" aria-pressed={notesOpen} onClick={() => setNotesOpen((v) => !v)}>발표자 노트</button>
       <label><input type="checkbox" checked={includeInk} onChange={(e) => setIncludeInk(e.target.checked)} />필기 포함</label><button type="button" onClick={() => void exportPdf()}>PDF로 변환</button>
+      <FileToolbarActions />
     </div></header>
     {annotating && <PdfToolRail courseId={courseId} relPath={relPath} drawingsApi={drawings} interactive={workspace.interactive} onExport={exportPdf} />}
     <div className="presentation-scroller" tabIndex={0} aria-label="슬라이드 스크롤 영역" ref={scroller} onWheelCapture={() => { if (workspace.pair) claimPageSyncInput(workspace.pair.pairId, workspace.panelId) }} onPointerDownCapture={(event) => {

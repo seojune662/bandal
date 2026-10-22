@@ -6,6 +6,7 @@ import type {
 } from '../../../../shared/types/whiteboard'
 import { useInkToolStore, type InkTool } from '../ink'
 import { CanvasToolIcon } from './CanvasToolIcon'
+import { AssistantPanelToggle } from '../assistantPanel/AssistantPanelToggle'
 
 interface ToolButton {
   tool: InkTool
@@ -266,12 +267,15 @@ export function CanvasToolRail({
       <div className="canvas-tools__group" role="group" aria-label="내보내기">
         <button
           type="button"
-          className="canvas-tools__text-button"
+          className="canvas-tools__text-button material-export-button"
+          aria-label="내보내기"
+          title="공유 · 필기 포함 PDF 내보내기"
           disabled={!enabled || backgroundBusy || exportingPdf}
           onClick={onExportPdf}
         >
-          {exportingPdf ? 'PDF 만드는 중…' : 'PDF로 내보내기'}
+          {exportingPdf ? 'PDF 만드는 중…' : '공유 · PDF 내보내기'}
         </button>
+        <AssistantPanelToggle />
       </div>
     </div>
   )

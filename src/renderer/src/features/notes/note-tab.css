@@ -86,6 +86,14 @@
   gap: var(--space-3);
 }
 
+.note-format-bar > .note-toolbar__actions { margin-inline: var(--space-2); gap: var(--space-1); }
+@container note-format-bar (max-width: 44rem) {
+  .note-save-status__label,
+  .material-export-button__label,
+  .tab-assistant-toggle__label { display: none; }
+  .note-format-bar > .tab-assistant-toggle { flex: none; padding-inline: var(--space-2); }
+}
+
 .note-toolbar__mode {
   min-height: var(--control-height);
 }

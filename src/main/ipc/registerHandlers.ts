@@ -1,4 +1,5 @@
 import { createShareInbox } from '../features/share/shareInbox'
+import { exportMaterial, shareGeneratedMaterial } from '../features/materials/exportMaterial'
 import { createShareRootResolver } from '../features/share/shareRuntime'
 import { createMainWindow, revealMainWindow } from '../windows/mainWindow'
 import { createExternalSourceLibrary } from '../features/externalSources/library'
@@ -580,6 +581,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     broadcast('materials:changed', { courseId: recording.courseId })
     return note
   })
+  handle('recordings:shareTranscript', (req) => shareGeneratedMaterial({
+    title: `${recordings.get(req.id).title} · 강의 기록`, extension: 'md',
+    render: async () => recordings.markdown(req.id)
+  }, { chooseDestination: options => dialog.showSaveDialog(options) }))
   powerMonitor.on('suspend', () =>
     recordingService.interrupt('컴퓨터가 잠자기에 들어가 녹음이 중단되었습니다. 저장된 원음은 보존됩니다.')
   )
@@ -867,6 +872,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
+  handle('materials:export', (req) => exportMaterial(req, {
+    resolvePath: (courseId, relPath) => materialsRepo.absolutePathForAsync(courseId, relPath),
+    chooseDestination: (options) => dialog.showSaveDialog(options)
+  }))
   handle('materials:hoverPreview', (req) => hoverPreview.read(req))
   handle('materials:writeFile', (req) => materialsRepo.writeFile(req))
   handle('materials:rename', async (req) => await materialsRepo.rename(req))
@@ -3039,7 +3048,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('browser:favicon', async (req) => {
     const profileId = req.profileId ?? 'default'
     const id = `${profileId}:${req.isPrivate === true}`
-    if (!faviconFetchers.has(id)) faviconFetchers.set(id, createFaviconFetcher({ fetch: (url) => ensureProfileSession(profileId, req.isPrivate).fetch(url) }))
+    if (!faviconFetchers.has(id)) faviconFetchers.set(id, createFaviconFetcher({ fetch: (url, options) => ensureProfileSession(profileId, req.isPrivate).fetch(url, options) }))
     return { dataUrl: await faviconFetchers.get(id)!(req.url) }
   })
   handle('browser:courseForUrl', (req) => ({
@@ -3165,6 +3174,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     )
     return result
   })
+  handle('canvas:sharePdf', (req) => shareGeneratedMaterial({
+    title: canvasRepo.open(req.boardId).board.title, extension: 'pdf',
+    render: () => boardPdfExporter.renderBoard(req.boardId)
+  }, { chooseDestination: options => dialog.showSaveDialog(options) }))
   handle('canvas:putShape', (req) => canvasRepo.putShape(req))
   handle('canvas:removeShapes', (req) => {
     canvasRepo.removeShapes(req)

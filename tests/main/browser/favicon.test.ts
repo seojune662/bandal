@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   createFaviconFetcher,
   resetFaviconCacheForTests
@@ -16,10 +16,12 @@ function response(
   } as unknown as Response
 }
 
-const PNG = new Uint8Array([137, 80, 78, 71])
+const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+const ICO = new Uint8Array([0, 0, 1, 0, 1, 0])
 
 describe('favicon fetcher', () => {
   beforeEach(() => resetFaviconCacheForTests())
+  afterEach(() => vi.restoreAllMocks())
 
   test('returns a data URL so the renderer CSP stays untouched', async () => {
     const fetcher = createFaviconFetcher({
@@ -37,14 +39,30 @@ describe('favicon fetcher', () => {
     expect(await fetcher('https://a.ac.kr/icon.svg')).toBeNull()
   })
 
-  test('refuses anything that is not a raster image', async () => {
-    for (const type of ['text/html', 'application/json', '']) {
-      resetFaviconCacheForTests()
+  test('refuses non-raster bytes even when the server claims they are an image', async () => {
+    for (const type of ['text/html', 'application/json', 'image/png', '']) {
       const fetcher = createFaviconFetcher({
-        fetch: async () => response(PNG, type)
+        fetch: async () => response(new TextEncoder().encode('<html>Sign in</html>'), type)
       })
       expect(await fetcher('https://a.ac.kr/x'), type).toBeNull()
     }
+  })
+
+  test('recognizes ICO and raster icons served with missing or generic MIME types', async () => {
+    for (const type of ['application/octet-stream', 'binary/octet-stream', '']) {
+      const fetcher = createFaviconFetcher({ fetch: async () => response(ICO, type) })
+      expect(await fetcher('https://a.ac.kr/favicon.ico')).toMatch(/^data:image\/x-icon;base64,/)
+    }
+  })
+
+  test('accepts inline raster icons without fetching and rejects disguised SVG', async () => {
+    const fetch = vi.fn()
+    const fetcher = createFaviconFetcher({ fetch })
+    const icon = `data:image/png;base64,${Buffer.from(PNG).toString('base64')}`
+    expect(await fetcher(icon)).toBe(icon)
+    expect(await fetcher(`data:image/png;base64,${Buffer.from('<svg/>').toString('base64')}`)).toBeNull()
+    expect(await fetcher('data:image/svg+xml;base64,PHN2Zy8+')).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   test('honours the content-type parameters', async () => {
@@ -93,11 +111,23 @@ describe('favicon fetcher', () => {
   })
 
   test('caches, including a negative result', async () => {
-    const fetch = vi.fn(async () => response(PNG, 'text/html'))
+    const fetch = vi.fn(async () => response(new TextEncoder().encode('<html/>'), 'text/html'))
     const fetcher = createFaviconFetcher({ fetch })
     await fetcher('https://a.ac.kr/x')
     await fetcher('https://a.ac.kr/x')
     // A school portal that serves no icon must not be re-fetched per tab.
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  test('retries a temporary failure after login instead of caching it for the whole app session', async () => {
+    const time = vi.spyOn(Date, 'now').mockReturnValue(1000)
+    const fetch = vi.fn().mockResolvedValueOnce(response(PNG, 'image/png', false)).mockResolvedValue(response(PNG, 'image/png'))
+    const fetcher = createFaviconFetcher({ fetch })
+    expect(await fetcher('https://a.ac.kr/favicon.ico')).toBeNull()
+    expect(await fetcher('https://a.ac.kr/favicon.ico')).toBeNull()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    time.mockReturnValue(31_001)
+    expect(await fetcher('https://a.ac.kr/favicon.ico')).toMatch(/^data:image\/png;base64,/)
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 })

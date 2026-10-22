@@ -153,7 +153,7 @@ export function useAnnotations(
     do { queue = session.queue; await queue } while (queue !== session.queue)
     if (session.saveError !== null) throw new Error(session.saveError)
   }, [session])
-  useEffect(() => registerDocumentSave(flush), [flush])
+  useEffect(() => registerDocumentSave(flush, { courseId, relPath }), [flush, courseId, relPath])
   const { annotations, loading, error } = snapshot.session === session
     ? snapshot
     : { annotations: [] as Annotation[], loading: true, error: null }

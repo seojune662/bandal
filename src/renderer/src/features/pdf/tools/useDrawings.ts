@@ -215,7 +215,7 @@ export function useDrawings(courseId: string, relPath: string, documentRevision?
     } while (queue !== session.queue)
     if (session.saveError !== null) throw new Error(session.saveError)
   }, [session])
-  useEffect(() => registerDocumentSave(flush), [flush])
+  useEffect(() => registerDocumentSave(flush, { courseId, relPath }), [flush, courseId, relPath])
 
   const addPreview = useCallback((
     apply: DrawingPreview['apply'],

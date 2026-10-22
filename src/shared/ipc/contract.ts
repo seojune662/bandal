@@ -369,6 +369,11 @@ export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContrac
     req: { courseId: string; relPath: string }
     res: MaterialFileContent
   }
+  /** Saves a material copy to a destination selected with the native chooser. */
+  'materials:export': {
+    req: { courseId: string; relPath: string }
+    res: { savedPath: string | null }
+  }
   /** Bounded, read-only sidebar content; never opens a viewer or starts conversion. */
   'materials:hoverPreview': {
     req: { courseId: string; relPath: string }
@@ -1161,6 +1166,10 @@ export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContrac
     req: { boardId: string }
     res: { relPath: string }
   }
+  'canvas:sharePdf': {
+    req: { boardId: string }
+    res: { savedPath: string | null }
+  }
   'canvas:removeShapes': {
     req: RemovePersonalShapesInput
     res: { ok: true }
@@ -1722,6 +1731,7 @@ export const IPC_CHANNELS = [
   'materials:reveal',
   'materials:preview',
   'materials:readFile',
+  'materials:export',
   'materials:hoverPreview',
   'materials:watch',
   'materials:rename',
@@ -1931,6 +1941,7 @@ export const IPC_CHANNELS = [
   'canvas:setPageCount',
   'canvas:setBackground',
   'canvas:exportPdf',
+  'canvas:sharePdf',
   'canvas:removeShapes',
   'appleCalendar:state',
   'appleCalendar:connect',

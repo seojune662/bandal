@@ -1,5 +1,7 @@
 import { firstNoteTitle as firstH1Title } from '../../../../shared/noteTitle'
 import { usePanelAssistant } from '../assistantPanel/panelContext'
+import { AssistantPanelToggle } from '../assistantPanel/AssistantPanelToggle'
+import { MaterialExportButton } from '../materials/MaterialExportButton'
 import { registerDocumentContext } from '../agent/documentContext'
 import {
   Editor,
@@ -25,6 +27,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
   type MouseEvent as ReactMouseEvent
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
@@ -494,7 +497,8 @@ function NoteEditorWorkspace({
   onMarkdownChange,
   fontScale,
   onFontScaleChange,
-  onZoomStep
+  onZoomStep,
+  documentActions
 }: {
   courseId: string
   relPath: string
@@ -503,6 +507,7 @@ function NoteEditorWorkspace({
   fontScale: NoteFontScale
   onFontScaleChange: (scale: NoteFontScale) => void
   onZoomStep: (direction: -1 | 1) => void
+  documentActions?: ReactNode
 }): JSX.Element {
   const [formatState, setFormatState] = useState<NoteFormatState>(
     EMPTY_NOTE_FORMAT_STATE
@@ -516,6 +521,7 @@ function NoteEditorWorkspace({
         formatState={formatState}
         fontScale={fontScale}
         onFontScaleChange={onFontScaleChange}
+        documentActions={documentActions}
       />
       <MilkdownNoteEditor
         courseId={courseId}
@@ -540,7 +546,8 @@ export function PageNoteWorkspace({
   pageNotePair,
   panelId,
   syncEnabled,
-  onCurrentPageChange
+  onCurrentPageChange,
+  documentActions
 }: {
   courseId: string
   relPath: string
@@ -553,6 +560,7 @@ export function PageNoteWorkspace({
   panelId: string
   syncEnabled: boolean
   onCurrentPageChange: (page: number) => void
+  documentActions?: ReactNode
 }): JSX.Element {
   const [pages, setPages] = useState(document.pages)
   const [activePage, setActivePage] = useState(
@@ -763,6 +771,7 @@ export function PageNoteWorkspace({
           formatState={formatState}
           fontScale={fontScale}
           onFontScaleChange={onFontScaleChange}
+          documentActions={documentActions}
         />
         <div ref={listRef} className="page-note-list">
           {pages.map((markdown, index) => {
@@ -1607,7 +1616,49 @@ function NoteSession({
     setViewMode('quiz')
   }, [])
 
-  const fileName = currentRelPath.split('/').at(-1) ?? currentRelPath
+  const documentActions = (
+    <div className="note-toolbar__actions">
+      {pageNoteDocument !== null && (
+        <span className="note-toolbar__page-source" title={sourceRelPath(pageNoteDocument.manifest)}>
+          {pageNoteCurrentPage} / {pageNoteDocument.pages.length}
+        </span>
+      )}
+      {pageNoteDocument !== null && pageNoteConnection !== null && pageNotePair === null && (
+        <button type="button" className="note-action" onClick={openPageNotePair}>
+          나란히 열기
+        </button>
+      )}
+      {pageNoteDocument !== null && pageNotePair !== null && (
+        <button
+          type="button"
+          className="note-action note-toolbar__sync"
+          aria-pressed={pageNoteSync}
+          onClick={togglePageNoteSync}
+        >
+          {pageNoteSync ? '스크롤 연결됨' : '스크롤 독립'}
+        </button>
+      )}
+      {quizSections !== null && (
+        <button
+          type="button"
+          className="note-action note-toolbar__mode"
+          onClick={viewMode === 'quiz' ? enterEditMode : enterQuizMode}
+        >
+          {viewMode === 'quiz' ? '편집 모드' : '풀이 모드'}
+        </button>
+      )}
+      <span
+        className="note-save-status"
+        data-status={status}
+        title={statusDetail ?? STATUS_LABEL[status]}
+        role="status"
+        aria-live="polite"
+      >
+        <span className="note-save-status__dot" aria-hidden="true" />
+        <span className="note-save-status__label">{STATUS_LABEL[status]}</span>
+      </span>
+    </div>
+  )
 
   if (loadError !== null && editorSeed === null) {
     return (
@@ -1624,6 +1675,7 @@ function NoteSession({
   return (
     <div
       className="note-tab"
+      data-resource-path={currentRelPath}
       ref={containerRef}
       onBlurCapture={(event) => {
         const next = event.relatedTarget
@@ -1631,55 +1683,13 @@ function NoteSession({
         flushPendingEditorMarkdown()
       }}
     >
-      <header className="note-toolbar">
-        <div className="note-toolbar__identity">
-          <span className="note-toolbar__path" title={currentRelPath}>
-            {fileName}
-          </span>
-          {pageNoteDocument !== null && (
-            <span className="note-toolbar__page-source" title={sourceRelPath(pageNoteDocument.manifest)}>
-              {sourceRelPath(pageNoteDocument.manifest).split('/').at(-1)}
-              <span>{pageNoteCurrentPage} / {pageNoteDocument.pages.length}</span>
-            </span>
-          )}
-        </div>
-        <div className="note-toolbar__actions">
-          {pageNoteDocument !== null && pageNoteConnection !== null && pageNotePair === null && (
-            <button type="button" className="note-action" onClick={openPageNotePair}>
-              나란히 열기
-            </button>
-          )}
-          {pageNoteDocument !== null && pageNotePair !== null && (
-            <button
-              type="button"
-              className="note-action note-toolbar__sync"
-              aria-pressed={pageNoteSync}
-              onClick={togglePageNoteSync}
-            >
-              {pageNoteSync ? '스크롤 연결됨' : '스크롤 독립'}
-            </button>
-          )}
-          {quizSections !== null && (
-            <button
-              type="button"
-              className="note-action note-toolbar__mode"
-              onClick={viewMode === 'quiz' ? enterEditMode : enterQuizMode}
-            >
-              {viewMode === 'quiz' ? '편집 모드' : '풀이 모드'}
-            </button>
-          )}
-          <span
-            className="note-save-status"
-            data-status={status}
-            title={statusDetail ?? STATUS_LABEL[status]}
-            role="status"
-            aria-live="polite"
-          >
-            <span className="note-save-status__dot" aria-hidden="true" />
-            {STATUS_LABEL[status]}
-          </span>
-        </div>
-      </header>
+      {(editorSeed === null || damagedPageNote || (viewMode === 'quiz' && quizSections !== null && pageNoteDocument === null)) && (
+        <header className="note-toolbar" role="toolbar" aria-label="마크다운 도구">
+          {documentActions}
+          <MaterialExportButton courseId={courseId} relPath={currentRelPath} disabled={editorSeed === null || damagedPageNote} title="공유 · 마크다운 내보내기" />
+          <AssistantPanelToggle />
+        </header>
+      )}
 
       {status === 'conflict' && (
         <div className="note-conflict" role="alert">
@@ -1757,6 +1767,7 @@ function NoteSession({
               panelId={panelApi.id}
               syncEnabled={pageNoteSync}
               onCurrentPageChange={setPageNoteCurrentPage}
+              documentActions={documentActions}
             />
           ) : viewMode === 'quiz' && quizSections !== null ? (
             <QuizPreview courseId={courseId} sections={quizSections} />
@@ -1770,6 +1781,7 @@ function NoteSession({
                 fontScale={fontScale}
                 onFontScaleChange={changeFontScale}
                 onZoomStep={stepFontScale}
+                documentActions={documentActions}
               />
             </MilkdownProvider>
           )}

@@ -449,6 +449,7 @@ export interface BoardPdfExporterDeps {
 
 export interface BoardPdfExporter {
   exportBoard(boardId: string): Promise<{ relPath: string }>
+  renderBoard(boardId: string): Promise<Uint8Array>
 }
 
 export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExporter {
@@ -509,53 +510,58 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
     return { regular, bold }
   }
 
-  return {
-    async exportBoard(boardIdInput) {
-      const boardId = requireId(boardIdInput, 'boardId')
-      const { board, shapes } = deps.openBoard(boardId)
-      const courseFolder = deps.getCourseFolder(board.courseId)
-      try {
-        if (!(await stat(courseFolder)).isDirectory()) {
-          throw new NotFoundError('course folder', courseFolder)
-        }
-      } catch (error) {
-        if (error instanceof NotFoundError) throw error
+  async function renderBoard(boardIdInput: string) {
+    const boardId = requireId(boardIdInput, 'boardId')
+    const { board, shapes } = deps.openBoard(boardId)
+    const courseFolder = deps.getCourseFolder(board.courseId)
+    try {
+      if (!(await stat(courseFolder)).isDirectory()) {
         throw new NotFoundError('course folder', courseFolder)
       }
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error
+      throw new NotFoundError('course folder', courseFolder)
+    }
 
-      const pdf = await PDFDocument.create()
-      pdf.setTitle(board.title)
-      pdf.setCreator('Bandal')
-      const palette = BOARD_PALETTES[board.surface]
+    const pdf = await PDFDocument.create()
+    pdf.setTitle(board.title)
+    pdf.setCreator('Bandal')
+    const palette = BOARD_PALETTES[board.surface]
 
-      const textboxes = shapes.filter((shape) => shape.kind === 'textbox')
-      const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null
+    const textboxes = shapes.filter((shape) => shape.kind === 'textbox')
+    const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null
 
-      const renderMedia = createBoardMediaRenderer(pdf, courseFolder,deps.resolveClipSource?source=>deps.resolveClipSource!(board.courseId,source):undefined)
-      for (let pageNumber = 1; pageNumber <= board.pageCount; pageNumber += 1) {
-        const page = pdf.addPage(PageSizes.A4)
-        const { width, height } = page.getSize()
-        drawBackground(page, board.background, palette, width, height)
+    const renderMedia = createBoardMediaRenderer(pdf, courseFolder,deps.resolveClipSource?source=>deps.resolveClipSource!(board.courseId,source):undefined)
+    for (let pageNumber = 1; pageNumber <= board.pageCount; pageNumber += 1) {
+      const page = pdf.addPage(PageSizes.A4)
+      const { width, height } = page.getSize()
+      drawBackground(page, board.background, palette, width, height)
 
-        for (const shape of shapes) {
-          if (shape.page !== pageNumber) continue
-          if (shape.kind === 'clip' || shape.kind === 'image') {
-            await renderMedia(page, shape)
-          } else if (shape.kind === 'ink' || shape.kind === 'highlighter') {
-            drawInk(page, shape, palette, board.surface, width, height)
-          } else if (shape.kind === 'rect' || shape.kind === 'ellipse') {
-            if (shape.data.box !== undefined) {
-              drawBoxShape(page, shape, shape.data.box, palette, width, height)
-            }
-          } else if (shape.kind === 'line' || shape.kind === 'arrow') {
-            drawStraightLine(page, shape, palette, width, height)
-          } else if (shape.kind === 'textbox' && fonts !== null && shape.data.box !== undefined) {
-            drawTextbox(page, shape, shape.data.box, fonts, palette, width, height)
+      for (const shape of shapes) {
+        if (shape.page !== pageNumber) continue
+        if (shape.kind === 'clip' || shape.kind === 'image') {
+          await renderMedia(page, shape)
+        } else if (shape.kind === 'ink' || shape.kind === 'highlighter') {
+          drawInk(page, shape, palette, board.surface, width, height)
+        } else if (shape.kind === 'rect' || shape.kind === 'ellipse') {
+          if (shape.data.box !== undefined) {
+            drawBoxShape(page, shape, shape.data.box, palette, width, height)
           }
+        } else if (shape.kind === 'line' || shape.kind === 'arrow') {
+          drawStraightLine(page, shape, palette, width, height)
+        } else if (shape.kind === 'textbox' && fonts !== null && shape.data.box !== undefined) {
+          drawTextbox(page, shape, shape.data.box, fonts, palette, width, height)
         }
       }
+    }
 
-      const bytes = await pdf.save()
+    return { board, courseFolder, bytes: await pdf.save() }
+  }
+
+  return {
+    async renderBoard(boardId) { return (await renderBoard(boardId)).bytes },
+    async exportBoard(boardIdInput) {
+      const { board, courseFolder, bytes } = await renderBoard(boardIdInput)
       const stem = safeFileStem(board.title)
       for (let number = 1; number <= 1000; number += 1) {
         const relPath = candidateFileName(stem, number)

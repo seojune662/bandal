@@ -76,7 +76,13 @@
 }
 .recording__header-actions {
   display: flex;
+  min-width: 0;
+  align-items: center;
   gap: var(--space-1);
+  overflow-x: auto;
+}
+.recording__header-actions > * {
+  flex-shrink: 0;
 }
 .recording .recording__settings-button {
   display: inline-flex;

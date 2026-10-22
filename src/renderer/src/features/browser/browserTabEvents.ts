@@ -15,19 +15,34 @@ export function focusVisibleBrowserPanel(api: DockviewApi | null, tabId: string)
 export function createTabFaviconController(
   fetchIcon: (url: string) => Promise<string | null>,
   publish: (dataUrl: string | null) => void
-): { navigation(): void; update(url: string | undefined): void; dispose(): void } {
+): { navigation(url?: string): void; update(urls: readonly string[]): void; dispose(): void } {
   let revision = 0, disposed = false
+  let defaultIcon: string | undefined
+  const update = (urls: readonly string[]): void => {
+    const request = ++revision
+    const candidates = [...new Set([...urls].reverse().concat(defaultIcon ? [defaultIcon] : []))]
+    void (async () => {
+      for (const url of candidates) {
+        if (disposed || request !== revision) return
+        let data: string | null = null
+        try { data = await fetchIcon(url) } catch { /* Try the next declared icon. */ }
+        if (disposed || request !== revision) return
+        if (data) { publish(data); return }
+      }
+      if (!disposed && request === revision) publish(null)
+    })()
+  }
   return {
-    navigation() { revision++; publish(null) },
-    update(url) {
-      const request = ++revision
-      if (!url) { publish(null); return }
-      void fetchIcon(url).then(data => {
-        if (!disposed && request === revision) publish(data)
-      }).catch(() => {
-        if (!disposed && request === revision) publish(null)
-      })
+    navigation(url) {
+      revision++; publish(null)
+      defaultIcon = undefined
+      try {
+        const page = new URL(url ?? '')
+        if (page.protocol === 'http:' || page.protocol === 'https:') defaultIcon = new URL('/favicon.ico', page).href
+      } catch { /* Internal pages have no site icon. */ }
+      if (defaultIcon) update([])
     },
+    update,
     dispose() { disposed = true; revision++ }
   }
 }

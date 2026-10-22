@@ -18,6 +18,7 @@ interface PdfToolRailProps {
   beforeExport?: (() => Promise<void>) | undefined
   expanded?: boolean
   interactive?: boolean
+  showExport?: boolean
 }
 
 interface ToolButton {
@@ -104,6 +105,7 @@ export function PdfToolRail({
   onExport,
   beforeExport,
   interactive = true,
+  showExport = true,
   expanded = true
 }: PdfToolRailProps): JSX.Element {
   const activeTool = usePdfToolStore((state) => state.activeTool)
@@ -334,7 +336,7 @@ export function PdfToolRail({
             <PdfToolIcon name="redo" />
           </button>
         </div>
-        <button
+        {showExport && <button
           type="button"
           className="pdf-tool-rail__button pdf-tool-rail__export"
           aria-label={
@@ -345,7 +347,7 @@ export function PdfToolRail({
           onClick={() => void exportPdf()}
         >
           <PdfToolIcon name="export" />
-        </button>
+        </button>}
         {(drawingsApi.error ?? exportMessage) && (
           <span className="pdf-tool-rail__status" role="status">
             {drawingsApi.error ?? exportMessage}

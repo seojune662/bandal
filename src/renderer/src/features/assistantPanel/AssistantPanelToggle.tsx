@@ -1,7 +1,7 @@
 import { Tooltip } from '../../components/Tooltip'
 import { usePanelAssistant } from './panelContext'
 
-/** The browser shares its navigation row with AI; documents keep their launchbar. */
+/** Browser and material viewers share their existing toolbar row with AI. */
 export function AssistantPanelToggle({ className = '' }: { className?: string }): JSX.Element | null {
   const assistant = usePanelAssistant()
   if (assistant === null) return null

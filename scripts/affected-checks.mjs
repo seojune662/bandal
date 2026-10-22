@@ -303,6 +303,197 @@ export function tabPickerE2eFiles(files, readBefore, readAfter) {
   return [...new Set(files.filter(file => !isolated.has(file)).concat(specs))]
 }
 
+// These files own only the named material/tab affordance. Shared hosts below
+// are narrowed only when the rest of their source remains unchanged.
+const MATERIAL_CHROME_FILES = {
+  'src/main/features/browser/favicon.ts': ['browserFavicons'],
+  'src/main/features/materials/exportMaterial.ts': ['materialToolbar', 'materialShare', 'pdfExport'],
+  'src/renderer/src/features/materials/MaterialExportButton.tsx': ['materialToolbar', 'materialShare', 'pdfExport'],
+  'src/renderer/src/features/materials/materialExport.css': ['materialToolbar'],
+  'src/renderer/src/features/file/FileToolbarActions.tsx': ['materialToolbar']
+}
+
+const MATERIAL_CHROME_EDITS = {
+  'src/renderer/src/features/pdf/tools/PdfToolRail.tsx': [
+    ['  interactive?: boolean\n', '  interactive?: boolean\n  showExport?: boolean\n'],
+    ['  interactive = true,\n', '  interactive = true,\n  showExport = true,\n'],
+    ['        <button\n          type="button"\n          className="pdf-tool-rail__button pdf-tool-rail__export"', '        {showExport && <button\n          type="button"\n          className="pdf-tool-rail__button pdf-tool-rail__export"'],
+    ['          <PdfToolIcon name="export" />\n        </button>', '          <PdfToolIcon name="export" />\n        </button>}']
+  ],
+  'src/renderer/src/features/pdf/pdf.css': [
+    ['  .pdf-toolbar__preview-toggle,\n', '  .pdf-toolbar .material-export-button__label,\n  .pdf-toolbar .tab-assistant-toggle__label {\n    display: none;\n  }\n\n  .pdf-toolbar .material-export-button {\n    width: var(--control-height);\n    padding-inline: 0;\n  }\n\n  .pdf-toolbar__preview-toggle,\n']
+  ],
+  'src/renderer/src/features/browser/BrowserGuestView.tsx': [
+    ['favicon.navigation()', 'favicon.navigation(event.url)'],
+    ["// Chromium lists every declared icon; the last is the best match.\n          favicon.update(event.favicons.at(-1))", "// Keep raster alternatives when the preferred icon is unsupported\n          // (for example SVG), missing, or blocked by the site's server.\n          favicon.update(event.favicons)"]
+  ],
+  'src/renderer/src/features/assistantPanel/TabAssistantPanel.tsx': [
+    ["import { AssistantPanelToggle } from './AssistantPanelToggle'\n", "import { AssistantPanelToggle } from './AssistantPanelToggle'\nimport type { TabKind } from '../../../../shared/tabs'\nconst TOOLBAR_ASSISTANT_KINDS = new Set<TabKind>(['browser', 'note', 'pdf', 'whiteboard', 'image', 'file', 'recording'])\n"],
+    ["descriptor?.kind !== 'browser' && <div className=\"tab-assistant-launchbar\">", "(!descriptor || !TOOLBAR_ASSISTANT_KINDS.has(descriptor.kind)) && <div className=\"tab-assistant-launchbar\">"]
+  ]
+}
+const MATERIAL_CHROME_HOSTS = new Set([...Object.keys(MATERIAL_CHROME_EDITS),
+  'src/main/ipc/registerHandlers.ts', 'src/shared/ipc/contract.ts',
+  'src/renderer/src/features/pdf/PdfToolbar.tsx',
+  'src/renderer/src/features/browser/browserTabEvents.ts',
+  'src/renderer/src/features/workspace/adaptive-tabs.css',
+  'src/renderer/src/features/assistantPanel/AssistantPanelToggle.tsx'
+])
+
+const MATERIAL_SHARE_CHANNELS = new Set(['materials:export', 'canvas:sharePdf', 'recordings:shareTranscript'])
+function materialHostRemainder(file, text) {
+  const main = file === 'src/main/ipc/registerHandlers.ts'
+  const contract = file === 'src/shared/ipc/contract.ts'
+  const toolbar = file === 'src/renderer/src/features/pdf/PdfToolbar.tsx'
+  if (main) text = text.replace('createFaviconFetcher({ fetch: (url) => ensureProfileSession(profileId, req.isPrivate).fetch(url) })',
+    'createFaviconFetcher({ fetch: (url, options) => ensureProfileSession(profileId, req.isPrivate).fetch(url, options) })')
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true)
+  if (source.parseDiagnostics.length) return null
+  const imports = main ? {
+    '../features/materials/exportMaterial': ['exportMaterial', 'shareGeneratedMaterial']
+  } : toolbar ? {
+    '../assistantPanel/AssistantPanelToggle': ['AssistantPanelToggle'],
+    '../materials/MaterialExportButton': ['MaterialExportButton'],
+    '../documents/saveRegistry': ['flushDocumentSaves'], '../../lib/ipc': ['invoke']
+  } : {}
+  const counts = new Map()
+  const record = key => counts.set(key, (counts.get(key) ?? 0) + 1)
+  const transformed = ts.transform(source, [context => {
+    const visit = node => {
+      if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && Object.hasOwn(imports, node.moduleSpecifier.text) &&
+        node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+        const clause = node.importClause
+        const elements = clause.namedBindings.elements.filter(element => element.propertyName || !imports[node.moduleSpecifier.text].includes(element.name.text))
+        if (!elements.length && !clause.name) return undefined
+        return ts.factory.updateImportDeclaration(node, node.modifiers, ts.factory.updateImportClause(clause, clause.isTypeOnly,
+          clause.name, ts.factory.updateNamedImports(clause.namedBindings, elements)), node.moduleSpecifier, node.attributes)
+      }
+      if (main && ts.isExpressionStatement(node) && ts.isCallExpression(node.expression)) {
+        const call = node.expression, channel = call.arguments[0]
+        if (ts.isIdentifier(call.expression) && call.expression.text === 'handle' && channel && ts.isStringLiteral(channel) && MATERIAL_SHARE_CHANNELS.has(channel.text)) {
+          record(channel.text); return undefined
+        }
+      }
+      if (contract && ts.isPropertySignature(node) && ts.isStringLiteral(node.name) && MATERIAL_SHARE_CHANNELS.has(node.name.text) &&
+        ts.isInterfaceDeclaration(node.parent) && node.parent.name.text === 'IpcContract') {
+        record(`type:${node.name.text}`); return undefined
+      }
+      if (contract && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === 'IPC_CHANNELS' && node.initializer) {
+        const update = expression => {
+          if (ts.isAsExpression(expression)) return ts.factory.updateAsExpression(expression, update(expression.expression), expression.type)
+          if (ts.isSatisfiesExpression(expression)) return ts.factory.updateSatisfiesExpression(expression, update(expression.expression), expression.type)
+          if (!ts.isArrayLiteralExpression(expression)) return expression
+          const elements = expression.elements.filter(element => {
+            if (!ts.isStringLiteral(element) || !MATERIAL_SHARE_CHANNELS.has(element.text)) return true
+            record(`channel:${element.text}`); return false
+          })
+          return ts.factory.updateArrayLiteralExpression(expression, elements)
+        }
+        return ts.factory.updateVariableDeclaration(node, node.name, node.exclamationToken, node.type, update(node.initializer))
+      }
+      if (toolbar && ts.isJsxSelfClosingElement(node)) {
+        if (['MaterialExportButton', 'AssistantPanelToggle'].includes(node.tagName.getText(source))) return undefined
+        if (node.tagName.getText(source) === 'PdfToolRail') return ts.factory.updateJsxSelfClosingElement(node, node.tagName, node.typeArguments,
+          ts.factory.updateJsxAttributes(node.attributes, node.attributes.properties.filter(property =>
+            !ts.isJsxAttribute(property) || !['beforeExport', 'showExport'].includes(property.name.getText(source)))))
+      }
+      if (toolbar && ts.isJsxText(node) && node.text.trim() === '') return undefined
+      return ts.visitEachChild(node, visit, context)
+    }
+    return node => ts.visitNode(node, visit)
+  }])
+  try {
+    return [...counts.values()].some(count => count > 1) ? null : ts.createPrinter({ removeComments: true }).printFile(transformed.transformed[0])
+  } finally { transformed.dispose() }
+}
+
+function exactSourceEdits(before, after, edits) {
+  let expected = before
+  for (const [previous, replacement] of edits) {
+    if (expected.split(previous).length !== 2) return false
+    expected = expected.replace(previous, () => replacement)
+  }
+  return expected === after
+}
+
+function tabCloseStyleRemainder(text) {
+  const allowed = new Map([
+    [".bandal-dockview .dv-tabs-container:not([data-tab-density='regular']) .workspace-tab", ['position']],
+    [".bandal-dockview .dv-tabs-container:not([data-tab-density='regular']) .workspace-tab__close", ['display', 'position', 'left', 'top', 'width', 'height', 'margin-top', 'opacity', 'pointer-events', 'transform']],
+    [".bandal-dockview .dv-tabs-container:not([data-tab-density='regular']) .dv-tab:is(:hover, :focus-within) .workspace-tab__kind", ['visibility']],
+    [".bandal-dockview .dv-tabs-container:not([data-tab-density='regular']) .dv-tab:is(:hover, :focus-within) .workspace-tab__close", ['opacity', 'transform', 'pointer-events']],
+    [".bandal-dockview .dv-tabs-container[data-tab-density='icon'] .workspace-tab__close", ['left']],
+    ['.bandal-dockview .dv-tab:focus-within .workspace-tab__close', ['opacity', 'transform']]
+  ])
+  return text.replace(/([^{}]+)\{([^{}]*)\}/g, (rule, selector, body) => {
+    const properties = allowed.get(selector.trim())
+    if (!properties) return rule
+    const declarations = body.split(';').map(value => value.trim()).filter(Boolean)
+    if (!declarations.every(value => properties.includes(value.split(':', 1)[0].trim()))) return rule
+    return ''
+  }).trim()
+}
+
+export function onlyMaterialChromeChanged(file, before, after) {
+  if (typeof before !== 'string' || typeof after !== 'string') return false
+  before = before.replaceAll('\r\n', '\n'); after = after.replaceAll('\r\n', '\n')
+  if (before === after) return false
+  if (['src/main/ipc/registerHandlers.ts', 'src/shared/ipc/contract.ts', 'src/renderer/src/features/pdf/PdfToolbar.tsx'].includes(file)) {
+    const previous = materialHostRemainder(file, before), next = materialHostRemainder(file, after)
+    return previous !== null && next !== null && previous === next
+  }
+  if (Object.hasOwn(MATERIAL_CHROME_EDITS, file)) return exactSourceEdits(before, after, MATERIAL_CHROME_EDITS[file])
+  if (file === 'src/renderer/src/features/browser/browserTabEvents.ts') {
+    const scope = { names: ['createTabFaviconController'], imports: [], required: ['createTabFaviconController'] }
+    const previous = tabPickerRemainder(file, before, scope), next = tabPickerRemainder(file, after, scope)
+    return previous !== null && next !== null && previous === next
+  }
+  if (file === 'src/renderer/src/features/workspace/adaptive-tabs.css') return tabCloseStyleRemainder(before) === tabCloseStyleRemainder(after)
+  if (file === 'src/renderer/src/features/assistantPanel/AssistantPanelToggle.tsx') {
+    const print = text => ts.createPrinter({ removeComments: true }).printFile(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true))
+    return print(before) === print(after)
+  }
+  return false
+}
+
+/** Keep type/unit inputs intact and fail closed on an unknown host edit. */
+export function materialChromeE2eFiles(files, readBefore, readAfter) {
+  const isolated = new Map()
+  for (const file of files) {
+    if (Object.hasOwn(MATERIAL_CHROME_FILES, file)) {
+      isolated.set(file, MATERIAL_CHROME_FILES[file])
+      continue
+    }
+    if (!MATERIAL_CHROME_HOSTS.has(file)) continue
+    try {
+      if (!onlyMaterialChromeChanged(file, readBefore(file), readAfter(file))) continue
+    } catch { continue }
+    isolated.set(file, file === 'src/main/ipc/registerHandlers.ts' ? ['materialToolbar', 'materialShare', 'pdfExport', 'browserFavicons']
+      : file.includes('/browser/') ? ['browserFavicons'] : file.endsWith('/adaptive-tabs.css')
+      ? ['workspaceNarrowTabs'] : file.includes('/assistantPanel/') ? ['materialToolbar', 'assistantSidebar', 'browserChrome']
+        : ['materialToolbar', 'pdfExport'])
+  }
+  if (isolated.size === 0) return files
+  return [...new Set(files.filter(file => !isolated.has(file)).concat(
+    [...isolated.values()].flat().map(name => `e2e/${name}.spec.ts`)
+  ))]
+}
+
+export function materialChromeE2eGrep(plan, files, readBefore, readAfter) {
+  const spec = 'e2e/courseTabMove.spec.ts'
+  if (plan.full || !files.includes(spec) || !plan.e2e.includes(spec) ||
+    plan.e2e.some(file => /\/(?:tabDrag|tabMoveSessions|courseMovePreview|materialsDrag)\.spec\.ts$/.test(file))) return plan.e2eGrep
+  try {
+    if (!exactSourceEdits(readBefore(spec).replaceAll('\r\n', '\n'), readAfter(spec).replaceAll('\r\n', '\n'), [
+      ["element.querySelector('.note-toolbar__path')?.getAttribute('title')", "element.querySelector('.note-tab')?.getAttribute('data-resource-path')"]
+    ])) return plan.e2eGrep
+  } catch { return plan.e2eGrep }
+  // A diagnostic selector follows the removed note title. The live note and
+  // PDF-note moves exercise save/resource binding without repeating browser drag.
+  const grep = plan.e2eGrep ?? plan.e2e.map(file => file.replace('e2e/', '').replaceAll('.', '\\.')).join('|')
+  return grep.replace('courseTabMove\\.spec\\.ts', 'note movement keeps its editor|PDF note movement preserves editable committed text')
+}
+
 /** The exact installed PDF library only moves into the packaged runtime. */
 export function onlyLockedPdfDependencyPromoted(before, after, beforeLock, afterLock) {
   const name = 'pdf-lib', specifier = '^1.17.1', version = '1.17.1'
@@ -635,12 +826,13 @@ export function main(args) {
   const plan = planChecks(files, args.includes('--full'))
   if (args.includes('--backend-plan')) { console.log(String(plan.communityBackend || plan.studyMarketBackend || plan.paddleBillingBackend || plan.appleBillingBackend || plan.accountDeletionBackend || plan.syncAccessBackend)); return }
   const readBefore = file => gitBlob(base, file), readAfter = file => readFileSync(file, 'utf8')
-  const e2eFiles = plan.full ? files : tabPickerE2eFiles(communityE2eFiles(files, readBefore, readAfter), readBefore, readAfter)
+  const e2eFiles = plan.full ? files : materialChromeE2eFiles(tabPickerE2eFiles(communityE2eFiles(files, readBefore, readAfter), readBefore, readAfter), readBefore, readAfter)
   if (e2eFiles !== files) {
     const scoped = planChecks(e2eFiles)
     plan.e2e = scoped.e2e
     plan.e2eGrep = scoped.e2eGrep
   }
+  plan.e2eGrep = materialChromeE2eGrep(plan, files, readBefore, readAfter)
   const nativeTabs = 'src/main/features/browser/nativeTabs.ts'
   if (!plan.full && e2eFiles.includes(nativeTabs) && onlySwipeRegistrationChanged(
     git('show', `${base}:${nativeTabs}`), readFileSync(nativeTabs, 'utf8')

@@ -1,5 +1,5 @@
 import { strokePathV5 } from '../../../src/shared/inkV5'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { PDFDict, PDFDocument, PDFName, PDFPage } from 'pdf-lib'
@@ -112,6 +112,14 @@ describe('createBoardPdfExporter', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     ctx.cleanup()
+  })
+
+  test('renders a shareable PDF without creating an intermediate course material', async () => {
+    const board = repo.createBoard({ courseId: 'course-1', title: '외부 공유' })
+    const before = readdirSync(ctx.dir).sort()
+    const bytes = await createBoardPdfExporter({ openBoard: id => repo.open(id), getCourseFolder: () => ctx.dir }).renderBoard(board.id)
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1)
+    expect(readdirSync(ctx.dir).sort()).toEqual(before)
   })
 
   test.each([2, 3, 4, 5] as const)('preserves native v%s geometry through board storage and PDF export', async (inkVersion) => {

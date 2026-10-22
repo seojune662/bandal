@@ -86,6 +86,7 @@ export interface RecordingIpcContract {
     res: RecordingAnchor
   }
   'recordings:export': { req: { id: string }; res: { courseId: string; relPath: string } }
+  'recordings:shareTranscript': { req: { id: string }; res: { savedPath: string | null } }
 }
 export const RECORDING_CHANNELS = [
   'recordings:models',
@@ -98,7 +99,8 @@ export const RECORDING_CHANNELS = [
   'recordings:control',
   'recordings:append',
   'recordings:anchor',
-  'recordings:export'
+  'recordings:export',
+  'recordings:shareTranscript'
 ] as const satisfies readonly (keyof RecordingIpcContract)[]
 
 export function recordingTime(samples: number): string {

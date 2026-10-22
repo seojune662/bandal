@@ -15,6 +15,8 @@ import { Tooltip } from '../../components/Tooltip'
 import './assistant-panel.css'
 import { registerAssistantController } from './assistantController'
 import { AssistantPanelToggle } from './AssistantPanelToggle'
+import type { TabKind } from '../../../../shared/tabs'
+const TOOLBAR_ASSISTANT_KINDS = new Set<TabKind>(['browser', 'note', 'pdf', 'whiteboard', 'image', 'file', 'recording'])
 const ChatSurface = lazy(() => import('../chat/ChatSurface').then(m => ({ default: m.ChatSurface })))
 export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelProps>): FunctionComponent<IDockviewPanelProps> {
   return function AssistantPanel(props) {
@@ -124,7 +126,7 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
     return <PanelAssistantContext.Provider value={context}>
       <div className="tab-with-assistant" data-tour-panel={props.api.id} ref={root} data-assistant-open={state.open} data-assistant-overlay={overlay}>
         <div className="tab-document">
-          {descriptor?.kind !== 'browser' && <div className="tab-assistant-launchbar"><span>{descriptor?.kind === 'learning' ? panelTitle || '학습 공간' : descriptor ? tabTitle(descriptor) : '현재 자료'}</span><AssistantPanelToggle /></div>}
+          {(!descriptor || !TOOLBAR_ASSISTANT_KINDS.has(descriptor.kind)) && <div className="tab-assistant-launchbar"><span>{descriptor?.kind === 'learning' ? panelTitle || '학습 공간' : descriptor ? tabTitle(descriptor) : '현재 자료'}</span><AssistantPanelToggle /></div>}
           <div className="tab-document-content"><Component {...props} /></div>
         </div>
         {initialized && <aside hidden={!state.open} className="tab-assistant" data-tour={active && state.open ? "document-assistant" : undefined} role={overlay ? 'dialog' : 'complementary'} aria-label="탭 보조 사이드바" style={{ width: Math.min(state.width, availableWidth) }}>

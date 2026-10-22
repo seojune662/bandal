@@ -1,3 +1,4 @@
+import { FileToolbarActions } from '../FileToolbarActions'
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { usePageImageCopy } from '../../pageImageCopy/usePageImageCopy'
@@ -216,6 +217,7 @@ function LegacySlidesViewer({
       <header className="file-slides__header">
         <strong>{fileName}</strong>
         <span>{slides.length}슬라이드 · 읽기 전용 미리보기</span>
+        <FileToolbarActions />
       </header>
       <div className="file-slides__column" ref={columnRef}>
         {slides.map((slide, index) => {

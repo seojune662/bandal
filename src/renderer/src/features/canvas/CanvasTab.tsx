@@ -428,9 +428,10 @@ function CanvasSession({
   const exportBoardPdf = useCallback(async (): Promise<void> => {
     setExportingPdf(true)
     try {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       await saveQueue.flush()
-      const result = await invoke('canvas:exportPdf', { boardId: board.id })
-      showToast(`과목 폴더에 PDF로 내보냈어요: ${result.relPath}`)
+      const exported = await invoke('canvas:sharePdf', { boardId: board.id })
+      if (exported.savedPath !== null) showToast('필기 포함 PDF를 저장했어요.')
     } catch (error: unknown) {
       showToast(errorMessage(error, 'PDF로 내보내지 못했어요.'), 'danger')
     } finally {

@@ -853,8 +853,10 @@ test.describe('pdf textbox', () => {
     const { page } = bandal
     const pdfTab = page.locator('.pdf-tab')
     await pdfTab.evaluate((element) => {
-      element.style.width = '420px'
-      element.style.flex = '0 0 420px'
+      // Export now lives outside the drawing strip, so 420px fits it without
+      // scrolling. Use a smaller split to exercise the overflow controls.
+      element.style.width = '320px'
+      element.style.flex = '0 0 320px'
     })
 
     try {
@@ -883,8 +885,7 @@ test.describe('pdf textbox', () => {
           return document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)?.closest('button') === node
         })).toBe(true)
       }
-      const exportButton = rail.getByRole('button', { name: '주석 포함 PDF 내보내기', exact: true })
-      await exportButton.scrollIntoViewIfNeeded()
+      const exportButton = toolbar.getByRole('button', { name: '내보내기', exact: true })
       await expect(exportButton).toBeVisible()
       await expect(exportButton).toBeEnabled()
       await toolbar.getByRole('button', { name: '필기 스타일', exact: true }).click()

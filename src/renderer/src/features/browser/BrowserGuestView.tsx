@@ -196,7 +196,7 @@ export function BrowserGuestView({
       [
         'did-navigate',
         ((event: DidNavigateEvent) => {
-          favicon.navigation()
+          favicon.navigation(event.url)
           recordHttpResponse(tabId, event.url, event.httpResponseCode ?? 0)
           update({ httpStatus: event.httpResponseCode ?? 0 })
           if (event.url !== 'about:blank') update({ url: event.url, hasDocument: true, ...historyState() })
@@ -319,8 +319,9 @@ export function BrowserGuestView({
       [
         'page-favicon-updated',
         ((event: PageFaviconUpdatedEvent) => {
-          // Chromium lists every declared icon; the last is the best match.
-          favicon.update(event.favicons.at(-1))
+          // Keep raster alternatives when the preferred icon is unsupported
+          // (for example SVG), missing, or blocked by the site's server.
+          favicon.update(event.favicons)
         }) as EventListener
       ],
       [

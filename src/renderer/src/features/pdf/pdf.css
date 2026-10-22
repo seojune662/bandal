@@ -35,6 +35,23 @@
   overflow: hidden;
 }
 
+.pdf-toolbar__navigation,
+.pdf-toolbar__actions {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--chrome-height);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.pdf-toolbar__navigation > *,
+.pdf-toolbar__actions > * { flex-shrink: 0; }
+.pdf-toolbar__actions { margin-inline-start: auto; }
+
 .pdf-toolbar__pages {
   display: flex;
   align-items: baseline;
@@ -110,7 +127,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  margin-inline: auto;
 }
 
 .pdf-toolbar__button {
@@ -200,11 +216,9 @@
   border-radius: var(--radius-pill);
 }
 
-/* A split PDF should keep navigation and zoom anchored while giving drawing
-   tools the full pane width. Scrolling the whole toolbar would make essential
-   controls disappear; below 72rem only the drawing strip becomes a second,
-   horizontally navigable row. Container queries follow the dock pane rather
-   than the application window, so this also works in arbitrary split layouts. */
+/* Navigation and document actions wrap as complete groups, keeping sharing
+   and AI beside zoom instead of stranding a single action on a third row.
+   The optional drawing strip gets its own row in split layouts. */
 @container pdf-viewer (max-width: 72rem) {
   .pdf-toolbar {
     flex-wrap: wrap;
@@ -214,8 +228,9 @@
     row-gap: 0;
   }
 
-  .pdf-toolbar__zoom {
-    margin-inline: auto 0;
+  .pdf-toolbar__navigation,
+  .pdf-toolbar__actions {
+    gap: var(--space-2);
   }
 
   .pdf-tool-rail-shell {
@@ -236,8 +251,24 @@
     column-gap: var(--space-1);
   }
 
+  .pdf-toolbar__navigation,
+  .pdf-toolbar__actions {
+    gap: var(--space-1);
+    min-height: var(--button-height);
+  }
+
   .pdf-toolbar__label {
     display: none;
+  }
+
+  .pdf-toolbar .material-export-button__label,
+  .pdf-toolbar .tab-assistant-toggle__label {
+    display: none;
+  }
+
+  .pdf-toolbar .material-export-button {
+    width: var(--control-height);
+    padding-inline: 0;
   }
 
   .pdf-toolbar__preview-toggle,
@@ -275,6 +306,36 @@
   .pdf-tool-rail-shell {
     flex-basis: calc(100% + var(--space-2) * 2);
     margin-inline: calc(var(--space-2) * -1);
+  }
+}
+
+/* Both persistent groups fit a ~210px split pane. For still smaller panes,
+   each group scrolls within its row without adding height or dropping tools. */
+@container pdf-viewer (max-width: 26rem) {
+  .pdf-toolbar {
+    padding-inline: var(--space-1);
+    column-gap: var(--space-1);
+  }
+
+  .pdf-toolbar__navigation,
+  .pdf-toolbar__actions { gap: 2px; }
+
+  .pdf-toolbar__navigation > button,
+  .pdf-toolbar .pdf-toolbar__actions > button,
+  .pdf-toolbar__zoom > .pdf-toolbar__button {
+    box-sizing: border-box;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding-inline: 0;
+  }
+
+  .pdf-toolbar__page-input { width: 2rem; }
+  .pdf-toolbar__zoom-value { min-width: 2.5rem; padding-inline: 2px; }
+  .pdf-tool-rail-shell {
+    flex-basis: calc(100% + var(--space-1) * 2);
+    margin-inline: calc(var(--space-1) * -1);
   }
 }
 

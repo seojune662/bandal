@@ -4,6 +4,8 @@ import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useHasBeenShown } from '../workspace/useHasBeenShown'
 import { imageDataUrl } from './imageSource'
+import { AssistantPanelToggle } from '../assistantPanel/AssistantPanelToggle'
+import { MaterialExportButton } from '../materials/MaterialExportButton'
 import './image.css'
 
 const MIN_ZOOM = 0.1
@@ -137,6 +139,10 @@ function ImageViewer({
         >
           확대
         </button>
+        <div className="material-toolbar-actions">
+          <MaterialExportButton courseId={courseId} relPath={relPath} title="공유 · 이미지 내보내기" />
+          <AssistantPanelToggle />
+        </div>
       </div>
 
       <div className="image-viewer__viewport">

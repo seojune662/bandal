@@ -1,3 +1,4 @@
+import { FileToolbarActions } from '../FileToolbarActions'
 import { useEffect, useId, useMemo, useState } from 'react'
 import type { CellObject, ColInfo, WorkSheet } from 'xlsx'
 import { sheetPreviewBounds } from '../lib/sheetPreviewBounds'
@@ -294,6 +295,7 @@ export function SheetViewer({
             )
           })}
         </div>
+        <FileToolbarActions />
         {sheetView?.truncated && (
           <p className="file-notice" role="status">
             시트가 커서 앞부분 {sheetView.rowCount.toLocaleString()}행 · {sheetView.columnCount.toLocaleString()}열만 표시합니다. 전체 내용은 원본 파일에서 확인해 주세요.

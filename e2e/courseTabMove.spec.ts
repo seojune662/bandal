@@ -91,7 +91,7 @@ async function captureNoteMoveFailure(
         selectedCourses: [...document.querySelectorAll('.course-row[data-selected="true"]')].map(element => ({ attributes: attributes(element), text: element.textContent })),
         noteContents: [...document.querySelectorAll('.workspace-panel-content')].filter(element => element.querySelector('.note-tab')).map(element => ({
           attributes: attributes(element),
-          liveResourcePath: element.querySelector('.note-toolbar__path')?.getAttribute('title'),
+          liveResourcePath: element.querySelector('.note-tab')?.getAttribute('data-resource-path'),
           saveStatus: [...element.querySelectorAll('.note-save-status')].map(status => ({ attributes: attributes(status), text: status.textContent })),
           draft: element.querySelector('.ProseMirror')?.textContent,
           draftHTML: element.querySelector('.ProseMirror')?.innerHTML

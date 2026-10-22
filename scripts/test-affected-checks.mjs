@@ -6,7 +6,111 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyAddedLinesChanged, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
-import { onlyCommunityRegistrationChanged, communityE2eFiles, onlyTabPickerChanged, tabPickerE2eFiles, main as runAffectedChecks } from './affected-checks.mjs'
+import { onlyCommunityRegistrationChanged, communityE2eFiles, onlyTabPickerChanged, tabPickerE2eFiles, onlyMaterialChromeChanged, materialChromeE2eFiles, materialChromeE2eGrep, main as runAffectedChecks } from './affected-checks.mjs'
+
+test('favicon-only controller edits preserve native focus and all other declarations', () => {
+  const file = 'src/renderer/src/features/browser/browserTabEvents.ts'
+  const before = 'export function focusVisibleBrowserPanel() { focusCurrent() }\nexport function createTabFaviconController() { fetchOne() }\n'
+  const after = before.replace('fetchOne()', 'fetchCandidates()')
+  assert.equal(onlyMaterialChromeChanged(file, before, after), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replaceAll('\n', '\r\n')), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('focusCurrent()', 'focusHidden()')), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after + 'startNavigation()\n'), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after + 'export function createTabFaviconController() {}\n'), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, before), false)
+})
+
+test('narrow-tab close styling cannot suppress layout, overflow or drag regressions', () => {
+  const file = 'src/renderer/src/features/workspace/adaptive-tabs.css'
+  const close = ".bandal-dockview .dv-tabs-container:not([data-tab-density='regular']) .workspace-tab__close"
+  const layout = '.bandal-dockview .dv-tabs-container > .dv-tab { width: 32px; }\n'
+  const before = layout + `${close} { display: none; }\n`
+  const after = layout + `${close} { position: absolute; width: 24px; opacity: 0; pointer-events: none; }\n`
+  assert.equal(onlyMaterialChromeChanged(file, before, after), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('width: 32px', 'width: 16px')), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after + '.dv-tab[data-tab-overflow] { display: block; }\n'), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('pointer-events: none;', 'pointer-events: none; flex: 1;')), false)
+})
+
+test('native host narrowing accepts only the export and favicon registrations', () => {
+  const file = 'src/main/ipc/registerHandlers.ts'
+  const initialImport = "import { createShareInbox } from '../features/share/shareInbox'\n"
+  const readFile = "  handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))\n"
+  const previousFetcher = 'createFaviconFetcher({ fetch: (url) => ensureProfileSession(profileId, req.isPrivate).fetch(url) })'
+  const before = initialImport + readFile + previousFetcher + '\nassertRendererSender()\n'
+  const after = before.replace(initialImport, initialImport + "import { exportMaterial } from '../features/materials/exportMaterial'\n")
+    .replace(readFile, readFile + "  handle('materials:export', (req) => exportMaterial(req, {\n    resolvePath: (courseId, relPath) => materialsRepo.absolutePathForAsync(courseId, relPath),\n    chooseDestination: (options) => dialog.showSaveDialog(options)\n  }))\n")
+    .replace(previousFetcher, 'createFaviconFetcher({ fetch: (url, options) => ensureProfileSession(profileId, req.isPrivate).fetch(url, options) })')
+  assert.equal(onlyMaterialChromeChanged(file, before, after), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replaceAll('\n', '\r\n')), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('assertRendererSender()', '')), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('materialsRepo.readFile', 'changedExistingRead')), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('req.isPrivate).fetch(url, options)', 'false).fetch(url, options)')), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after + "handle('materials:export', () => null)\n"), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace("'../features/materials/exportMaterial'", "'../otherExport'")), false)
+})
+
+test('material chrome narrowing preserves explicit regressions and original type/unit inputs', () => {
+  const host = 'src/renderer/src/features/browser/browserTabEvents.ts'
+  const before = 'export function createTabFaviconController() { fetchOne() }\n'
+  const after = 'export function createTabFaviconController() { fetchCandidates() }\n'
+  const files = [host, 'src/main/features/materials/exportMaterial.ts', 'src/renderer/src/features/materials/MaterialExportButton.tsx', 'src/renderer/src/features/notes/NoteToolbar.tsx', 'e2e/workspaceNarrowTabs.spec.ts']
+  const scoped = materialChromeE2eFiles(files, () => before, () => after)
+  const original = planChecks(files), targeted = planChecks(scoped)
+  assert.ok(original.unitInputs.includes(host))
+  assert.ok(original.unitInputs.includes('src/main/features/materials/exportMaterial.ts'))
+  assert.deepEqual(original.types, ['tsconfig.node.json', 'tsconfig.web.json'])
+  assert.deepEqual(new Set(targeted.e2e), new Set(['workspaceNarrowTabs', 'browserFavicons', 'materialToolbar', 'materialShare', 'pdfExport', 'noteToolbar'].map(name => `e2e/${name}.spec.ts`)))
+  assert.ok(scoped.includes('e2e/workspaceNarrowTabs.spec.ts'))
+  assert.ok(files.includes(host))
+  assert.equal(materialChromeE2eFiles([host], () => { throw new Error('missing history') }, () => after)[0], host)
+  assert.equal(materialChromeE2eFiles([host], () => before, () => { throw new Error('deleted') })[0], host)
+  assert.equal(materialChromeE2eFiles([host], () => before, () => after + 'navigate()\n')[0], host)
+  const broad = planChecks(materialChromeE2eFiles([...files, 'src/renderer/src/features/workspace/workspace.css'], () => before, () => after))
+  assert.ok(broad.e2e.includes('e2e/courseTabMove.spec.ts'))
+  assert.ok(broad.e2e.includes('e2e/materialsDrag.spec.ts'))
+})
+
+test('share contract scoping preserves existing channel types and list entries', () => {
+  const file = 'src/shared/ipc/contract.ts'
+  const before = "export interface IpcContract { 'materials:readFile': { req: string; res: string } }\nexport const IPC_CHANNELS = ['materials:readFile'] as const satisfies readonly IpcChannel[]\n"
+  const after = before.replace("'materials:readFile':", "'materials:export': { req: { courseId: string }; res: { savedPath: string | null } }; 'materials:readFile':")
+    .replace("['materials:readFile']", "['materials:readFile', 'materials:export']")
+  assert.equal(onlyMaterialChromeChanged(file, before, after), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace("'materials:readFile': { req: string", "'materials:readFile': { req: number")), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace("['materials:readFile',", "['changed:channel',")), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace("'materials:export']", "'materials:export', 'materials:export']")), false)
+})
+
+test('PDF export button scoping preserves existing drawing and navigation controls', () => {
+  const file = 'src/renderer/src/features/pdf/PdfToolbar.tsx'
+  const before = 'export function PdfToolbar(props) { return <div><PdfToolRail drawingsApi={props.api} beforeExport={props.flush} /><button onClick={props.next}>Next</button></div> }\n'
+  const after = "import { MaterialExportButton } from '../materials/MaterialExportButton'\nimport { flushDocumentSaves } from '../documents/saveRegistry'\n" + before
+    .replace('beforeExport={props.flush}', 'showExport={false}')
+    .replace('</button></div>', '</button><MaterialExportButton onExport={() => flushDocumentSaves(props.resource)} /></div>')
+  assert.equal(onlyMaterialChromeChanged(file, before, after), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('drawingsApi={props.api}', 'drawingsApi={other.api}')), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace('onClick={props.next}', 'onClick={props.previous}')), false)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replace("'../documents/saveRegistry'", "'../otherRegistry'")), false)
+})
+
+test('diagnostic-only note selector changes select live note moves and retain other grep scopes', () => {
+  const spec = 'e2e/courseTabMove.spec.ts'
+  const before = "const path = element.querySelector('.note-toolbar__path')?.getAttribute('title')\n"
+  const after = "const path = element.querySelector('.note-tab')?.getAttribute('data-resource-path')\n"
+  const plan = { full: false, e2e: [spec, 'e2e/materialToolbar.spec.ts', 'e2e/pdfTextbox.spec.ts'], e2eGrep: null }
+  const grep = materialChromeE2eGrep(plan, [spec], () => before, () => after)
+  assert.match(grep, /note movement keeps its editor/)
+  assert.match(grep, /PDF note movement preserves editable committed text/)
+  assert.ok(grep.includes('materialToolbar\\.spec\\.ts'))
+  assert.ok(grep.includes('pdfTextbox\\.spec\\.ts'))
+  assert.equal(materialChromeE2eGrep({ ...plan, full: true }, [spec], () => before, () => after), null)
+  assert.equal(materialChromeE2eGrep({ ...plan, e2e: [...plan.e2e, 'e2e/tabDrag.spec.ts'] }, [spec], () => before, () => after), null)
+  assert.equal(materialChromeE2eGrep(plan, [spec], () => before, () => after + 'changedProductExpectation()\n'), null)
+  assert.equal(materialChromeE2eGrep(plan, [spec], () => { throw new Error('missing history') }, () => after), null)
+  const partial = { ...plan, e2eGrep: 'courseTabMove\\.spec\\.ts|zooming in and back preserves normalized geometry' }
+  assert.ok(materialChromeE2eGrep(partial, [spec], () => before, () => after).endsWith('|zooming in and back preserves normalized geometry'))
+})
 
 test('tab-picker function scoping retains every unchanged host declaration and import', () => {
   const file = 'src/renderer/src/app/shortcuts.ts'
