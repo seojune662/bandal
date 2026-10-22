@@ -17,15 +17,35 @@ export const PADDLE_BILLING_FUNCTIONS = [
 export const APPLE_BILLING_FUNCTIONS = ['apple-billing', 'apple-billing-sandbox', 'apple-notifications', 'apple-notifications-sandbox'].map(name => `supabase/functions/${name}/index.ts`)
 export const ACCOUNT_DELETION_FUNCTIONS = ['supabase/functions/account-delete/index.ts']
 
+function isPublishedStableRelease(release) {
+  return release?.draft === false && release.prerelease === false &&
+    typeof release.tag_name === 'string' && /^v\d+\.\d+\.\d+$/.test(release.tag_name) &&
+    typeof release.published_at === 'string' && Number.isFinite(Date.parse(release.published_at))
+}
+
+function parseReleaseResponse(output, source) {
+  try {
+    return JSON.parse(output)
+  } catch (cause) {
+    throw new SyntaxError(`Invalid JSON from GitHub ${source} while selecting the release baseline.`, { cause })
+  }
+}
+
+function validateRelease(release, source) {
+  if (!release || typeof release !== 'object' || Array.isArray(release) ||
+      typeof release.tag_name !== 'string' || typeof release.draft !== 'boolean' ||
+      typeof release.prerelease !== 'boolean' ||
+      (release.published_at !== null && (typeof release.published_at !== 'string' || !Number.isFinite(Date.parse(release.published_at))))) {
+    throw new Error(`Invalid release metadata from GitHub ${source} while selecting the release baseline.`)
+  }
+  return release
+}
+
 /** A failed or draft release must not hide changes from the next release's checks. */
 export function publishedReleaseBase(releases, ancestorTags) {
   const reachable = new Set(ancestorTags)
-  const release = releases.filter(release =>
-    release?.draft === false && release.prerelease === false &&
-    typeof release.tag_name === 'string' && /^v\d+\.\d+\.\d+$/.test(release.tag_name) &&
-    typeof release.published_at === 'string' && Number.isFinite(Date.parse(release.published_at)) &&
-    reachable.has(release.tag_name)
-  ).sort((left, right) => Date.parse(right.published_at) - Date.parse(left.published_at))[0]
+  const release = releases.filter(release => isPublishedStableRelease(release) && reachable.has(release.tag_name))
+    .sort((left, right) => Date.parse(right.published_at) - Date.parse(left.published_at))[0]
   if (!release) throw new Error('No published stable release is reachable from HEAD^. Specify --base explicitly to select the verification baseline.')
   return release.tag_name
 }
@@ -39,12 +59,25 @@ export function resolveCheckBase(base, { env = process.env, exec = execFileSync 
   if (!/^[\w.-]+\/[\w.-]+$/.test(env.GITHUB_REPOSITORY ?? '')) {
     throw new Error('GITHUB_REPOSITORY is required to select a published release baseline in CI.')
   }
-  // Read compact JSON lines across every API page. Do not fall back to a local
-  // tag when the API fails: that tag could be an unverified, unpublished build.
-  const output = exec('gh', ['api', `repos/${env.GITHUB_REPOSITORY}/releases?per_page=100`, '--paginate', '--jq', '.[] | {tag_name, draft, prerelease, published_at} | tojson'], options)
-  const releases = output.trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line))
-  const ancestorTags = exec('git', ['tag', '--merged', 'HEAD^'], options).trim().split(/\r?\n/).filter(Boolean)
-  return publishedReleaseBase(releases, ancestorTags)
+  // The public latest endpoint avoids release-list pagination in the usual
+  // case. A current-HEAD or unrelated release still requires history lookup.
+  const endpoint = `repos/${env.GITHUB_REPOSITORY}/releases`
+  const latest = validateRelease(parseReleaseResponse(exec('gh', ['api', `${endpoint}/latest`], options), 'latest release'), 'latest release')
+  const ancestorTags = exec('git', ['-c', 'color.ui=false', 'tag', '--merged', 'HEAD^', '--format=%(refname:short)'], options).trim().split(/\r?\n/).filter(Boolean)
+  if (isPublishedStableRelease(latest) && ancestorTags.includes(latest.tag_name)) return latest.tag_name
+
+  // Parse the API's JSON arrays, not CLI-formatted JSON strings. Never fall
+  // back to an unverified local tag when either API response is invalid.
+  const pages = parseReleaseResponse(exec('gh', ['api', `${endpoint}?per_page=100`, '--paginate', '--slurp'], options), 'release history')
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new Error('Invalid release-history pages from GitHub while selecting the release baseline; expected an array of arrays.')
+  }
+  const releases = pages.flat().map(release => validateRelease(release, 'release history'))
+  try {
+    return publishedReleaseBase(releases, ancestorTags)
+  } catch (cause) {
+    throw new Error(`${cause.message} GitHub latest=${JSON.stringify(latest.tag_name)}; pages=${pages.length}; releases=${releases.length}; publishedStable=${releases.filter(isPublishedStableRelease).length}; ancestorTags=${ancestorTags.length}.`, { cause })
+  }
 }
 
 /** Compare all work since the last published release in CI, or local tag locally. */

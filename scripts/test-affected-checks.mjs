@@ -316,23 +316,53 @@ test('the CI baseline excludes failed drafts, unpublished/current tags and other
   assert.throws(() => publishedReleaseBase([], ancestors), /No published stable release/)
 })
 
-test('CI resolves its baseline with a paginated read-only API and local ancestor tags', () => {
+test('CI uses the public latest release only when it is a stable ancestor', () => {
+  const calls = [], env = { CI: 'true', GITHUB_REPOSITORY: 'example/bandal' }
+  const base = resolveCheckBase(undefined, { env, exec: (command, args) => {
+    calls.push([command, args])
+    if (command === 'gh') return JSON.stringify(publishedRelease('v0.83.1', '2026-10-13T00:00:00Z'))
+    return 'v0.83.1\r\nv0.84.0\r\n' // A failed local tag must not become the baseline.
+  } })
+  assert.equal(base, 'v0.83.1')
+  assert.deepEqual(calls, [
+    ['gh', ['api', 'repos/example/bandal/releases/latest']],
+    ['git', ['-c', 'color.ui=false', 'tag', '--merged', 'HEAD^', '--format=%(refname:short)']]
+  ])
+})
+
+test('CI searches every raw JSON page when the latest release is not an ancestor', () => {
   const calls = [], env = { CI: 'true', GITHUB_REPOSITORY: 'example/bandal', GH_TOKEN: 'test-only' }
   const base = resolveCheckBase(undefined, { env, exec: (command, args, options) => {
     calls.push([command, args])
     assert.equal(options.env, env)
-    if (command === 'gh') return [
-      publishedRelease('v0.84.1', '2026-10-15T00:00:00Z'),
-      publishedRelease('v0.84.0', null, { draft: true }),
-      publishedRelease('v0.83.1', '2026-10-13T00:00:00Z')
-    ].map(release => JSON.stringify(release)).join('\n')
+    if (command === 'gh' && args[1].endsWith('/latest')) return JSON.stringify(publishedRelease('v0.84.1', '2026-10-15T00:00:00Z'))
+    if (command === 'gh') return JSON.stringify([
+      [publishedRelease('v0.84.1', '2026-10-15T00:00:00Z'), publishedRelease('v0.84.0', null, { draft: true })],
+      [publishedRelease('v0.83.0', '2026-10-12T00:00:00Z'), publishedRelease('v0.83.1', '2026-10-13T00:00:00Z')]
+    ], null, 2)
     return 'v0.83.1\nv0.84.0\n'
   } })
   assert.equal(base, 'v0.83.1')
   assert.deepEqual(calls, [
-    ['gh', ['api', 'repos/example/bandal/releases?per_page=100', '--paginate', '--jq', '.[] | {tag_name, draft, prerelease, published_at} | tojson']],
-    ['git', ['tag', '--merged', 'HEAD^']]
+    ['gh', ['api', 'repos/example/bandal/releases/latest']],
+    ['git', ['-c', 'color.ui=false', 'tag', '--merged', 'HEAD^', '--format=%(refname:short)']],
+    ['gh', ['api', 'repos/example/bandal/releases?per_page=100', '--paginate', '--slurp']]
   ])
+})
+
+test('CI never trusts unpublished, draft, prerelease or non-version latest metadata', () => {
+  const env = { CI: 'true', GITHUB_REPOSITORY: 'example/bandal' }
+  for (const latest of [
+    publishedRelease('v0.84.0', null),
+    publishedRelease('v0.84.0', '2026-10-14T00:00:00Z', { draft: true }),
+    publishedRelease('v0.84.0', '2026-10-14T00:00:00Z', { prerelease: true }),
+    publishedRelease('nightly', '2026-10-14T00:00:00Z')
+  ]) {
+    assert.equal(resolveCheckBase(undefined, { env, exec: (command, args) => {
+      if (command === 'git') return 'v0.83.1\nv0.84.0\nnightly\n'
+      return JSON.stringify(args[1].endsWith('/latest') ? latest : [[latest, publishedRelease('v0.83.1', '2026-10-13T00:00:00Z')]])
+    } }), 'v0.83.1')
+  }
 })
 
 test('explicit bases bypass CI lookup and local runs retain their nearest-tag default', () => {
@@ -353,8 +383,26 @@ test('CI API failures and invalid release responses never fall back to an unveri
   } }), /GitHub API unavailable/)
   assert.deepEqual(calls, ['gh'])
   assert.throws(() => resolveCheckBase(undefined, { env, exec: () => 'invalid JSON' }), SyntaxError)
-  assert.throws(() => resolveCheckBase(undefined, { env, exec: () => '' }), /No published stable release/)
+  for (const malformed of ['', 'null', '[]', '"escaped JSON string"', '{}', JSON.stringify(publishedRelease('v0.83.1', 'invalid-date'))]) {
+    assert.throws(() => resolveCheckBase(undefined, { env, exec: () => malformed }), /Invalid (JSON|release metadata)/)
+  }
   assert.throws(() => resolveCheckBase(undefined, { env: { CI: 'true' }, exec: () => { throw new Error('must not call') } }), /GITHUB_REPOSITORY is required/)
+})
+
+test('CI validates paginated response shape and reports useful no-baseline diagnostics', () => {
+  const env = { CI: 'true', GITHUB_REPOSITORY: 'example/bandal' }
+  const latest = publishedRelease('v0.84.1', '2026-10-15T00:00:00Z')
+  const resolve = history => resolveCheckBase(undefined, { env, exec: (command, args) => {
+    if (command === 'git') return 'v0.84.0\n'
+    return args[1].endsWith('/latest') ? JSON.stringify(latest) : history
+  } })
+  for (const malformed of ['null', '{}', JSON.stringify([latest]), JSON.stringify([['escaped JSON string']]), JSON.stringify([[{ ...latest, draft: 'false' }]])]) {
+    assert.throws(() => resolve(malformed), /Invalid release/)
+  }
+  assert.throws(() => resolve(''), /Invalid JSON from GitHub release history/)
+  assert.throws(() => resolve(JSON.stringify([[latest], [publishedRelease('v0.84.0', null, { draft: true })]])),
+    /No published stable release.*latest="v0.84.1"; pages=2; releases=2; publishedStable=1; ancestorTags=1/)
+  assert.throws(() => resolve('[]'), /pages=0; releases=0; publishedStable=0; ancestorTags=1/)
 })
 
 function chatDependencyPromotion() {
