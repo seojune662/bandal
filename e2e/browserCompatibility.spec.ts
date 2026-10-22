@@ -610,6 +610,8 @@ test('cancelled beforeunload keeps the current profile and its page alive', asyn
 test('visiting more than five pages preserves the original form and navigation history', async () => {
   const site = await fixture(), bandal = await launchBandal()
   try {
+    // Exercise the icon-only tabs used at narrower widths and beside Windows captions.
+    await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setContentSize(1024, 800))
     await createCourse(bandal.page, '브라우저 상태 보존')
     const original = await openTab(bandal, `${site.origin}/lecture`)
     await run(bandal, original, `location.href='${site.origin}/draft'`)
@@ -619,11 +621,21 @@ test('visiting more than five pages preserves the original form and navigation h
     expect(await run(bandal, original, 'document.querySelector("#draft").value')).toBe('unsaved lecture notes')
     expect(await run(bandal, original, 'window.liveDraft')).toBe('retained')
     expect(await bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.navigationHistory.canGoBack(), original)).toBe(true)
-    await bandal.page.locator('.dv-tab').first().click()
+    await expect(bandal.page.locator('.workspace-course:not([hidden]) .dv-tabs-container')).toHaveAttribute('data-tab-density', 'icon')
+    // Hover intentionally replaces an icon with its close button. Activate the
+    // tab through its keyboard target instead of clicking that close affordance.
+    const firstTab = bandal.page.locator('.dv-tab').first()
+    await firstTab.focus()
+    await firstTab.press('Enter')
+    await expect(firstTab).toHaveAttribute('aria-selected', 'true')
+    await expect(bandal.page.locator('.dv-tab')).toHaveCount(8)
     await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }, id) => {
       const host = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!
       return host.contentView.children.some(view => 'webContents' in view && (view as Electron.WebContentsView).webContents.id === id && view.getVisible())
     }, original)).toBe(true)
+    expect(await run(bandal, original, 'document.querySelector("#draft").value')).toBe('unsaved lecture notes')
+    expect(await run(bandal, original, 'window.liveDraft')).toBe('retained')
+    expect(await bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.navigationHistory.canGoBack(), original)).toBe(true)
   } finally { await bandal.close(); await site.close() }
 })
 

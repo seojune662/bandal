@@ -119,54 +119,69 @@ test.describe('continuous study interactions', () => {
   })
 
   test('rapidly reverses linked scrolling without echoes and preserves the page on tab return', async () => {
-    const { page } = bandal
-    await page.locator('[data-material-path="slides.pptx"]').click()
-    const viewer = page.locator('.presentation-viewer:visible')
-    if (!await page.locator('.page-note-scroll:visible').count()) {
-      await viewer.getByRole('button', { name: /^페이지 필기/ }).click()
-      await page.getByRole('button', { name: '만들고 나란히 열기', exact: true }).click()
-    }
-    await viewer.getByRole('spinbutton', { name: '슬라이드 번호' }).fill('15')
-    await frames(page)
-    const result = await page.evaluate(async () => {
-      const slide = document.querySelector<HTMLElement>('.presentation-scroller')!
-      const note = document.querySelector<HTMLElement>('.page-note-scroll')!
-      for (let i = 0; i < 12; i++) {
-        const node = i % 2 ? note : slide
-        node.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -70 }))
-        node.scrollTop -= 70
-        await new Promise(requestAnimationFrame)
-        await new Promise(requestAnimationFrame)
+    const { page, app } = bandal
+    const originalSize = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize())
+    try {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 768))
+      await page.locator('[data-material-path="slides.pptx"]').click()
+      const viewer = page.locator('.presentation-viewer:visible')
+      if (!await page.locator('.page-note-scroll:visible').count()) {
+        await viewer.getByRole('button', { name: /^페이지 필기/ }).click()
+        await page.getByRole('button', { name: '만들고 나란히 열기', exact: true }).click()
       }
-      for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame)
-      const stopped = [slide.scrollTop, note.scrollTop]
-      for (let i = 0; i < 12; i++) await new Promise(requestAnimationFrame)
-      return { stopped, settled: [slide.scrollTop, note.scrollTop] }
-    })
-    expect(result.settled).toEqual(result.stopped)
-    const before = await viewer.getByRole('spinbutton', { name: '슬라이드 번호' }).inputValue()
-    await page.getByRole('tab', { name: 'slides.pptx', exact: true }).click()
-    await page.locator('[data-material-path="note-0.md"]').click()
-    await page.locator('[data-material-path="slides.pptx"]').click()
-    await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
-    await viewer.getByRole('button', { name: '확대', exact: true }).click()
-    await frames(page, 5)
-    await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
-    await viewer.getByRole('button', { name: '축소', exact: true }).click()
-    await frames(page, 5)
-    await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
-    const toggle = viewer.getByRole('button', { name: '스크롤 연결됨', exact: true })
-    await toggle.click()
-    const notePosition = await page.locator('.page-note-scroll:visible').evaluate((node) => node.scrollTop)
-    await viewer.locator('.presentation-scroller').hover()
-    await page.mouse.wheel(0, 200)
-    await frames(page, 5)
-    expect(await page.locator('.page-note-scroll:visible').evaluate((node) => node.scrollTop)).toBe(notePosition)
-    await viewer.getByRole('button', { name: '스크롤 연결', exact: true }).click()
-    await viewer.locator('.presentation-scroller').hover()
-    await page.mouse.wheel(0, 200)
-    await frames(page, 5)
-    expect(await page.locator('.page-note-scroll:visible').evaluate((node) => node.scrollTop)).not.toBe(notePosition)
+      await viewer.getByRole('spinbutton', { name: '슬라이드 번호' }).fill('15')
+      await frames(page)
+      const result = await page.evaluate(async () => {
+        const slide = document.querySelector<HTMLElement>('.presentation-scroller')!
+        const note = document.querySelector<HTMLElement>('.page-note-scroll')!
+        for (let i = 0; i < 12; i++) {
+          const node = i % 2 ? note : slide
+          node.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -70 }))
+          node.scrollTop -= 70
+          await new Promise(requestAnimationFrame)
+          await new Promise(requestAnimationFrame)
+        }
+        for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame)
+        const stopped = [slide.scrollTop, note.scrollTop]
+        for (let i = 0; i < 12; i++) await new Promise(requestAnimationFrame)
+        return { stopped, settled: [slide.scrollTop, note.scrollTop] }
+      })
+      expect(result.settled).toEqual(result.stopped)
+      const before = await viewer.getByRole('spinbutton', { name: '슬라이드 번호' }).inputValue()
+      const sourceTab = page.getByRole('tab', { name: 'slides.pptx', exact: true })
+      const openTabCount = await page.locator('.workspace-course:not([hidden]) .dv-tab').count()
+      await expect(viewer.getByRole('button', { name: '스크롤 연결됨', exact: true })).toBeVisible()
+      // Dense tabs intentionally reveal Close under their center on hover.
+      // Activate the source with its keyboard contract so this tests returning
+      // to a retained pane, not closing it and reopening an unpaired document.
+      await sourceTab.focus()
+      await page.keyboard.press('Enter')
+      await expect(page.locator('.workspace-course:not([hidden]) .dv-tab')).toHaveCount(openTabCount)
+      await expect(viewer.getByRole('button', { name: '스크롤 연결됨', exact: true })).toBeVisible()
+      await page.locator('[data-material-path="note-0.md"]').click()
+      await page.locator('[data-material-path="slides.pptx"]').click()
+      await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
+      await viewer.getByRole('button', { name: '확대', exact: true }).click()
+      await frames(page, 5)
+      await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
+      await viewer.getByRole('button', { name: '축소', exact: true }).click()
+      await frames(page, 5)
+      await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
+      const toggle = viewer.getByRole('button', { name: '스크롤 연결됨', exact: true })
+      await toggle.click()
+      const notePosition = await page.locator('.page-note-scroll:visible').evaluate((node) => node.scrollTop)
+      await viewer.locator('.presentation-scroller').hover()
+      await page.mouse.wheel(0, 200)
+      await frames(page, 5)
+      expect(await page.locator('.page-note-scroll:visible').evaluate((node) => node.scrollTop)).toBe(notePosition)
+      await viewer.getByRole('button', { name: '스크롤 연결', exact: true }).click()
+      await viewer.locator('.presentation-scroller').hover()
+      await page.mouse.wheel(0, 200)
+      await frames(page, 5)
+      expect(await page.locator('.page-note-scroll:visible').evaluate((node) => node.scrollTop)).not.toBe(notePosition)
+    } finally {
+      await app.evaluate(({ BrowserWindow }, [width, height]) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, height), originalSize)
+    }
   })
 
   test('continuous pen input stays responsive over 200 existing strokes', async ({}, info) => {
