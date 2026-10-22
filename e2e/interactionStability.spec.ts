@@ -313,10 +313,14 @@ for (const action of ['restore', 'wheel', 'jump'] as const) {
     const bandal = await launchBandal()
     try {
       const { page, app } = bandal
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 768))
       await createCourse(page, 'PDF 위치 복원')
       const folder = readdirSync(bandal.dataRoot, { withFileTypes: true }).find(entry => entry.isDirectory())!
       const pdf = await PDFDocument.create()
-      for (let i = 0; i < 100; i++) pdf.addPage([720, 540])
+      // The current-page label follows the viewport center. Portrait pages
+      // keep a top-aligned jump on that same page in the small Windows pane,
+      // so this test isolates delayed restoration instead of page geometry.
+      for (let i = 0; i < 100; i++) pdf.addPage([540, 720])
       writeFileSync(join(bandal.dataRoot, folder.name, 'restore.pdf'), await pdf.save())
       await page.evaluate(async () => {
         const courses = await window.bandal.invoke('courses:list', {})
@@ -346,6 +350,12 @@ for (const action of ['restore', 'wheel', 'jump'] as const) {
       } else if (action === 'jump') {
         await jump.fill('10')
         await jump.press('Enter')
+        await expect.poll(() => page.evaluate(() => {
+          const scroller = document.querySelector<HTMLElement>('.pdf-scroller')!
+          const center = scroller.getBoundingClientRect().top + scroller.clientHeight / 2
+          const target = document.querySelector<HTMLElement>('[data-pdf-page="10"]')!.getBoundingClientRect()
+          return target.top <= center && center < target.bottom
+        })).toBe(true)
         await expect(jump).toHaveValue('10')
       }
       const before = await scroller.evaluate(node => node.scrollTop)
