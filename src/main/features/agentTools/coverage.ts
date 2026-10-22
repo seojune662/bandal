@@ -122,6 +122,9 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
     '과목 색상은 학생의 시각적 취향이므로 사이드바에서 직접 고른다.',
   'materials:reveal': 'Finder 를 여는 일. 앱 밖의 동작이다.',
   'materials:preview': 'OS 미리보기(Quick Look)를 여는 일. 앱 밖의 동작이다.',
+  'materials:export': '저장 위치를 묻는 OS 창에서 사용자가 자료 사본의 목적지를 직접 고른다.',
+  'canvas:sharePdf': '노트를 PDF로 내보낼 저장 위치를 사용자가 OS 창에서 직접 고른다.',
+  'recordings:shareTranscript': '녹음 자막을 내보낼 저장 위치를 사용자가 OS 창에서 직접 고른다.',
   'links:remove':
     '링크 해제는 학생이 화면에서 한 번 누르면 되고, 에이전트가 자료 그래프를 지울 이유가 없다.',
   'links:updatePageNote':

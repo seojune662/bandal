@@ -82,6 +82,28 @@ test('share contract scoping preserves existing channel types and list entries',
   assert.equal(onlyMaterialChromeChanged(file, before, after.replace("'materials:export']", "'materials:export', 'materials:export']")), false)
 })
 
+test('native share exclusion metadata retains coverage units without unrelated AI E2E', () => {
+  const file = 'src/main/features/agentTools/coverage.ts'
+  const before = "export const AGENT_CHANNEL_TOOLS = { 'notes:write': 'overwrite_note' }\nexport const NOT_FOR_AGENT = { 'pdf:exportAnnotated': 'The user selects the destination in a native dialog.' }\nexport const AGENT_MUTATING_TOOL_NAMES = new Set(Object.values(AGENT_CHANNEL_TOOLS))\n"
+  const after = before.replace("'pdf:exportAnnotated':", "'materials:export': 'The user selects the native save destination.', 'canvas:sharePdf': 'The user selects the native PDF save destination.', 'recordings:shareTranscript': 'The user selects the native transcript save destination.', 'pdf:exportAnnotated':")
+  assert.equal(onlyMaterialChromeChanged(file, before, after), true)
+  assert.equal(onlyMaterialChromeChanged(file, before, after.replaceAll('\n', '\r\n')), true)
+  for (const mixed of [
+    after.replace("'overwrite_note'", "'delete_note'"),
+    after.replace('new Set(Object.values(AGENT_CHANNEL_TOOLS))', 'new Set()'),
+    after.replace("'pdf:exportAnnotated':", "'other:action': 'Unrelated behavior must retain its checks.', 'pdf:exportAnnotated':"),
+    after.replace("'materials:export': 'The user selects the native save destination.'", "'materials:export': runUnrelatedAction()"),
+    after.replace("'pdf:exportAnnotated':", "'materials:export': 'Repeated metadata must not narrow coverage.', 'pdf:exportAnnotated':")
+  ]) assert.equal(onlyMaterialChromeChanged(file, before, mixed), false)
+  const scoped = materialChromeE2eFiles([file], () => before, () => after)
+  assert.deepEqual(scoped, ['e2e/materialShare.spec.ts'])
+  assert.deepEqual(planChecks(scoped).e2e, ['e2e/materialShare.spec.ts'])
+  assert.deepEqual(planChecks([file]).unitInputs, [file])
+  const mixed = materialChromeE2eFiles([file], () => before, () => after.replace("'overwrite_note'", "'delete_note'"))
+  assert.ok(planChecks(mixed).e2e.includes('e2e/chatUx.spec.ts'))
+  assert.ok(planChecks(mixed).e2e.includes('e2e/aiContext.spec.ts'))
+})
+
 test('PDF export button scoping preserves existing drawing and navigation controls', () => {
   const file = 'src/renderer/src/features/pdf/PdfToolbar.tsx'
   const before = 'export function PdfToolbar(props) { return <div><PdfToolRail drawingsApi={props.api} beforeExport={props.flush} /><button onClick={props.next}>Next</button></div> }\n'

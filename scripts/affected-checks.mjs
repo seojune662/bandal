@@ -334,6 +334,7 @@ const MATERIAL_CHROME_EDITS = {
 }
 const MATERIAL_CHROME_HOSTS = new Set([...Object.keys(MATERIAL_CHROME_EDITS),
   'src/main/ipc/registerHandlers.ts', 'src/shared/ipc/contract.ts',
+  'src/main/features/agentTools/coverage.ts',
   'src/renderer/src/features/pdf/PdfToolbar.tsx',
   'src/renderer/src/features/browser/browserTabEvents.ts',
   'src/renderer/src/features/workspace/adaptive-tabs.css',
@@ -344,6 +345,7 @@ const MATERIAL_SHARE_CHANNELS = new Set(['materials:export', 'canvas:sharePdf', 
 function materialHostRemainder(file, text) {
   const main = file === 'src/main/ipc/registerHandlers.ts'
   const contract = file === 'src/shared/ipc/contract.ts'
+  const coverage = file === 'src/main/features/agentTools/coverage.ts'
   const toolbar = file === 'src/renderer/src/features/pdf/PdfToolbar.tsx'
   if (main) text = text.replace('createFaviconFetcher({ fetch: (url) => ensureProfileSession(profileId, req.isPrivate).fetch(url) })',
     'createFaviconFetcher({ fetch: (url, options) => ensureProfileSession(profileId, req.isPrivate).fetch(url, options) })')
@@ -390,6 +392,16 @@ function materialHostRemainder(file, text) {
           return ts.factory.updateArrayLiteralExpression(expression, elements)
         }
         return ts.factory.updateVariableDeclaration(node, node.name, node.exclamationToken, node.type, update(node.initializer))
+      }
+      if (coverage && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === 'NOT_FOR_AGENT' &&
+        node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
+        const properties = node.initializer.properties.filter(property => {
+          if (!ts.isPropertyAssignment(property) || !ts.isStringLiteral(property.name) ||
+            !MATERIAL_SHARE_CHANNELS.has(property.name.text) || !ts.isStringLiteral(property.initializer)) return true
+          record(property.name.text); return false
+        })
+        return ts.factory.updateVariableDeclaration(node, node.name, node.exclamationToken, node.type,
+          ts.factory.updateObjectLiteralExpression(node.initializer, properties))
       }
       if (toolbar && ts.isJsxSelfClosingElement(node)) {
         if (['MaterialExportButton', 'AssistantPanelToggle'].includes(node.tagName.getText(source))) return undefined
@@ -438,7 +450,7 @@ export function onlyMaterialChromeChanged(file, before, after) {
   if (typeof before !== 'string' || typeof after !== 'string') return false
   before = before.replaceAll('\r\n', '\n'); after = after.replaceAll('\r\n', '\n')
   if (before === after) return false
-  if (['src/main/ipc/registerHandlers.ts', 'src/shared/ipc/contract.ts', 'src/renderer/src/features/pdf/PdfToolbar.tsx'].includes(file)) {
+  if (['src/main/ipc/registerHandlers.ts', 'src/shared/ipc/contract.ts', 'src/main/features/agentTools/coverage.ts', 'src/renderer/src/features/pdf/PdfToolbar.tsx'].includes(file)) {
     const previous = materialHostRemainder(file, before), next = materialHostRemainder(file, after)
     return previous !== null && next !== null && previous === next
   }
@@ -468,7 +480,8 @@ export function materialChromeE2eFiles(files, readBefore, readAfter) {
     try {
       if (!onlyMaterialChromeChanged(file, readBefore(file), readAfter(file))) continue
     } catch { continue }
-    isolated.set(file, file === 'src/main/ipc/registerHandlers.ts' ? ['materialToolbar', 'materialShare', 'pdfExport', 'browserFavicons']
+    isolated.set(file, file === 'src/main/features/agentTools/coverage.ts' ? ['materialShare']
+      : file === 'src/main/ipc/registerHandlers.ts' ? ['materialToolbar', 'materialShare', 'pdfExport', 'browserFavicons']
       : file.includes('/browser/') ? ['browserFavicons'] : file.endsWith('/adaptive-tabs.css')
       ? ['workspaceNarrowTabs'] : file.includes('/assistantPanel/') ? ['materialToolbar', 'assistantSidebar', 'browserChrome']
         : ['materialToolbar', 'pdfExport'])
