@@ -7,15 +7,16 @@ export type TourAnchorKey =
   | 'favorites-section'
   | 'assistant-panel'
   | 'document-assistant'
-  | 'quiz-tools'
-  | 'english-tool'
+  | 'ai-modes'
+  | 'project-add'
 
 export type TourPlacement = 'top' | 'right' | 'bottom' | 'left'
 
 export type TourBeforeAction =
   | 'show-materials'
   | 'open-reading'
-  | 'show-launcher'
+  | 'show-ai-modes'
+  | 'show-projects'
   | 'open-assistant'
 
 export interface TourStep {

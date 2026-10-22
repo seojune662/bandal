@@ -67,13 +67,13 @@ export function CourseTabMoveOverlay(): JSX.Element {
     let inside = false
     let point: { x: number; y: number; target: Node | null } | null = null
     let previewFrame: number | null = null
-    let lastCourse = useWorkspaceStore.getState().activeCourseId
+    let lastCourse = useWorkspaceStore.getState().activeWorkspaceKey
     let lastHydration = useWorkspaceStore.getState().hydration
     let lastSurface = useWorkspaceStore.getState().surface
     const reflectGuides = (): void => {
       const source = tabDragSession.getSource(), state = useWorkspaceStore.getState()
       const heldTab = !!source && tabDragSession.getSnapshot() === 'tab'
-      if (heldTab && state.activeCourseId !== source.courseId) root.dataset.courseTabMoving = 'true'
+      if (heldTab && state.activeWorkspaceKey !== source.courseId) root.dataset.courseTabMoving = 'true'
       else delete root.dataset.courseTabMoving
       if (heldTab && !inside) root.dataset.tabDragOutside = 'true'
       else delete root.dataset.tabDragOutside
@@ -81,10 +81,10 @@ export function CourseTabMoveOverlay(): JSX.Element {
     const targetAtPoint = (x: number, y: number): { courseId: string | null; target: MoveTarget } | null => {
       const source = tabDragSession.getSource(), state = useWorkspaceStore.getState()
       if (!source || tabDragSession.getSnapshot() !== 'tab' ||
-        state.surface !== 'course' || state.hydration !== 'ready' || (state.activeCourseId === null && source.courseId !== null)) return null
-      const api = workspaceApiForCourse(state.activeCourseId)
+        state.surface !== 'course' || state.hydration !== 'ready' || (state.activeWorkspaceKey === null && source.courseId !== null)) return null
+      const api = workspaceApiForCourse(state.activeWorkspaceKey)
       const target = api ? courseMoveTarget(api, root, x, y) : null
-      return target ? { courseId: state.activeCourseId, target } : null
+      return target ? { courseId: state.activeWorkspaceKey, target } : null
     }
     const withinRoot = (x: number, y: number, target: Node | null): boolean => {
       const bounds = root.getBoundingClientRect()
@@ -155,8 +155,8 @@ export function CourseTabMoveOverlay(): JSX.Element {
     }
     const unsubscribe = tabDragSession.subscribe(() => { inside = false; point = null; reflectGuides(); setPreview(null) })
     const stopCourse = useWorkspaceStore.subscribe(state => {
-      if (state.activeCourseId !== lastCourse || state.hydration !== lastHydration || state.surface !== lastSurface) {
-        lastCourse = state.activeCourseId; lastHydration = state.hydration; lastSurface = state.surface
+      if (state.activeWorkspaceKey !== lastCourse || state.hydration !== lastHydration || state.surface !== lastSurface) {
+        lastCourse = state.activeWorkspaceKey; lastHydration = state.hydration; lastSurface = state.surface
         setPreview(null)
         schedulePreview()
       }

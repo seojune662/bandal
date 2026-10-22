@@ -709,6 +709,9 @@ export function planChecks(files, full = false) {
     if (files.some(file => file === `.github/workflows/apple-ipad-${action}.yml` || file === `scripts/apple-ipad-${action}.mjs`)) scriptTests.add(`scripts/test-apple-ipad-${action}.mjs`)
   }
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
+  if (has(/^src\/(?:renderer\/src\/features\/annotation\/|main\/(?:features\/browser\/annotation|ipc\/annotationHandlers)|shared\/(?:types\/chatAnnotation|ipc\/annotationContract))/)) e2e.add('e2e/annotation.spec.ts')
+  if (has(/^src\/(?:renderer\/src\/features\/(?:assistantPanel\/|chat\/studyMode)|main\/features\/(?:learning\/(?:learningRuntime|learningAgent)\.ts$|agent\/chatStudyRecords)|shared\/types\/study\.ts$)/)) e2e.add('e2e/workspaceStudyModes.spec.ts')
+  if (has(/^src\/(?:renderer\/src\/features\/learning\/(?:LearningSpacesPanel|ProjectGroupMenu|projectNavigation)|main\/db\/projectNavigation|shared\/projectNavigation)/)) e2e.add('e2e/projectGroups.spec.ts')
   if (has(/^src\/renderer\/src\/features\/materials\/(?:MaterialViews|MaterialTree|MaterialsSidebar|materialViewPreference|materials)\./)) e2e.add('e2e/materialViews.spec.ts')
   if (has(/^(?:src\/(?:main\/(?:features\/externalSources\/|ipc\/externalSourcesHandlers\.ts$)|renderer\/src\/features\/materials\/(?:ExternalSourcesPanel|externalSources)\.|shared\/types\/externalSources\.ts$)|native\/photo-picker\/|scripts\/build-photo-picker\.mjs$)/)) e2e.add('e2e/externalSources.spec.ts')
   if (has(/^(?:src\/(?:main\/(?:features\/share\/|ipc\/shareHandlers\.ts$)|renderer\/src\/features\/share\/|shared\/types\/share\.ts$)|native\/share-extension\/|scripts\/(?:build-share-extension|sign-mac|verify-share-extension)\.mjs$)/)) e2e.add('e2e/shareImport.spec.ts')

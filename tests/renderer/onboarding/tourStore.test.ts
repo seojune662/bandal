@@ -1,19 +1,20 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { workspaceKey } from '../../../src/shared/types/workspace'
 import { DEFAULT_SETTINGS, TUTORIAL_VERSION } from '../../../src/shared/types/settings'
 
 const fixture = vi.hoisted(() => ({
   invoke: vi.fn(), loaded: vi.fn(), push: null as null | ((event: { settings: any }) => void),
   courses: {} as any, workspace: {} as any, ui: {} as any,
   opens: [] as { descriptor: any; options: any }[], activeCalls: [] as (string | null)[],
-  launcher: vi.fn(), toast: vi.fn()
+  mode: vi.fn(), toast: vi.fn()
 }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: fixture.invoke, onPush: (_channel: string, callback: typeof fixture.push) => { fixture.push = callback; return () => { fixture.push = null } } }))
 vi.mock('../../../src/renderer/src/stores/settingsSnapshot', () => ({ ensureSettingsLoaded: fixture.loaded }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => fixture.courses } }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ useWorkspaceStore: { getState: () => fixture.workspace, subscribe: () => () => {} } }))
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: { getState: () => fixture.ui, setState: (patch: any) => Object.assign(fixture.ui, patch) } }))
-vi.mock('../../../src/renderer/src/features/launcher/launcherContext', () => ({ captureLauncherContext: fixture.launcher }))
+vi.mock('../../../src/renderer/src/features/assistantPanel/workspaceAssistantStore', () => ({ useWorkspaceAssistantStore: { getState: () => ({ setMode: fixture.mode }) } }))
 vi.mock('../../../src/renderer/src/features/workspace/tabIdentity', () => ({
   descriptorFor: (kind: string, payload: any) => ({ kind, payload }),
   tabPanelId: (d: any) => `${d.kind}:${d.payload.courseId}:${d.payload.relPath}`
@@ -28,7 +29,7 @@ let events: string[]
 let failPurge: boolean
 const originalPanel = 'note:original:notes.md'
 const course = (id: string) => ({ id, name: id, color: '#357', folderPath: `/sample/${id}` })
-const savedUi = { leftRailOpen: false, courseRailOpen: false, leftRailPanel: 'widgets', rightRailOpen: false, isSettingsOpen: true, settingsCategory: 'general', isBoardOverlayOpen: true, isLinkGraphOpen: true }
+const savedUi = { leftRailOpen: false, courseRailOpen: false, leftRailPanel: 'widgets', rightRailOpen: false, rightRailTab: 'materials', isSettingsOpen: true, settingsCategory: 'general', isBoardOverlayOpen: true, isLinkGraphOpen: true }
 
 beforeEach(() => {
   resetTourForTests(); vi.resetAllMocks(); document.body.innerHTML = ''
@@ -46,10 +47,11 @@ beforeEach(() => {
     deleteCourse: vi.fn(async (id: string) => { events.push(`delete:${id}`); fixture.courses.courses = fixture.courses.courses.filter((c: any) => c.id !== id) })
   }
   fixture.workspace = {
-    activeCourseId: 'original', activePanelId: originalPanel, hydration: 'ready', surface: 'learning-home',
+    activeCourseId: 'original', activeWorkspace: { kind: 'course', courseId: 'original' }, activeWorkspaceKey: workspaceKey({ kind: 'course', courseId: 'original' }), activePanelId: originalPanel, hydration: 'ready', surface: 'learning-home',
     openTabs: { [originalPanel]: { kind: 'note', payload: { courseId: 'original', relPath: 'notes.md' } } },
     setActiveCourse: vi.fn((id: string | null) => { fixture.activeCalls.push(id); fixture.workspace.activeCourseId = id }),
-    showCourseWorkspace: vi.fn((id: string | null) => { fixture.workspace.surface = 'course'; fixture.workspace.setActiveCourse(id) }),
+    showCourseWorkspace: vi.fn((id: string | null) => fixture.workspace.showWorkspace(id ? { kind: 'course', courseId: id } : null)),
+    showWorkspace: vi.fn((workspace: any) => { fixture.workspace.hydration = 'ready'; fixture.workspace.surface = 'course'; fixture.workspace.setActiveCourse(workspace?.courseId ?? null); fixture.workspace.activeWorkspace = workspace; fixture.workspace.activeWorkspaceKey = workspace ? workspaceKey(workspace) : null }),
     showLearningHome: vi.fn(() => { fixture.workspace.surface = 'learning-home' }),
     openTab: vi.fn((descriptor: any, options: any) => { fixture.opens.push({ descriptor, options }); const id = `${descriptor.kind}:${descriptor.payload.courseId}:${descriptor.payload.relPath}`; fixture.workspace.openTabs[id] = descriptor; fixture.workspace.activePanelId = id }),
     closeTabs: vi.fn(async (ids: string[]) => { for (const id of ids) delete fixture.workspace.openTabs[id] }),
@@ -58,7 +60,10 @@ beforeEach(() => {
   fixture.ui = { ...savedUi,
     closeSettings: () => { fixture.ui.isSettingsOpen = false }, closeBoardOverlay: () => { fixture.ui.isBoardOverlayOpen = false },
     showCourses: () => { fixture.ui.leftRailOpen = true; fixture.ui.courseRailOpen = true; fixture.ui.leftRailPanel = 'courses' },
-    toggleRightRail: () => { fixture.ui.rightRailOpen = !fixture.ui.rightRailOpen }
+    toggleRightRail: () => { fixture.ui.rightRailOpen = !fixture.ui.rightRailOpen },
+    setRightRailTab: (tab: string) => { fixture.ui.rightRailOpen = true; fixture.ui.rightRailTab = tab },
+    showAssistant: () => { fixture.ui.rightRailOpen = true; fixture.ui.rightRailTab = 'ai' },
+    setHomeTab: (tab: string) => { fixture.ui.leftRailPanel = tab; fixture.ui.leftRailOpen = true; fixture.ui.courseRailOpen = true }
   }
   fixture.loaded.mockImplementation(async () => settings)
   fixture.invoke.mockImplementation(async (channel: string, input: any) => {
@@ -87,17 +92,17 @@ describe('five-feature tutorial lifecycle', () => {
     expect(fixture.workspace.surface).toBe('course')
   })
 
-  test('uses the split documents, the current PDF sidebar, and real launcher entries without AI mutation', async () => {
+  test('uses split documents, shared AI modes, and project home without AI mutation', async () => {
     await useTourStore.getState().start(); await next(1)
     expect(fixture.opens.map(item => item.descriptor.kind)).toEqual(['pdf', 'note'])
     expect(fixture.opens[1]!.options).toEqual({ beside: true })
-    const pdfPanelId = `pdf:demo:${useTourStore.getState().seedPdfPath}`
-    const panel = document.createElement('div'); panel.dataset.tourPanel = pdfPanelId
-    const toggle = document.createElement('button'); toggle.className = 'tab-assistant-toggle'; toggle.setAttribute('aria-expanded', 'false')
-    const clicked = vi.fn(); toggle.addEventListener('click', clicked); panel.append(toggle); document.body.append(panel)
-    await next(2); expect(clicked).toHaveBeenCalledTimes(1)
-    await next(3); await next(4)
-    expect(fixture.ui.leftRailPanel).toBe('plugins'); expect(fixture.launcher).toHaveBeenCalledTimes(2)
+    await next(2)
+    expect(fixture.ui.rightRailTab).toBe('ai')
+    expect(fixture.mode).toHaveBeenLastCalledWith({ kind: 'course', courseId: 'demo' }, 'chat')
+    await next(3)
+    expect(fixture.mode).toHaveBeenLastCalledWith({ kind: 'course', courseId: 'demo' }, 'quiz')
+    await next(4)
+    expect(fixture.ui.leftRailPanel).toBe('learning')
     expect(fixture.invoke.mock.calls.map(([channel]) => channel).filter(channel => channel.startsWith('chat:') || channel.startsWith('learning:') || channel.startsWith('study:'))).toEqual([])
   })
 
@@ -156,16 +161,15 @@ describe('five-feature tutorial lifecycle', () => {
     expect(useTourStore.getState().stepIndex).toBe(0)
   })
 
-  test('a delayed launcher context cannot reopen the launcher after Skip restores the original view', async () => {
+  test('returns to the exact nested project and shared AI tab after replay', async () => {
+    fixture.workspace.activeWorkspace = { kind: 'project', courseId: 'original', rootRelPath: 'Projects/Reading' }
+    fixture.workspace.activeWorkspaceKey = 'project:original:Projects%2FReading'
+    fixture.ui.rightRailTab = 'ai'
     await useTourStore.getState().start(); await next(1); await next(2)
-    let complete!: () => void
-    fixture.launcher.mockReturnValueOnce(new Promise<void>(resolve => { complete = resolve }))
-    useTourStore.getState().next()
-    await vi.waitFor(() => expect(fixture.launcher).toHaveBeenCalled())
     useTourStore.getState().skip(); await ended()
-    complete(); await Promise.resolve(); await Promise.resolve()
-    expect(fixture.ui).toMatchObject(savedUi)
-    expect(useTourStore.getState()).toMatchObject({ status: 'idle', stepIndex: 0, transitioning: false })
+    expect(fixture.workspace.activeWorkspace).toEqual({ kind: 'project', courseId: 'original', rootRelPath: 'Projects/Reading' })
+    expect(fixture.ui.rightRailTab).toBe('ai')
+    expect(fixture.workspace.activePanelId).toBe(originalPanel)
   })
 
   test('replay preserves and repairs a failed boot marker before creating the new sample', async () => {

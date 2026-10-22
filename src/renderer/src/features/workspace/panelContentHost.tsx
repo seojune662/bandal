@@ -1,9 +1,10 @@
 import { useContext, useLayoutEffect, useRef, useSyncExternalStore, type FunctionComponent } from 'react'
 import type { DockviewApi, DockviewPanelApi, IDockviewPanelProps } from 'dockview'
 import { CourseActivity } from './courseActivity'
-import { WorkspaceCourseContext, WorkspacePlacementContext } from './placementContext'
+import { WorkspaceRefContext, WorkspaceCourseContext, WorkspacePlacementContext } from './placementContext'
 import { createRebindingApi } from './rebindingApi'
 import { tabDragSession } from './tabDragSession'
+import { workspaceKey, workspaceFromKey } from '../../../../shared/types/workspace'
 
 type PanelProps = IDockviewPanelProps
 type Bounds = { x: number; y: number; width: number; height: number }
@@ -109,7 +110,9 @@ function registerSlot(props: PanelProps, courseId: string | null, slot: HTMLElem
 /** Dockview owns only this empty presentation slot, never the live content. */
 export function WorkspacePanelSlot(props: PanelProps): JSX.Element {
   const slot = useRef<HTMLDivElement>(null)
-  const courseId = useContext(WorkspaceCourseContext)
+  const workspace = useContext(WorkspaceRefContext)
+  const ownerId = useContext(WorkspaceCourseContext)
+  const courseId = workspace === null ? ownerId : workspaceKey(workspace)
   useLayoutEffect(() => {
     if (!slot.current) return
     const element = slot.current
@@ -179,10 +182,11 @@ export function WorkspaceContentLayer({ components, activeCourseId, active }: {
       if (!Component) return null
       const courseActive = active && entry.courseId === activeCourseId
       const visible = courseActive && entry.props.api.isVisible
+      const workspace = entry.courseId === null ? null : workspaceFromKey(entry.courseId)
       return <CourseActivity.Provider key={entry.instanceId} value={courseActive}>
-        <WorkspacePlacementContext.Provider value={{ courseId: entry.courseId, panelId: entry.panelId, instanceId: entry.instanceId }}>
+        <WorkspacePlacementContext.Provider value={{ courseId: workspace?.courseId ?? null, workspace, panelId: entry.panelId, instanceId: entry.instanceId }}>
           <div className="workspace-panel-content" data-panel-instance={entry.instanceId}
-            data-content-panel={entry.panelId} data-content-course={entry.courseId ?? ''}
+            data-content-panel={entry.panelId} data-content-course={workspace?.courseId ?? ''} data-content-workspace={entry.courseId ?? ''}
             hidden={!visible} aria-hidden={!visible} {...{ inert: !visible ? '' : undefined }}
             style={{ left: entry.bounds.x, top: entry.bounds.y, width: entry.bounds.width, height: entry.bounds.height }}
             onPointerDownCapture={() => { if (!entry.props.api.isActive) entry.props.api.setActive() }}>

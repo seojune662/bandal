@@ -10,6 +10,10 @@ export interface ChatSkill {
   creationKinds: CreationKind[]
 }
 export interface ChatContext {
+  workspaceKey?: string
+  references?: import('./chatAnnotation').AnnotationReference[]
+  /** Main-owned display text for a workflow recipe. */
+  displayContent?: string
   sourcePanelId?: string
   snapshot?: import('./chatContext').MessageContextSnapshot
   excludeCurrentMaterial?: boolean
@@ -26,4 +30,14 @@ export interface ChatArtifact {
   relPath: string
   name: string
   kind: 'pdf' | 'note' | 'image' | 'other'
+  learning?: { binding: import('./learning').LearningBinding; runId: string }
+  pending?: boolean
+  workflow?: { sessionId: string; workspaceKey: string; content: string; context?: ChatContext }
+}
+
+export interface StudyConversationRequest {
+  sessionId: string
+  workspaceKey: string
+  content: string
+  context?: ChatContext
 }

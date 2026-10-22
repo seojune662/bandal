@@ -97,12 +97,13 @@ function SelectedPreview({ courseId, node, className }: { courseId: string; node
 
 interface MaterialBrowserProps extends MaterialTreeProps {
   view: MaterialView
+  rootRelPath?: string
   directory: string
   onDirectoryChange: (relPath: string) => void
   searching?: boolean
 }
 
-export function MaterialBrowser({ view, directory, onDirectoryChange, searching = false, ...props }: MaterialBrowserProps): JSX.Element {
+export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectoryChange, searching = false, ...props }: MaterialBrowserProps): JSX.Element {
   const directoryNode = findMaterialNode(props.nodes, directory)
   const validDirectory = !searching && directoryNode?.kind === 'dir' ? directoryNode.relPath : ''
   const nodes = validDirectory === '' ? props.nodes : directoryNode?.children ?? []
@@ -119,7 +120,7 @@ export function MaterialBrowser({ view, directory, onDirectoryChange, searching 
     const node = findMaterialNode(props.nodes, relPath)
     if (node) props.onSelect(node)
   }
-  const trail = validDirectory.split('/').filter(Boolean).map((_, index, parts) => parts.slice(0, index + 1).join('/'))
+  const trail = validDirectory.split('/').filter(Boolean).map((_, index, parts) => parts.slice(0, index + 1).join('/')).filter(path => !rootRelPath || path.startsWith(rootRelPath + '/'))
   const item = (node: MaterialNode, appearance: 'icon' | 'gallery' | 'column'): JSX.Element => <TreeNode
     {...props} key={node.relPath} node={node} depth={0} flat appearance={appearance} selectOnly={appearance !== 'icon'}
     expandedPaths={Object.fromEntries(trail.map(path => [path, true]))}
@@ -134,7 +135,7 @@ export function MaterialBrowser({ view, directory, onDirectoryChange, searching 
   const columnPaths = ['', ...trail]
   return <div className="materials-browser" data-view={view}>
     {!searching && <nav className="materials-breadcrumbs" aria-label="자료 폴더 경로">
-      <button type="button" aria-label="전체 자료" onClick={() => navigate('')}><Icon name="folder" /><span>전체 자료</span></button>
+      <button type="button" aria-label="전체 자료" onClick={() => navigate(rootRelPath)}><Icon name="folder" /><span>전체 자료</span></button>
       {trail.map(path => <span key={path}><Icon name="chevronRight" /><button type="button" aria-current={path === validDirectory ? 'location' : undefined} onClick={() => navigate(path)}>{materialBaseName(path)}</button></span>)}
     </nav>}
     {view === 'columns' ? <div ref={columns} className="materials-columns" aria-label="자료 열 보기">

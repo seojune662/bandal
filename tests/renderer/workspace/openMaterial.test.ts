@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock, workspace } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   openTabMock: vi.fn(), selectCourseMock: vi.fn(), showCourseWorkspaceMock: vi.fn(),
-  workspace: { activeCourseId: 'course-1', activePanelId: null, surface: 'course' }
+  workspace: { activeCourseId: 'course-1', activeWorkspaceKey: 'course-1', activeWorkspace: { kind: 'course', courseId: 'course-1' }, activePanelId: null, surface: 'course' }
 }))
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
@@ -22,7 +22,7 @@ vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: {
-    getState: () => ({ ...workspace, openTab: openTabMock, showCourseWorkspace: showCourseWorkspaceMock })
+    getState: () => ({ ...workspace, openTab: openTabMock, showWorkspace: showCourseWorkspaceMock })
   }
 }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
@@ -37,7 +37,7 @@ describe('openMaterialInCourse', () => {
     openTabMock.mockReset()
     selectCourseMock.mockReset(); showCourseWorkspaceMock.mockReset()
     invokeMock.mockResolvedValue({ ok: true })
-    workspace.activeCourseId = 'course-1'; workspace.surface = 'course'
+    workspace.activeCourseId = 'course-1'; workspace.activeWorkspaceKey = 'course-1'; workspace.activeWorkspace = {kind: 'course', courseId: 'course-1'}; workspace.surface = 'course'
   })
 
   test('opens an image tab and records material activity', () => {
@@ -88,10 +88,10 @@ describe('openMaterialInCourse', () => {
     })
   })
 
-  test('an original source first selects its owning course rather than opening inside the review workspace', () => {
-    openMaterialInCourse('course-1', 'pdf', 'original.pdf')
-    expect(selectCourseMock).toHaveBeenCalledWith('course-1')
-    expect(showCourseWorkspaceMock).toHaveBeenCalledWith('course-1')
+  test('explicit owner navigation selects the owning course before opening the document', () => {
+    openMaterialInCourse('course-1', 'pdf', 'original.pdf', { navigateToOwner: true })
+    expect(selectCourseMock).toHaveBeenCalledWith('course-1', { preserveSurface: true })
+    expect(showCourseWorkspaceMock).toHaveBeenCalledWith({ kind: 'course', courseId: 'course-1' })
     expect(showCourseWorkspaceMock.mock.invocationCallOrder[0]).toBeLessThan(openTabMock.mock.invocationCallOrder[0]!)
   })
 
@@ -106,7 +106,7 @@ describe('openMaterialInCourse', () => {
     let resolve!: (value: unknown) => void
     invokeMock.mockReturnValueOnce(new Promise(done => { resolve = done }))
     openMaterialInCourse('course-1', 'other', 'lecture.wav')
-    if (next === 'course') workspace.activeCourseId = 'course-2'
+    if (next === 'course') workspace.activeWorkspaceKey = 'course-2'
     else if (next === 'home') workspace.surface = 'learning-home'
     else openMaterialInCourse('course-1', 'note', 'next.md')
     openTabMock.mockClear(); selectCourseMock.mockClear()

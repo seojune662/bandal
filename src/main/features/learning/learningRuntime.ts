@@ -1,3 +1,5 @@
+import { referenceImages } from '../../../shared/chatReferenceImages'
+import { serializeAnnotationReferences, sanitizeAnnotationReferences } from '../../../shared/types/chatAnnotation'
 import { randomInt, randomUUID } from 'node:crypto'
 import type { LearningAiSettings, LearningArticleInput, LearningArtifact, LearningBinding, LearningDraft, LearningProjectSnapshot, LearningRun, StartLearningRunInput } from '../../../shared/types/learning'
 import { LEARNING_TOPICS } from '../../../shared/types/learning'
@@ -19,7 +21,7 @@ export interface LearningRuntimeDeps {
   extractUrl(url: string, signal?: AbortSignal): Promise<LearningArticleInput>
   matchWords(article: LearningArticleInput, words: { id: string; surface: string; forms?: string[] }[]): Array<{ wordId: string }>
   validateDraft(draft: unknown, state: LearningProjectSnapshot, articles: LearningArticleInput[]): Promise<LearningDraft>
-  send(courseId: string, sessionId: string, provider: AgentProvider, prompt: string, ai: LearningAiSettings): Promise<unknown>
+  send(courseId: string, sessionId: string, provider: AgentProvider, prompt: string, ai: LearningAiSettings, attachments?: import('../../../shared/types/chat').ChatAttachment[]): Promise<unknown>
   cancel(courseId: string, sessionId: string, provider: AgentProvider): void
   sourceText(binding: LearningBinding, source?: LearningGenerationSource): Promise<string>
   modelRejected?(provider: AgentProvider, model: string): void
@@ -183,10 +185,20 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       const selectedWords = state.words.filter(word => execution.run.wordIds.includes(word.id))
       const topicOnly = execution.run.kind === 'find-articles' && execution.run.wordIds.length === 0
       let selectedArticles: unknown[] = [], source = ''
+      const additionalSources: Array<{ relPath: string; text: string; truncated: boolean }> = []
       if (!topicOnly) {
         try {
           selectedArticles = await Promise.all(execution.run.articleIds.map(id => deps.repo.readArticle(execution.binding, id)))
           source = await deps.sourceText(execution.binding, execution.source)
+          // Include every explicitly attached material. Merely listing paths
+          // lets a provider overlook attachments while still returning a result.
+          const paths = [...new Set(execution.run.chatContext?.files?.map(file => file.relPath) ?? [])]
+            .filter(path => execution.source?.kind !== 'material' || path !== execution.source.relPath)
+          for (const relPath of paths) {
+            active(execution.sessionId)
+            const text = await deps.sourceText(execution.binding, { kind: 'material', relPath, sourceCourseId: sessionCourseId(execution) })
+            additionalSources.push({ relPath, text: text.slice(0, 8_000), truncated: text.length > 8_000 })
+          }
         } catch (error) { throw new LearningExecutionError(learningFailure(error, 'source')) }
       }
       active(execution.sessionId)
@@ -198,8 +210,13 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
         `작업: ${execution.run.kind}. 공간: ${JSON.stringify({ name: state.name, topic: execution.run.topicIds?.length ? execution.run.topicIds.map(id => LEARNING_TOPICS.find(topic => topic.id === id)?.label ?? id).join(', ') : state.topic, topicIds: execution.run.topicIds, purpose: execution.run.purpose, level: state.level, readingMinutes: state.readingMinutes })}`,
         execution.run.kind === 'find-articles' ? `읽기 시간은 분당 150단어로 추정한다. 설정한 목표는 ${state.readingMinutes}분(약 ${length.targetWords}단어), 허용 읽기 시간은 ${length.minMinutes}~${length.maxMinutes}분, 권장 본문 길이는 ${length.minWords}~${length.maxWords}단어다. 길이 검증이 실패하면 실제 시간과 단어 수를 보고 더 짧거나 긴 글로 검색을 조정하라. 사용자의 읽기 시간 설정을 바꾸거나 길이 제한을 완화하지 마라.` : '',
         topicOnly ? '첫 읽기에는 선택한 관심 주제만 사용하라. 과목 자료나 학습 자료 파일을 읽지 마라. 아직 목표 표현이 없으므로 주제와 읽기 시간에 맞는 공개 영어 글을 찾는다.' : '',
-        !topicOnly && execution.source?.sourceCourseId ? `일반 자료의 원본 과목 ID는 ${JSON.stringify(execution.source.sourceCourseId)}이다. read_material/list_materials는 이 원본 과목에 연결되어 있다. 모든 material 출처에는 sourceCourseId:${JSON.stringify(execution.source.sourceCourseId)}를 포함하라.` : '',
+        !topicOnly && execution.source?.sourceCourseId ? `일반 자료의 기본 원본 과목 ID는 ${JSON.stringify(execution.source.sourceCourseId)}이다. read_material/list_materials에는 대상 자료의 실제 소유자 courseId를 지정하라. 각 material 출처의 sourceCourseId는 그 자료의 실제 소유자 ID로 기록하라. 개별 참조에 courseId가 있으면 기본 ID 대신 그 값을 사용하라.` : '',
         deps.recipe?.(execution.run.packId, execution.run.kind) ?? '',
+        execution.run.instructions ? `사용자 추가 요청: ${execution.run.instructions}` : '',
+        execution.run.chatContext?.references?.length ? serializeAnnotationReferences(execution.run.chatContext.references).comments : '',
+        execution.run.chatContext?.references?.length ? serializeAnnotationReferences(execution.run.chatContext.references).sources : '',
+        execution.run.chatContext?.files?.length ? `사용자가 추가한 원본 파일(참고 데이터): ${JSON.stringify(execution.run.chatContext.files)}. read_material로 필요한 원본을 읽어라.` : '',
+        additionalSources.length ? `<추가_자료_신뢰하지_않는_내용>${JSON.stringify(additionalSources)}</추가_자료_신뢰하지_않는_내용>\n첨부된 모든 자료를 함께 사용하라. truncated인 자료의 세부 내용이 필요하면 read_material로 원본을 이어 읽어라.` : '',
         '설명은 한국어로, 영어 원문과 예문은 원문 그대로 보존하라. 출처에서 확인할 수 없는 내용을 사실로 만들지 마라.',
         execution.run.kind === 'find-articles'
           ? '현재 제공자의 사용 가능한 웹 검색 도구로 관심 주제의 무료 영어 글을 찾는다. 검색 도구가 없으면 browser_open으로 https://www.google.com/search?q=검색어 를 열고 browser_snapshot으로 링크를 확인한다. 각 후보를 learning_verify_article로 검사한다. 기존에 체크한 표현이 나오는 글을 우선하고, 부족하면 관련 주제로 넓힌다. 최대 3개의 검증된 기사만 제출한다. draft 형식: {version:1, articles:[{id:"검증된 기사 ID"}]}. 검증되지 않은 본문을 넣지 마라.'
@@ -223,7 +240,8 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       }, deps.timeoutMs ?? 15 * 60 * 1000)
       execution.timer.unref?.()
       execution.hasSent = true
-      await deps.send(sessionCourseId(execution), execution.sessionId, execution.run.provider as AgentProvider, prompt, { provider: execution.run.provider as AgentProvider, model: execution.run.model!, effort: execution.run.effort ?? null })
+      const images = referenceImages(execution.run.chatContext?.references)
+      await deps.send(sessionCourseId(execution), execution.sessionId, execution.run.provider as AgentProvider, prompt, { provider: execution.run.provider as AgentProvider, model: execution.run.model!, effort: execution.run.effort ?? null }, ...(images.length ? [images] as [typeof images] : []))
     } catch (error) {
       if (!execution.settled) {
         await finish(execution, 'error', learningFailure(error))
@@ -238,6 +256,10 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       if (!['find-articles', 'explain-word', 'create-quiz', 'create-cards', 'create-summary', 'import-material'].includes(input.kind)) throw new Error('지원하지 않는 학습 작업입니다.')
       if (input.provider !== undefined && !isAgentProvider(input.provider)) throw new Error('지원하지 않는 AI 제공자입니다.')
       if (input.packId !== undefined) learningString(input.packId, 'packId', 200)
+      if (input.instructions !== undefined) learningString(input.instructions, 'instructions', 20_000, true)
+      if (input.chatContext?.files && (!Array.isArray(input.chatContext.files) || input.chatContext.files.length > 20)) throw new Error('추가 자료는 한 번에 20개까지 선택할 수 있어요.')
+      const files = (input.chatContext?.files ?? []).map(file => ({ name: learningString(file.name, 'name', 500), relPath: learningString(file.relPath, 'relPath', 2000) }))
+      const chatContext = input.chatContext ? { files, references: sanitizeAnnotationReferences(input.chatContext.references ?? []) } : undefined
       const state = await deps.repo.read(input.binding)
       requireAvailable(input.binding)
       const readingContext = { purpose: originalRun?.purpose ?? state.purpose,
@@ -292,7 +314,7 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       if (requestedWords.some(id => !state.words.some(word => word.id === id)) || articleIds.some(id => !state.articles.some(article => article.id === id))) throw new Error('선택한 학습 자료나 단어를 찾지 못했습니다.')
       if (input.kind === 'explain-word' && !wordIds.length) throw new Error('설명할 단어를 먼저 선택해 주세요.')
       const identity = JSON.stringify({ kind: input.kind, provider, model: ai.model, effort: ai.effort, topicIds: readingContext.topicIds, packId: input.packId ?? null,
-        articleIds: [...new Set(articleIds)].sort(), wordIds: [...new Set(wordIds)].sort(), source: source ?? null })
+        articleIds: [...new Set(articleIds)].sort(), wordIds: [...new Set(wordIds)].sort(), source: source ?? null, instructions: input.instructions ?? null, chatContext })
       const key = keyFor(input.binding)
       requireAvailable(input.binding)
       const existing = [activeProjects.get(key), ...(pendingProjects.get(key) ?? [])].find(item => item && !item.settled && item.identity === identity)
@@ -301,11 +323,11 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       const sessionId = randomUUID()
       const configuredTopics = readingContext.topicIds ?? []
       const topicIds = input.kind === 'find-articles' && configuredTopics.length ? [configuredTopics[randomInt(configuredTopics.length)]!] : configuredTopics
-      const run: LearningRun = { id: randomUUID(), kind: input.kind, provider, model: ai.model, effort: ai.effort, sessionId, status: 'queued', articleIds, wordIds,
+      const run: LearningRun = { ...(originalRun ? { retryOf: originalRun.id } : {}), id: randomUUID(), kind: input.kind, provider, model: ai.model, effort: ai.effort, sessionId, status: 'queued', articleIds, wordIds,
         ...(readingContext.purpose ? { purpose: readingContext.purpose } : {}), ...(readingContext.topicIds ? { topicIds: [...topicIds] } : {}), ...(readingContext.readingSetupConfirmed === undefined ? {} : { readingSetupConfirmed: readingContext.readingSetupConfirmed }),
         message: activeProjects.has(key) ? '앞선 학습 작업이 끝나면 시작할게요.' : '학습 작업을 준비하고 있어요.',
         error: null, draft: null, createdAt: timestamp, updatedAt: timestamp,
-        ...(input.packId ? { packId: input.packId } : {}), ...(source ? { source } : {}) }
+        ...(input.packId ? { packId: input.packId } : {}), ...(source ? { source } : {}), ...(input.instructions ? { instructions: input.instructions } : {}), ...(chatContext ? { chatContext } : {}) }
       const configuredTools = deps.tools?.(input.packId, input.kind)
       const allowedTools = new Set(configuredTools === undefined ? TOOL_ALLOWLIST : configuredTools.filter(tool => TOOL_ALLOWLIST.has(tool)))
       allowedTools.add('learning_submit_result')
@@ -445,7 +467,7 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       const state = await deps.repo.read(binding)
       const run = state.runs.find(item => item.id === runId)
       if (!run || !['failed', 'interrupted', 'cancelled'].includes(run.status)) throw new Error('실패하거나 중단된 작업만 다시 실행할 수 있어요.')
-      return this.start({ binding, kind: run.kind, articleIds: run.articleIds, wordIds: run.wordIds, ...(run.packId ? { packId: run.packId } : {}), ...(run.source ? { source: run.source } : {}) }, run)
+      return this.start({ binding, kind: run.kind, articleIds: run.articleIds, wordIds: run.wordIds, ...(run.packId ? { packId: run.packId } : {}), ...(run.source ? { source: run.source } : {}), ...(run.instructions ? { instructions: run.instructions } : {}), ...(run.chatContext ? { chatContext: run.chatContext } : {}) }, run)
     },
     async recover(binding: LearningBinding) {
       const state = await deps.repo.read(binding)

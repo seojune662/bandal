@@ -5,7 +5,7 @@ import { expect, test, vi } from 'vitest'
 import { FavoritesSection } from '../../../src/renderer/src/features/courses/FavoritesSection'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { useFavoritesStore } from '../../../src/renderer/src/stores/favoritesStore'
-import { resetWorkspaceStoreForTests, useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
+import { resetWorkspaceStoreForTests, retainedTabDescriptors, useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
 import { BANDAL_TAB_DRAG_MIME } from '../../../src/renderer/src/features/workspace/tabDrag'
 import { installWorkspaceCourseMoveNavigation, navigateWorkspaceCourseHover } from '../../../src/renderer/src/features/workspace/courseTabMoveNavigation'
@@ -23,7 +23,8 @@ test('a trusted tab copied to favorites after folder hover keeps the destination
   let resolve!: (value: never) => void
   const add = vi.fn(() => new Promise<never>(done => { resolve = done }))
   resetWorkspaceStoreForTests()
-  useWorkspaceStore.setState({ activeCourseId: 'source', openTabs: { [source.panelId]: descriptor } })
+  useWorkspaceStore.setState({ activeCourseId: 'source', activeWorkspaceKey: 'source', activeWorkspace: {kind: 'course', courseId: 'source'}, openTabs: { [source.panelId]: descriptor } })
+  useWorkspaceStore.getState().saveRetainedLayout('source', { panels: { [source.panelId]: { id: source.panelId, contentComponent: 'note', params: { descriptor } } }, grid: { root: { type: 'leaf', data: { id: 'g', views: [source.panelId] } }, width: 800, height: 600, orientation: 'HORIZONTAL' } } as never)
   useCoursesStore.setState({ selectedCourseId: 'source', courses: ['source', 'target'].map(id => ({ id } as never)),
     selectCourse: id => { useCoursesStore.setState({ selectedCourseId: id }) } })
   useFavoritesStore.setState({ byCourse: { target: [] }, loadingByCourse: {}, add })
@@ -44,7 +45,7 @@ test('a trusted tab copied to favorites after folder hover keeps the destination
     expect(event.defaultPrevented).toBe(true)
     expect(add).toHaveBeenCalledExactlyOnceWith({ courseId: 'target', label: 'moving', descriptor })
     expect(useCoursesStore.getState().selectedCourseId).toBe('target')
-    expect(useWorkspaceStore.getState().openTabs).toEqual({ [source.panelId]: descriptor })
+    expect(retainedTabDescriptors('source')).toEqual([descriptor])
     expect(close).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled()
     await act(async () => resolve({} as never))
     expect(useCoursesStore.getState().selectedCourseId).toBe('target')

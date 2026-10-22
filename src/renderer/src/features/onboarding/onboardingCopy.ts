@@ -25,11 +25,11 @@ const ko = {
   readingTitle: 'PDF를 읽고 필기하기',
   readingBody: 'PDF와 필기를 나란히 열어 읽으면서 정리하세요. PDF에 하이라이트와 메모를 남길 수 있고, 필기는 자동으로 저장됩니다.',
   assistantTitle: '현재 자료에 대해 AI에게 질문하기',
-  assistantBody: '자료 옆의 AI를 열면 현재 문서와 페이지를 바탕으로 대화할 수 있어요. AI 연결이 필요하며, 질문은 보내기를 눌러야 전송됩니다.',
+  assistantBody: '오른쪽 AI에서 현재 자료를 바탕으로 대화하세요. 부분 선택으로 여러 문서의 원하는 곳을 질문에 첨부할 수 있어요. 질문은 보내기를 눌러야 전송됩니다.',
   reviewTitle: '내 자료로 퀴즈와 카드 만들기',
-  reviewBody: '퀴즈 또는 카드에서 선택한 부분·현재 자료·과목 자료 중 범위를 고를 수 있어요. 만들기를 누르면 AI가 학습 자료를 만들고, 결과를 열어 풀거나 복습할 수 있어요.',
-  englishTitle: '관심 있는 영어 글 읽기',
-  englishBody: '영어 글 읽기에서 처음에는 관심 주제와 수준을 정하고, 다음부터 읽던 공간을 이어가요. 글을 읽고 표현을 모아 복습할 수 있어요.'
+  reviewBody: '같은 대화에서 퀴즈·플래시카드·예상 문제 모드로 전환하세요. 원하는 내용을 적고 자료를 첨부해 보내면 결과가 대화에 남고, 별도 탭에서 풀거나 복습할 수 있어요.',
+  englishTitle: '프로젝트에서 이어서 공부하기',
+  englishBody: '홈의 프로젝트 탭에서 영어 읽기나 과목 복습 공간을 만드세요. 과목과 같은 폴더 구조로 관리하며, 글·단어장·퀴즈·카드를 각각 열어 이어서 공부할 수 있어요.'
 }
 const en: typeof ko = {
   welcome: 'Welcome to Bandal', description: 'A study space to read, ask questions, and review.',
@@ -48,11 +48,11 @@ const en: typeof ko = {
   readingTitle: 'Read PDFs and take notes',
   readingBody: 'Read your PDF beside your notes. Highlight passages and add comments to the PDF; your notes save automatically.',
   assistantTitle: 'Ask AI about the current material',
-  assistantBody: 'Open AI beside a document to discuss its current content and page. Connect an AI provider first; a question is sent only when you select Send.',
+  assistantBody: 'Use AI on the right to discuss your current material. Select parts of several documents to attach to your question. Nothing is sent until you select Send.',
   reviewTitle: 'Create quizzes and flashcards from your material',
-  reviewBody: 'Choose quizzes or flashcards and select a passage, the current material, or the course materials as the scope. Select Create to have AI prepare study material you can open to practice and review.',
-  englishTitle: 'Read English about your interests',
-  englishBody: 'Choose English reading to set your interests and level the first time, then return to the space you were reading. Read articles and collect expressions to review.'
+  reviewBody: 'Switch the same conversation to Quiz, Flashcards, or Predicted questions. Describe what you need and attach sources, then send. Results stay in the conversation and open in their own tabs for practice.',
+  englishTitle: 'Continue studying in projects',
+  englishBody: 'Create English reading or course review spaces from the Projects home tab. Organize them like course folders and open articles, vocabulary, quizzes, and cards in separate tabs to keep studying.'
 }
 export function onboardingCopy(locale: Locale = getLocale()): typeof ko {
   return locale === 'en-US' ? en : ko

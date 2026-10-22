@@ -26,7 +26,8 @@ test('material toolbars export current Markdown, annotated PDF and original file
     await expect(toolbar).toBeVisible()
     await expect(page.locator('.tab-assistant-launchbar:visible')).toHaveCount(0)
     await expect(toolbar.getByRole('button', { name: '내보내기', exact: true })).toBeVisible()
-    await expect(toolbar.getByRole('button', { name: 'AI 보조 사이드바 펼치기', exact: true })).toBeVisible()
+    await expect(toolbar.locator('.tab-assistant-toggle')).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: 'AI', exact: true })).toBeVisible()
     expect(await toolbar.evaluate(element => {
       const document = element.closest('.tab-document')!
       return Math.abs(element.getBoundingClientRect().top - document.getBoundingClientRect().top)
@@ -58,9 +59,9 @@ test('material toolbars export current Markdown, annotated PDF and original file
     await noteToolbar.getByRole('button', { name: '내보내기', exact: true }).click()
     await expect.poll(() => existsSync(markdownPath) ? readFileSync(markdownPath, 'utf8') : '').toContain('저장 직전 추가')
     expect(readFileSync(markdownPath, 'utf8')).toBe(readFileSync(join(course.folderPath, 'share.md'), 'utf8'))
-    await noteToolbar.getByRole('button', { name: 'AI 보조 사이드바 펼치기', exact: true }).click()
-    await expect(page.locator('.tab-assistant:visible')).toHaveCount(1)
-    await noteToolbar.getByRole('button', { name: 'AI 보조 사이드바 접기', exact: true }).click()
+    await page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await expect(page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeVisible()
+    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await expect(page.locator('.tab-assistant:visible')).toHaveCount(0)
 
     for (const [name, selector, expected] of [
@@ -131,7 +132,7 @@ test('material toolbars export current Markdown, annotated PDF and original file
         return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2))
       })).toBe(true)
     }
-    const actions = await pdfToolbar.evaluate(element => ['.pdf-toolbar__zoom', '.material-export-button', '.tab-assistant-toggle'].map(selector => {
+    const actions = await pdfToolbar.evaluate(element => ['.pdf-toolbar__zoom', '.material-export-button'].map(selector => {
       const box = element.querySelector(selector)!.getBoundingClientRect()
       return box.y + box.height / 2
     }))

@@ -7,6 +7,7 @@ import { Watermark } from '../../../src/renderer/src/features/workspace/Workspac
 import { WorkspaceCourseContext } from '../../../src/renderer/src/features/workspace/placementContext'
 import { applyWorkspaceLayout, closeWorkspacePanel, removeEmptyWorkspaceGroup } from '../../../src/renderer/src/features/workspace/workspaceLayout'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
+import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 import { resetWorkspaceStoreForTests, useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 import { createBrowserTab, createMarkdownTab } from '../../../src/renderer/src/app/tabCommands'
 import { useNewTabMenu } from '../../../src/renderer/src/features/workspace/newTabMenuController'
@@ -72,7 +73,7 @@ test('the course welcome survives repeated last-tab closure and restoration of a
   const saved = api.toJSON()
   await act(async () => api.fromJSON(saved))
   expect(host.querySelector('h1')?.textContent).toBe('선형대수')
-  expect(vi.mocked(useFileDropTarget)).toHaveBeenLastCalledWith('placed')
+  expect(vi.mocked(useFileDropTarget)).toHaveBeenLastCalledWith('placed', '')
 })
 
 test('split placeholders become the course welcome when the other empty pane is removed', async () => {
@@ -91,14 +92,14 @@ test('split placeholders become the course welcome when the other empty pane is 
 test('welcome actions use the retained pane placement even when a different course is selected', async () => {
   const { api, host } = await workspace()
   await act(async () => applyWorkspaceLayout(api, 'single'))
-  const target = { courseId: 'placed', groupId: api.groups[0]!.id }
-  const openTab = vi.spyOn(useWorkspaceStore.getState(), 'openTab').mockImplementation(() => {})
+  const target = { courseId: 'placed', workspace: null, groupId: api.groups[0]!.id }
+  const assistant = vi.spyOn(useUiStore.getState(), 'showAssistant').mockImplementation(() => {})
   const buttons = [...host.querySelectorAll<HTMLButtonElement>('.workspace-start-actions button')]
   expect(buttons).toHaveLength(3)
   await act(async () => { buttons.forEach(button => button.click()) })
   expect(createMarkdownTab).toHaveBeenCalledWith(undefined, target)
   expect(createBrowserTab).toHaveBeenCalledWith(undefined, target)
-  expect(openTab).toHaveBeenCalledWith(expect.objectContaining({ kind: 'chat', payload: expect.objectContaining({ courseId: 'placed' }) }), { target })
+  expect(assistant).toHaveBeenCalledOnce()
   await act(async () => host.querySelector<HTMLButtonElement>('.workspace-watermark__cta')!.click())
   expect(useNewTabMenu.getState().anchor?.target).toEqual(target)
 })

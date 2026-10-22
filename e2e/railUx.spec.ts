@@ -69,7 +69,7 @@ async function signInFixture(bandal: BandalApp): Promise<void> {
   await bandal.page.locator('.global-navigation').getByRole('button', { name: '계정', exact: true }).click()
   await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents.send('auth:changed', (globalThis as any).__railAuth))
   await expect(bandal.page.getByRole('button', { name: '계정: 서준', exact: true })).toBeVisible()
-  await bandal.page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+  await bandal.page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
 }
 
 async function assertMenuBounds(page: Page): Promise<void> {
@@ -166,7 +166,7 @@ test('profile and more menus remain compact and reachable across themes, zoom, k
         await page.keyboard.press('Home'); await expect(menu.getByRole('menuitem', { name: '계정 설정', exact: true })).toBeFocused()
         await page.keyboard.press('ArrowDown'); await expect(menu.getByRole('menuitem', { name: '앱 설정', exact: true })).toBeFocused()
         await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0); await expect(trigger).toBeFocused()
-        await page.locator('.global-navigation').getByRole('button', { name: '더 보기', exact: true }).click()
+        await page.locator('.global-navigation').getByRole('button', { name: '도움말', exact: true }).click()
         await expect(page.locator('.help-menu')).toBeVisible()
         await captureWindow(bandal, info.outputPath(`more-${theme}-${compact ? 'compact' : 'wide'}.png`))
         await page.keyboard.press('Escape')
@@ -174,7 +174,7 @@ test('profile and more menus remain compact and reachable across themes, zoom, k
     }
     await trigger.click(); await menu.getByRole('menuitem', { name: '앱 설정', exact: true }).click()
     await expect(page.locator('.shell-settings-overlay')).toBeVisible()
-    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
     await trigger.click(); await menu.getByRole('menuitem', { name: '로그아웃', exact: true }).click()
     await expect(menu.getByRole('menuitem', { name: '로그아웃 중…', exact: true })).toBeDisabled()
     expect(await app.evaluate(() => (globalThis as any).__railSignOut.calls)).toBe(1)

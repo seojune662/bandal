@@ -1,3 +1,4 @@
+import { openWorkspaceAssistant } from '../features/assistantPanel/assistantController'
 import { ShareImportDialog } from '../features/share/ShareImportDialog'
 import { openStudyMarket } from './studyMarketNavigation'
 import { openCommunity } from './communityNavigation'
@@ -20,7 +21,8 @@ import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { LearningDialogsHost } from '../features/learning/LearningDialogsHost'
 import { LearningSpacesPanel } from '../features/learning/LearningSpacesPanel'
 import { FeatureLauncherPanel } from '../features/launcher/FeatureLauncherPanel'
-import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
+import { RightSidebar, RightSidebarToggle } from './RightSidebar'
+import { AnnotationOverlay } from '../features/annotation/AnnotationOverlay'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { TourOverlay } from '../features/onboarding/tour/TourOverlay'
@@ -127,9 +129,8 @@ export function AppShell(): JSX.Element {
   useEffect(() => { if (leftRailPanel === 'learning') setLearningMounted(true) }, [leftRailPanel])
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const workspaceSurface = useWorkspaceStore((state) => state.surface)
-  const activeTabKind = useWorkspaceStore((state) => state.activePanelSource()?.descriptor.kind ?? null)
   const courseRailVisible = courseRailOpen && workspaceSurface !== 'study-market' && workspaceSurface !== 'community'
-  const materialsRailVisible = rightRailOpen && workspaceSurface === 'course' && activeTabKind !== 'learning'
+  const materialsRailVisible = rightRailOpen && (workspaceSurface === 'course' || workspaceSurface === 'learning-home')
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
@@ -333,12 +334,7 @@ export function AppShell(): JSX.Element {
     ) {
       return
     }
-    openTab(
-      descriptorFor('chat', {
-        courseId: pendingChat.courseId,
-        conversationId: pendingChat.conversationId
-      })
-    )
+    openWorkspaceAssistant({ kind: 'course', courseId: pendingChat.courseId }, { conversationId: pendingChat.conversationId })
     setPendingChat((current) =>
       current?.courseId === pendingChat.courseId &&
       current.conversationId === pendingChat.conversationId
@@ -442,9 +438,9 @@ export function AppShell(): JSX.Element {
         <RecordingIndicator />
       </main>
 
-      <div className="shell-materials-rail" aria-hidden={!materialsRailVisible || settingsPresent}
+      <div id="right-sidebar" className="shell-materials-rail" aria-hidden={!materialsRailVisible || settingsPresent}
         {...{ inert: !materialsRailVisible || settingsPresent ? '' : undefined }}>
-        <MaterialsSidebar course={selectedCourse} />
+        <RightSidebar course={selectedCourse} />
       </div>
       {materialsRailVisible && !settingsPresent && <RailResizer side="right" />}
 
@@ -484,7 +480,9 @@ export function AppShell(): JSX.Element {
           </Suspense>
         </div>
       )}
+      <AnnotationOverlay />
       <ShellChrome />
+      <RightSidebarToggle />
       <TourOverlay />
     </div>
   )

@@ -47,8 +47,8 @@ export function resolveLauncherContext(input: ContextSources): LauncherContext {
   const courseId = descriptor && 'courseId' in descriptor.payload ? descriptor.payload.courseId : input.courseId
   const sourcePanelId = input.source?.panelId ?? null
   const document = input.documents.find(item => item.documentId === sourcePanelId && item.courseId === courseId)
-  const binding = descriptor?.kind === 'learning' && descriptor.payload.rootRelPath !== undefined
-    ? { courseId: descriptor.payload.courseId, rootRelPath: descriptor.payload.rootRelPath } : null
+  const binding = (descriptor?.kind === 'learning' && descriptor.payload.rootRelPath !== undefined || descriptor?.kind === 'learning-resource')
+    ? { courseId: descriptor.payload.courseId, rootRelPath: descriptor.payload.rootRelPath! } : null
   const browser = descriptor?.kind === 'browser'
     ? { tabId: descriptor.payload.tabId, url: input.browserNav?.url ?? descriptor.payload.initialUrl,
         title: input.browserNav?.title || tabTitle(descriptor) } : null
@@ -59,7 +59,7 @@ export function resolveLauncherContext(input: ContextSources): LauncherContext {
         ...(browser ? { browserTabId: browser.tabId, url: browser.url } : {}) } : null
   return {
     courseId, courseName: input.courseName ?? null, sourcePanelId, descriptor, material, binding,
-    articleIds: descriptor?.kind === 'learning' && descriptor.payload.view === 'reader' && descriptor.payload.itemId ? [descriptor.payload.itemId] : [],
+    articleIds: descriptor?.kind === 'learning-resource' && descriptor.payload.resource.kind === 'article' ? [descriptor.payload.resource.id] : descriptor?.kind === 'learning' && descriptor.payload.view === 'reader' && descriptor.payload.itemId ? [descriptor.payload.itemId] : [],
     wordIds: [], selection: document?.selection?.trim() ?? '', browser,
     sourceUnavailable: document?.unavailable === true
   }
@@ -101,7 +101,7 @@ async function enrichContext(context: LauncherContext, preserveSelection: boolea
   }
   if (context.binding) {
     const project = await invoke('learning:get', { binding: context.binding })
-    if (context.descriptor?.kind === 'learning' && context.descriptor.payload.view === 'reader') {
+    if (context.descriptor?.kind === 'learning' && context.descriptor.payload.view === 'reader' || context.descriptor?.kind === 'learning-resource' && context.descriptor.payload.resource.kind === 'article') {
       const article = context.articleIds.length ? project.articles.find(item => item.id === context.articleIds[0])
         : project.articles.find(item => item.status === 'reading') ?? project.articles.find(item => item.status === 'unread') ?? project.articles.at(-1)
       if (context.articleIds.length && !article) throw new Error('학습 원문을 찾을 수 없어요. 글을 다시 열어 주세요.')
@@ -109,7 +109,7 @@ async function enrichContext(context: LauncherContext, preserveSelection: boolea
       if (next.material) next.material = { ...next.material, title: article?.title ?? `${project.name} · 읽기` }
       if (article?.exportRelPath) next.savedMaterialRelPath = [context.binding.rootRelPath, article.exportRelPath].filter(Boolean).join('/')
     }
-    if (context.descriptor?.kind === 'learning' && context.descriptor.payload.view === 'vocabulary') {
+    if (context.descriptor?.kind === 'learning' && context.descriptor.payload.view === 'vocabulary' || context.descriptor?.kind === 'learning-resource' && context.descriptor.payload.resource.kind === 'vocabulary') {
       next.wordIds = project.words.map(word => word.id)
       if (next.material) next.material = { ...next.material, title: `단어장 · ${project.name}` }
       if (project.exports.some(item => item.relPath === '단어장.md')) next.savedMaterialRelPath = [context.binding.rootRelPath, '단어장.md'].filter(Boolean).join('/')
@@ -125,6 +125,7 @@ let captureSequence = 0
 let invalidatedSelection: { panelId: string; target: string; selection: string } | null = null
 
 function learningTarget(descriptor: TabDescriptor | null): string | null {
+  if (descriptor?.kind === 'learning-resource') return JSON.stringify(descriptor.payload)
   if (descriptor?.kind !== 'learning') return null
   const { courseId, rootRelPath, view, itemId } = descriptor.payload
   return JSON.stringify([courseId, rootRelPath, view ?? 'home', itemId])
@@ -171,7 +172,7 @@ export async function refreshLauncherContext(context: LauncherContext): Promise<
     const workspace = useWorkspaceStore.getState()
     const active = workspace.activePanelSource()
     const descriptor = workspace.openTabs[context.sourcePanelId] ?? (active?.panelId === context.sourcePanelId ? active.descriptor : null)
-    if (context.descriptor?.kind === 'learning' && descriptor && learningTarget(descriptor) !== learningTarget(context.descriptor)) {
+    if ((context.descriptor?.kind === 'learning' || context.descriptor?.kind === 'learning-resource') && descriptor && learningTarget(descriptor) !== learningTarget(context.descriptor)) {
       throw new Error('학습 원문이 바뀌었어요. 현재 자료를 다시 선택해 주세요.')
     }
     const document = readDocumentContexts().find(item => item.documentId === context.sourcePanelId)

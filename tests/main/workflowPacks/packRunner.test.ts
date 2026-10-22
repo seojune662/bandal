@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -92,6 +92,19 @@ describe('packRunner', () => {
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
+  })
+  test('reads a linked source course while reserving the result in the owning project workspace', async () => {
+    const sourceFolder = join(testDir, 'original-course'); mkdirSync(sourceFolder)
+    writeFileSync(join(sourceFolder, 'original.md'), '# Original content')
+    const pack: WorkflowPack = { ...CUSTOM_PACK, worksOn: ['material', 'selection'] }
+    const ask = vi.fn(async () => undefined)
+    const runner = createPackRunner({ store: { resolve: () => pack, list: () => [{ pack, source: 'user', enabled: true, approvedAt: '2026-01-01' }], approve: vi.fn() },
+      runGuard: createPackRunGuard(), getCourse: id => ({ name: id, folder: id === 'source-owner' ? sourceFolder : courseFolder }), ask, confirm: vi.fn(async () => 'once'), now: () => FIXED_NOW })
+    const result = await runner.run({ courseId: COURSE_ID, sourceCourseId: 'source-owner', packId: pack.id, targetRelPath: 'original.md',
+      conversation: { sessionId: 'conversation', workspaceKey: 'project:["course-a","Project"]', content: '설명해줘' } })
+    expect(result.relPath).toMatch(/^Project\/웹 복습\//)
+    expect(ask).toHaveBeenCalledWith(COURSE_ID, expect.stringContaining(sourceFolder), expect.objectContaining({ sourceCourseId: 'source-owner' }), expect.objectContaining({ relPath: result.relPath }))
+    expect(ask.mock.calls[0]?.[1]).toContain('original.md')
   })
 
   test('composes ordered custom, follow-up, safety, and final Write sections', async () => {

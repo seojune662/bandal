@@ -16,6 +16,8 @@ import type { createDictionaryService } from '../features/learning/dictionary'
 
 type Handler = <K extends keyof LearningIpcContract>(channel: K, fn: (input: LearningIpcContract[K]['req']) => LearningIpcContract[K]['res'] | Promise<LearningIpcContract[K]['res']>) => void
 interface LearningHandlerDeps {
+  validateConversation?(courseId: string, request: import('../../shared/types/chatCapabilities').StudyConversationRequest): void
+  recordConversationRun?(courseId: string, request: import('../../shared/types/chatCapabilities').StudyConversationRequest, result: import('../../shared/ipc/learningContract').LearningRunResult, ai: LearningAiSettings | undefined, name: string): void
   dictionary: ReturnType<typeof createDictionaryService>
   repo: LearningRepo
   runtime: ReturnType<typeof createLearningRuntime>
@@ -276,6 +278,7 @@ export function registerLearningHandlers(handle: Handler, deps: LearningHandlerD
     return deps.repo.importDraft({ binding: input.binding, draft, runId: run.id })
   })
   handle('study:generate', async input => {
+    if (input.conversation) deps.validateConversation?.(input.courseId, input.conversation)
     const pack = nativePack(input.packId)
     const source: LearningGenerationSource = input.source ?? { kind: 'course' }
     const kind: StartLearningRunInput['kind'] = pack.experience === 'article-vocabulary' ? 'find-articles' : pack.experience === 'quiz' ? 'create-quiz' : 'create-cards'
@@ -295,6 +298,10 @@ export function registerLearningHandlers(handle: Handler, deps: LearningHandlerD
     if ((source.kind === 'article' || source.kind === 'vocabulary') && sourceCourseId !== binding.courseId) throw new ValidationError('기사와 단어는 현재 학습 공간의 기록에서 선택하세요.')
     if (source.kind === 'course' || source.kind === 'material') source.sourceCourseId = sourceCourseId
     if (input.ai && input.binding) await deps.repo.updateSettings({ binding, ai: await selectedAi(input.ai) })
-    return deps.runtime.start({ binding, kind, packId: pack.id, source, ...(source.articleIds ? { articleIds: source.articleIds } : {}), ...(source.wordIds ? { wordIds: source.wordIds } : {}) })
+    const result = await deps.runtime.start({ binding, kind, packId: pack.id, source,
+      ...(input.conversation ? { instructions: input.conversation.content, chatContext: input.conversation.context } : {}),
+      ...(source.articleIds ? { articleIds: source.articleIds } : {}), ...(source.wordIds ? { wordIds: source.wordIds } : {}) })
+    if (input.conversation) deps.recordConversationRun?.(input.courseId, input.conversation, result, input.ai, pack.name)
+    return result
   })
 }

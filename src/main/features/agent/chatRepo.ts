@@ -53,6 +53,8 @@ export interface PermissionGrantDetails {
 }
 
 export interface ChatRepo {
+  bindWorkspace(sessionId: string, workspaceKey: string): void
+  workspaceForSession(sessionId: string): string | null
   setAccessPolicy(sessionId: string, policy: AiAccessPolicy): void
   /** Live session row by id, or null when it never persisted / was deleted. */
   getSession(sessionId: string): ChatSessionInfo | null
@@ -66,7 +68,8 @@ export interface ChatRepo {
   /** Conversation list for a course; zero-message rows are excluded. */
   listConversations(
     courseId: string,
-    surface?: ChatSurface
+    surface?: ChatSurface,
+    workspaceKey?: string
   ): ChatConversationSummary[]
   /** Sets the title once — later sends never rename the conversation. */
   setTitleIfEmpty(sessionId: string, title: string): void
@@ -254,7 +257,15 @@ export function createChatRepo(db: Database): ChatRepo {
       }
     },
 
-    listConversations(courseId, surface = 'app') {
+    bindWorkspace(sessionId, workspaceKey) {
+      const current = this.workspaceForSession(sessionId)
+      if (current && current !== workspaceKey) throw new Error('이 대화는 다른 공간에 속해 있어요.')
+      db.prepare('INSERT OR IGNORE INTO workspace_chat_sessions(session_id,workspace_key) VALUES (?,?)').run(requireId(sessionId, 'sessionId'), requireNonEmptyString(workspaceKey, 'workspaceKey'))
+    },
+    workspaceForSession(sessionId) {
+      return (db.prepare('SELECT workspace_key FROM workspace_chat_sessions WHERE session_id=?').get(sessionId) as { workspace_key: string } | undefined)?.workspace_key ?? null
+    },
+    listConversations(courseId, surface = 'app', workspaceKey) {
       // INNER JOIN on messages drops zero-message conversations: a tab that
       // was opened but never used must not clutter the list.
       const rows = db
@@ -278,7 +289,11 @@ export function createChatRepo(db: Database): ChatRepo {
         created_at: string
         message_count: number
       }[]
-      return rows.map((row) => ({
+      return rows.filter(row => {
+        if (!workspaceKey) return true
+        const owner = this.workspaceForSession(row.id)
+        return owner === workspaceKey || (!owner && !workspaceKey.startsWith('project:'))
+      }).map((row) => ({
         id: row.id,
         courseId: row.course_id,
         surface: row.surface as ChatSurface,

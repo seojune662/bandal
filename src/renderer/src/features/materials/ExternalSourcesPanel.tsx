@@ -32,7 +32,7 @@ function SourceThumbnail({ entry }: { entry: ExternalSourceEntry }): JSX.Element
   </span>
 }
 
-export function ExternalSourcesPanel({ courseId }: { courseId: string | null }): JSX.Element {
+export function ExternalSourcesPanel({ courseId, dirRelPath = '' }: { courseId: string | null; dirRelPath?: string }): JSX.Element {
   const [open, setOpen] = useState(false)
   const [source, setSource] = useState<'folder' | 'photos'>('folder')
   const [folder, setFolder] = useState<ExternalSourceLocation | null>(null)
@@ -58,7 +58,7 @@ export function ExternalSourcesPanel({ courseId }: { courseId: string | null }):
     if (!courseId || busy) return
     setBusy(true); setError(null)
     try {
-      const result = await invoke('externalSources:import', { id: entry.id, courseId })
+      const result = await invoke('externalSources:import', { id: entry.id, courseId, dirRelPath })
       if (result.failed.length) throw new Error(result.failed[0]?.reason ?? '자료를 가져오지 못했습니다.')
       await useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
       showToast('과목 자료에 추가했어요.')

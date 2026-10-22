@@ -1,15 +1,15 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createDefaultNoteTab, createMarkdownTab, createStudyTab } from '../../../src/renderer/src/app/tabCommands'
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), load: vi.fn(), toast: vi.fn(), paper: vi.fn(), courseId: 'first' as string | null, surface: 'course' }))
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), load: vi.fn(), toast: vi.fn(), paper: vi.fn(), courseId: 'first' as string | null, surface: 'course', projectRoot: null as string | null }))
 vi.mock('../../../src/renderer/src/features/pdfNotes/NewNoteSheet', () => ({ openNewNoteSheet: mocks.paper }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: mocks.invoke }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: mocks.toast }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => ({ selectedCourseId: mocks.courseId }) } }))
 vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({ useMaterialsStore: { getState: () => ({ loadTree: mocks.load }) } }))
-vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ useWorkspaceStore: { getState: () => ({ surface: mocks.surface, openTab: mocks.open }) } }))
+vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ useWorkspaceStore: { getState: () => ({ surface: mocks.surface, activeWorkspace: mocks.courseId === null ? null : mocks.projectRoot === null ? { kind: 'course', courseId: mocks.courseId } : { kind: 'project', courseId: mocks.courseId, rootRelPath: mocks.projectRoot }, openTab: mocks.open }) } }))
 vi.mock('../../../src/renderer/src/stores/settingsSnapshot', () => ({ settingsSnapshot: () => ({ tabs: { markdownTitlePrefix: '필기', notePaper: 'grid', noteOrientation: 'landscape' } }) }))
-beforeEach(() => { vi.clearAllMocks(); mocks.courseId = 'first'; mocks.surface = 'course' })
+beforeEach(() => { vi.clearAllMocks(); mocks.courseId = 'first'; mocks.surface = 'course'; mocks.projectRoot = null })
 
 test('creating a note cannot attach the old course note to a newly selected workspace', async () => {
   let resolve!: (value: unknown) => void
@@ -82,4 +82,18 @@ test('failed keyboard note creation reports the error without a phantom tab', as
   await createDefaultNoteTab()
   expect(mocks.open).not.toHaveBeenCalled()
   expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('다시 시도'), 'danger')
+})
+
+
+test('a project note keeps its captured root when another project in the same course opens', async () => {
+  let resolve!: (value: unknown) => void
+  mocks.projectRoot = 'projects/first'
+  mocks.invoke.mockReturnValue(new Promise(done => { resolve = done }))
+  const pending = createMarkdownTab('프로젝트 필기')
+  expect(mocks.invoke).toHaveBeenCalledWith('notes:create', { courseId: 'first', dirRelPath: 'projects/first', title: '프로젝트 필기' })
+  mocks.projectRoot = 'projects/second'
+  resolve({ courseId: 'first', relPath: 'projects/first/프로젝트 필기.md' })
+  await pending
+  expect(mocks.open).not.toHaveBeenCalled()
+  expect(mocks.load).toHaveBeenCalledWith('first', { refreshOnly: true })
 })

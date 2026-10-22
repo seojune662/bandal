@@ -63,7 +63,7 @@ test('community replaces marketplace and preserves the live course editor while 
     await page.screenshot({ path: info.outputPath('community-preparing.png') })
     await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setSize(900, 700))
     expect(await page.locator('.community').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
-    await rail(page).getByRole('button', { name: '과목', exact: true }).click()
+    await rail(page).getByRole('button', { name: '홈', exact: true }).click()
     await expect(editor).toBeVisible()
     expect(await editor.evaluate(element => element === (window as any).__communityEditor)).toBe(true)
   } finally { await bandal.close() }
@@ -109,7 +109,7 @@ test('open contest promotion is dismissible once and submission retry preserves 
     await expect(detail).toContainText('시험 전에 설명을 녹음해 보는 흐름도 좋겠어요.')
     await page.screenshot({ path: info.outputPath('community-entry.png') })
     await detail.getByRole('button', { name: '닫기', exact: true }).click()
-    await rail(page).getByRole('button', { name: '과목', exact: true }).click()
+    await rail(page).getByRole('button', { name: '홈', exact: true }).click()
     await expect(page.locator('.community h1')).not.toBeVisible()
 
     // Exercise the registered OS-event handler, real IPC intent buffer and

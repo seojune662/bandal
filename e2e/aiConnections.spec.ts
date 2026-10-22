@@ -113,7 +113,7 @@ test('CLI installation continues through in-app sign-in and verified readiness a
     await expect(codex.getByRole('button', { name: '로그인 페이지로 돌아가기' })).toBeVisible()
     await expect(codex.getByRole('button', { name: '로그인 취소' })).toBeVisible()
     await page.screenshot({ path: info.outputPath('ai-connection-waiting.png') })
-    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: '앱으로 돌아가기', exact: true }).click()
     await bandal.app.evaluate(({ BrowserWindow }) => {
       const state = (globalThis as any).__aiConnectionTest
       state.loggedIn = true
@@ -134,7 +134,7 @@ test('CLI installation continues through in-app sign-in and verified readiness a
     await page.keyboard.press('ControlOrMeta+,')
     await page.locator('.settings-nav [data-category="ai"]').click()
     await expect(page.locator('#settings-ai-provider-codex').locator('..')).toContainText('로그인 필요')
-    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: '앱으로 돌아가기', exact: true }).click()
     await expect(chat).toContainText('연결 변경 중에도 현재 응답을 이어 갑니다.')
     await expect(chat.getByRole('button', { name: '연결하기', exact: true })).toHaveCount(0)
     await bandal.app.evaluate(({ BrowserWindow }) => {

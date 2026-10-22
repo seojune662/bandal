@@ -10,11 +10,12 @@ import { ComposerPopover } from './ComposerPopover'
 import { updateComposerDraft, useComposerDraft } from './composerDraftStore'
 import { mentionHitsFromTree } from './Composer'
 
-export function AddMenu({ courseId, conversationId, provider, disabled, screenAvailable }: {
-  courseId: string; conversationId: string; provider: AgentProvider; disabled: boolean; screenAvailable: boolean
+export function AddMenu({ courseId, conversationId, provider, disabled, screenAvailable, materialRoot }: {
+  courseId: string; conversationId: string; provider: AgentProvider; disabled: boolean; screenAvailable: boolean; materialRoot?: string | undefined
 }): JSX.Element {
   const [open, setOpen] = useState(false), [section, setSection] = useState<'main' | 'files' | 'skills'>('main')
   const [skills, setSkills] = useState<ChatSkill[]>([]), [files, setFiles] = useState<MaterialSearchHit[]>([])
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState(''), [loading, setLoading] = useState(false), [error, setError] = useState<string | null>(null)
   const anchor = useRef<HTMLButtonElement>(null)
   const draft = useComposerDraft(conversationId)
@@ -28,10 +29,10 @@ export function AddMenu({ courseId, conversationId, provider, disabled, screenAv
     let live = true
     setLoading(true); setError(null); setSkills([])
     void Promise.all([invoke('agent:skills', { provider, courseId }), invoke('materials:tree', { courseId })]).then(([nextSkills, tree]) => {
-      if (live) { setSkills(nextSkills); setFiles(mentionHitsFromTree(tree)) }
+      if (live) { setSkills(nextSkills); setFiles(mentionHitsFromTree(tree).filter(file => !materialRoot || file.relPath.startsWith(`${materialRoot}/`))) }
     }).catch(() => { if (live) setError('목록을 불러오지 못했어요. 메뉴를 다시 열어 주세요.') }).finally(() => { if (live) setLoading(false) })
     return () => { live = false }
-  }, [open, provider, courseId])
+  }, [open, provider, courseId, materialRoot])
   const addFile = (file: { name: string; path?: string; relPath?: string }): void => {
     if (draft.files.length >= 20) { setError('파일은 한 번에 20개까지 첨부할 수 있어요.'); return }
     updateComposerDraft(conversationId, (current) => ({ files: [...current.files.filter((item) => (item.relPath ?? item.path) !== (file.relPath ?? file.path)), file].slice(0, 20) }))
@@ -44,13 +45,13 @@ export function AddMenu({ courseId, conversationId, provider, disabled, screenAv
     } catch { setError('파일 선택을 열지 못했어요. 다시 시도해 주세요.') }
   }
   return <>
-    <button ref={anchor} className="chat-add-trigger" type="button" aria-label="추가" title="사진, 파일, 스킬 추가" aria-haspopup="dialog" aria-expanded={open} disabled={disabled} onClick={() => { setSection('main'); setQuery(''); setOpen(!open) }}>+</button>
+    <button ref={anchor} className="chat-add-trigger" type="button" aria-label="추가" title="사진, 파일, 스킬 추가" aria-haspopup="dialog" aria-expanded={open} disabled={disabled} onClick={() => { setSection('main'); setQuery(''); setSelectedFiles(new Set()); setOpen(!open) }}>+</button>
     {open && <ComposerPopover anchor={anchor} label="대화에 추가" onClose={close}>
-      <div className="chat-menu-heading">{section !== 'main' && <button type="button" aria-label="추가 메뉴로 돌아가기" onClick={() => { setSection('main'); setQuery('') }}>‹</button>}{section === 'main' ? '추가' : section === 'files' ? '과목 자료' : '설치된 스킬'}</div>
+      <div className="chat-menu-heading">{section !== 'main' && <button type="button" aria-label="추가 메뉴로 돌아가기" onClick={() => { setSection('main'); setQuery('') }}>‹</button>}{section === 'main' ? '추가' : section === 'files' ? '자료 선택' : '설치된 스킬'}</div>
       {error && <p role="alert" className="chat-menu-error">{error}</p>}
       {section === 'main' ? <>
         <button className="chat-add-item" type="button" onClick={() => void pickFiles()}><span aria-hidden="true"><Icon name="plus" /></span><span>사진 및 파일<small>기기에서 선택</small></span></button>
-        <button className="chat-add-item" type="button" onClick={() => setSection('files')}><span aria-hidden="true"><Icon name="folder" /></span><span>과목 자료<small>현재 과목의 파일 연결</small></span></button>
+        <button className="chat-add-item" type="button" onClick={() => setSection('files')}><span aria-hidden="true"><Icon name="folder" /></span><span>자료 선택<small>현재 공간의 파일을 여러 개 연결</small></span></button>
         <button className="chat-add-item" type="button" onClick={() => { updateComposerDraft(conversationId, { browser: !draft.browser }); finish() }}><span aria-hidden="true"><Icon name="link" /></span><span>현재 브라우저 페이지</span></button>
         <button className="chat-add-item" type="button" disabled={!screenAvailable} onClick={() => { close(); void prepareQuickAction('screen', conversationId).catch(error => showToast(error instanceof Error ? error.message : String(error), 'danger')) }}><span aria-hidden="true"><Icon name="layoutRight" /></span><span>현재 화면<small>{screenAvailable ? '미리 확인한 뒤 전송' : '데스크톱 앱에서 사용'}</small></span></button>
         <button className="chat-add-item" type="button" disabled={!screenAvailable} onClick={() => { close(); void prepareQuickAction('region', conversationId).catch(error => showToast(error instanceof Error ? error.message : String(error), 'danger')) }}><span aria-hidden="true">⌗</span><span>영역 선택해서 질문</span></button>
@@ -67,9 +68,16 @@ export function AddMenu({ courseId, conversationId, provider, disabled, screenAv
       </> : <>
         <input className="chat-menu-search" aria-label={section === 'files' ? '과목 자료 검색' : '스킬 검색'} placeholder="검색…" value={query} onChange={(event) => setQuery(event.target.value)} />
         {loading && <p role="status" className="chat-menu-note">불러오는 중…</p>}
-        {section === 'files' ? files.filter((file) => `${file.name} ${file.relPath}`.toLowerCase().includes(query.toLowerCase())).slice(0, 60).map((file) => <button className="chat-add-item" key={file.relPath} type="button" onClick={() => { addFile({ name: file.name, relPath: file.relPath }); finish() }}><span aria-hidden="true"><Icon name="folder" /></span><span>{file.name}<small>{file.relPath}</small></span></button>) : skills.filter((skill) => `${skill.name} ${skill.description}`.toLowerCase().includes(query.toLowerCase())).map((skill) => <button className="chat-add-item" key={skill.id} type="button" aria-pressed={draft.skills.some((item) => item.id === skill.id)} onClick={() => {
+        {section === 'files' ? files.filter((file) => `${file.name} ${file.relPath}`.toLowerCase().includes(query.toLowerCase())).slice(0, 60).map((file) => <button className="chat-add-item" key={file.relPath} type="button" aria-pressed={selectedFiles.has(file.relPath)} onClick={() => setSelectedFiles(previous => { const next = new Set(previous); if (next.has(file.relPath)) next.delete(file.relPath); else next.add(file.relPath); return next })}><span aria-hidden="true">{selectedFiles.has(file.relPath) ? "✓" : <Icon name="folder" />}</span><span>{file.name}<small>{file.relPath}</small></span></button>) : skills.filter((skill) => `${skill.name} ${skill.description}`.toLowerCase().includes(query.toLowerCase())).map((skill) => <button className="chat-add-item" key={skill.id} type="button" aria-pressed={draft.skills.some((item) => item.id === skill.id)} onClick={() => {
           updateComposerDraft(conversationId, (current) => ({ skills: current.skills.some((item) => item.id === skill.id) ? current.skills.filter((item) => item.id !== skill.id) : [...current.skills, skill], creation: null })); finish()
         }}><span aria-hidden="true"><Icon name="puzzle" /></span><span>{skill.name}<small>{skill.description}</small></span></button>)}
+        {section === 'files' && <div className="chat-material-picker-footer"><button className="button button--primary" type="button" disabled={!selectedFiles.size} onClick={() => {
+          const additions = files.filter(file => selectedFiles.has(file.relPath)).map(file => ({ name: file.name, relPath: file.relPath }))
+          const unique = new Map(draft.files.map(file => [file.relPath ?? file.path, file]))
+          for (const file of additions) unique.set(file.relPath, file)
+          if (unique.size > 20) { setError('파일은 한 번에 20개까지 첨부할 수 있어요.'); return }
+          updateComposerDraft(conversationId, { files: [...unique.values()] }); finish()
+        }}>선택한 {selectedFiles.size}개 추가</button></div>}
         {!loading && (section === 'files' ? files : skills).length === 0 && <p className="chat-menu-note">연결된 {section === 'files' ? '자료가' : '스킬이'} 없어요.</p>}
       </>}
     </ComposerPopover>}

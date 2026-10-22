@@ -170,7 +170,7 @@ export function BrowserGuestView({
         const courseId = ownerCourseRef.current
         if (event.webContentsId !== element.getWebContentsId() ||
           useWorkspaceStore.getState().activeCourseId !== courseId || !getBrowserAnchorRect(tabId)) return
-        focusVisibleBrowserPanel(workspaceApiForCourse(courseId), tabId)
+        focusVisibleBrowserPanel(workspaceApiForCourse(useWorkspaceStore.getState().activeWorkspaceKey), tabId)
       }) as EventListener],
       [
         'did-start-loading',

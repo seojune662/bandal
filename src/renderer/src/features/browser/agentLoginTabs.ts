@@ -9,8 +9,9 @@ import { useBrowserGuests } from './browserGuestsStore'
 import { isAgentConnectionReady, useAgentConnectionStore } from '../chat/agentConnectionStore'
 import { agentConnectionCopy } from '../chat/agentConnectionCopy'
 import { getLocale } from '../../i18n/localeStore'
+import { sameWorkspace, type WorkspaceRef } from '../../../../shared/types/workspace'
 
-interface LoginTab { tabId: string; provider: AgentProvider; origin: string; callbackUrl: string | null; previousPanelId: string | null; courseId: string | null }
+interface LoginTab { tabId: string; provider: AgentProvider; origin: string; callbackUrl: string | null; previousPanelId: string | null; courseId: string | null; assistantWorkspace: WorkspaceRef | null }
 const loginTabs = new Map<string, LoginTab>()
 const loginPopups = new Map<string, { provider: AgentProvider; requestId: string; origin: string }>()
 
@@ -63,6 +64,7 @@ export function prepareAgentLoginTab(payload: BrowserOpenUrl, proposedId: string
     tabId: proposedId, provider: payload.loginProvider, origin: new URL(payload.url).origin,
     callbackUrl: new URL(payload.url).searchParams.get('redirect_uri'),
     previousPanelId: previous?.previousPanelId ?? workspace.activePanelSource()?.panelId ?? null,
+    assistantWorkspace: previous?.assistantWorkspace ?? (useUiStore.getState().rightRailOpen && useUiStore.getState().rightRailTab === 'ai' ? workspace.activeWorkspace : null),
     courseId: workspace.activeCourseId
   })
   return { tabId: proposedId, courseId: workspace.activeCourseId }
@@ -110,9 +112,12 @@ export function installAgentLoginTabLifecycle(): () => void {
         if (workspace.activeCourseId === null) workspace.notifyLayoutChanged()
       } else workspace.closeTabsMatching(descriptor)
     }
-    if (wasActive && owned.courseId === workspace.activeCourseId) {
+    if (wasActive && owned.courseId === workspace.activeCourseId && (!owned.assistantWorkspace || sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace))) {
       if (owned.previousPanelId) workspace.activatePanel(owned.previousPanelId)
-      else useUiStore.getState().openSettings('ai')
+      if (owned.assistantWorkspace && sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace)) {
+        useUiStore.getState().closeSettings()
+        useUiStore.getState().showAssistant()
+      } else if (!owned.previousPanelId) useUiStore.getState().openSettings('ai')
     }
   })
   return () => { stopProgress(); stopConnection(); completed.clear(); loginTabs.clear(); loginPopups.clear() }

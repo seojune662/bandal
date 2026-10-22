@@ -1,3 +1,4 @@
+import { sameWorkspace } from '../../../../shared/types/workspace'
 import { rememberStartedLearningRun } from '../learning/learningStartedRuns'
 import type { LearningAiSettings, LearningBinding, LearningProjectSummary } from '../../../../shared/types/learning'
 import type { LearningGenerationSource } from '../../../../shared/ipc/learningContract'
@@ -111,6 +112,7 @@ function generationSource(context: LauncherContext, scope: FeatureActionScope): 
 
 /** Existing hosts remain responsible for permissions, source validation and writes. */
 export async function executeFeatureAction(entry: FeatureEntry, capturedContext: LauncherContext, scope: FeatureActionScope = 'material', options: FeatureActionOptions = {}): Promise<FeatureActionResult> {
+  const originalWorkspace = useWorkspaceStore.getState().activeWorkspace
   const disabled = featureActionDisabledReason(entry, capturedContext, scope)
   if (disabled) return { status: !capturedContext.courseId && entry.kind === 'pack' ? 'needs-course' : 'failed', message: disabled }
   try {
@@ -159,7 +161,7 @@ export async function executeFeatureAction(entry: FeatureEntry, capturedContext:
       const result = await invoke('study:generate', { courseId: sourceCourseId, packId: entry.packId,
         ...(binding ? { binding } : {}), source: { ...source, sourceCourseId }, ...(options.ai ? { ai: options.ai } : {}) })
       rememberStartedLearningRun(result)
-      openLearning(result.binding, 'review')
+      if (sameWorkspace(useWorkspaceStore.getState().activeWorkspace, originalWorkspace)) openLearning(result.binding, 'review')
       return { status: 'started', ...result, message: `${entry.label}을 준비하고 있어요. 학습 공간에서 진행 상황을 볼 수 있어요.` }
     }
     if (scope !== 'course') await flushSourceNote(context)

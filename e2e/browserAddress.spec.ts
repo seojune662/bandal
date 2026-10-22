@@ -90,7 +90,7 @@ test.describe('browser address and shortcuts', () => {
 
   test('suggestions stay visible at narrow sizes and large zoom', async () => {
     const page = bandal.page
-    await page.getByRole('button', { name: '자료 사이드바 접기', exact: true }).click()
+    await page.getByRole('button', { name: '오른쪽 사이드바 접기', exact: true }).click()
     await bandal.app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]!
       window.setMinimumSize(640, 480)

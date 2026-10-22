@@ -95,7 +95,7 @@ test('moving a plugin panel preserves its live guest, page token and unsaved dra
   } finally { await bandal.close() }
 })
 
-test('moving a streaming chat retains its draft, pending approval and original course/session', async () => {
+test('switching workspaces retains streaming AI draft, pending approval and original course/session', async () => {
   const bandal = await launchBandal()
   try {
     await bandal.app.evaluate(({ ipcMain, BrowserWindow }) => {
@@ -127,13 +127,13 @@ test('moving a streaming chat retains its draft, pending approval and original c
     })
     await expect(page.locator('.chat-approval-dock')).toContainText('옮기는 중에도 원래 대화의 승인')
     const before = await bandal.app.evaluate(() => ({ courseId: (globalThis as any).__movingChat.courseId, sessionId: (globalThis as any).__movingChat.sessionId, opens: (globalThis as any).__movingChat.opens.length }))
-    const instanceId = await content(page).getAttribute('data-panel-instance')
-    await page.evaluate(() => { (window as any).__movedComposer = document.querySelector('.chat-composer__input') })
-    await moveToCourse(page, activeTab(page), target.name)
+    await folder(page, target.name).locator('.course-row__select').click()
+    await page.keyboard.press('ControlOrMeta+Shift+A')
+    await expect(input).toHaveValue('')
+    await input.fill('도착 과목의 별도 초안')
+    await folder(page, source.name).locator('.course-row__select').click()
     await expect(input).toHaveValue('답변 중에 작성한 다음 초안')
     await expect(page.locator('.chat-approval-dock')).toContainText('옮기는 중에도 원래 대화의 승인')
-    expect(await content(page).getAttribute('data-panel-instance')).toBe(instanceId)
-    expect(await page.evaluate(() => (window as any).__movedComposer === document.querySelector('.chat-composer__input'))).toBe(true)
     await bandal.app.evaluate(({ BrowserWindow }) => {
       const state = (globalThis as any).__movingChat
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('chat:event-batch', { courseId: state.courseId, sessionId: state.sessionId, seq: ++state.seq, events: [{ type: 'text-delta', blockId: 'stream', text: '옮긴 뒤 이어지는 응답' }] })
@@ -141,8 +141,8 @@ test('moving a streaming chat retains its draft, pending approval and original c
     await expect(page.locator('.chat-msg--assistant')).toContainText('옮긴 뒤 이어지는 응답')
     await page.locator('.chat-approval-dock').getByRole('button', { name: '계속', exact: true }).click()
     await expect(page.locator('.chat-approval-dock')).toHaveCount(0)
-    expect(await bandal.app.evaluate(() => ({ opens: (globalThis as any).__movingChat.opens.length, closes: (globalThis as any).__movingChat.closes.length, approvals: (globalThis as any).__movingChat.approvals, sends: (globalThis as any).__movingChat.sends }))).toMatchObject({ opens: before.opens, closes: 0, approvals: [{ requestId: 'move-approval', approved: true, scope: 'once' }], sends: [{ courseId: source.id, sessionId: before.sessionId }] })
-    await expect.poll(() => binding(page, target.id, 'chat')).toMatchObject({ payload: { courseId: source.id, conversationId: before.sessionId } })
+    expect(await bandal.app.evaluate(() => ({ opens: (globalThis as any).__movingChat.opens.length, closes: (globalThis as any).__movingChat.closes.length, approvals: (globalThis as any).__movingChat.approvals, sends: (globalThis as any).__movingChat.sends }))).toMatchObject({ closes: 0, approvals: [{ requestId: 'move-approval', approved: true, scope: 'once' }], sends: [{ courseId: source.id, sessionId: before.sessionId }] })
+    expect(await binding(page, target.id, 'chat')).toBeNull()
     await expect(input).toHaveValue('답변 중에 작성한 다음 초안')
     await expect(page.getByRole('button', { name: '응답 중단' })).toBeVisible()
   } finally { await bandal.close() }

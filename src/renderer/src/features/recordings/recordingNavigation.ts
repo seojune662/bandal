@@ -20,9 +20,10 @@ export function activateRecordingView(sessionId: string): boolean {
   if (!view) return false
   const panelId = [...views.entries()].find(([, entry]) => entry === view)?.[0]
   const placement = panelId ? workspaceCourseForPanel(panelId) : null
-  if (placement) useCoursesStore.getState().selectCourse(placement)
+  if (placement) { const workspace = workspaceFromKey(placement); useCoursesStore.getState().selectCourse(workspace.courseId, { preserveSurface: true }); useWorkspaceStore.getState().showWorkspace(workspace) }
   view.activate()
   return true
 }
 import { useCoursesStore } from '../../stores/coursesStore'
-import { workspaceCourseForPanel } from '../../stores/workspaceStore'
+import { workspaceFromKey } from '../../../../shared/types/workspace'
+import { useWorkspaceStore, workspaceCourseForPanel } from '../../stores/workspaceStore'

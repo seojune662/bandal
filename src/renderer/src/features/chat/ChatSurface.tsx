@@ -1,3 +1,7 @@
+import type { WorkspaceRef } from '../../../../shared/types/workspace'
+import { workspaceKey } from '../../../../shared/types/workspace'
+import type { AssistantMode } from '../assistantPanel/workspaceAssistantStore'
+import { ASSISTANT_MODES, sendStudyMode } from './studyMode'
 import { useMaterialContext } from './ContextChips'
 import {
   useCallback,
@@ -107,6 +111,8 @@ function isPendingConfirmation(
 }
 
 export interface ChatSurfaceProps {
+  workspace?: WorkspaceRef
+  mode?: AssistantMode
   courseId: string
   /** Conversation identity shared by the sidebar and expanded tab. */
   conversationId?: string
@@ -175,6 +181,8 @@ export function composeOutgoingText(
 export function ChatSurface({
   courseId,
   conversationId,
+  workspace,
+  mode = 'chat',
   variant = 'tab',
   surface = 'app',
   onOpenConversation,
@@ -185,7 +193,7 @@ export function ChatSurface({
 }: ChatSurfaceProps): JSX.Element {
   const nativeSurface = typeof window !== 'undefined' && !!window.bandal && window.bandal.platform !== 'web'
   const conversationKey = conversationId ?? courseId
-  const session = useChatSession(courseId, conversationKey, surface)
+  const session = useChatSession(courseId, conversationKey, surface, workspace ? workspaceKey(workspace) : undefined)
   const agentToolActivity = useAgentToolActivity(conversationKey)
   const openTab = useWorkspaceStore((store) => store.openTab)
   const composerDraft = useComposerDraft(conversationKey)
@@ -271,9 +279,14 @@ export function ChatSurface({
       }
       isPinnedRef.current = true
       setShowScrollToLatest(false)
-      await session.send(text, attachments, { ...context, ...(sourcePanelId ? { sourcePanelId } : {}) })
+      const outgoingContext = { ...context, ...(workspace ? { workspaceKey: workspaceKey(workspace) } : {}), ...(sourcePanelId === undefined ? {} : { sourcePanelId }) }
+      if (mode !== 'chat' && workspace) {
+        if (attachments.length) throw new Error('학습 자료 생성에는 + 메뉴의 자료 선택이나 Annotate 참조를 사용해 주세요.')
+        await sendStudyMode(workspace, conversationKey, mode, text || `${ASSISTANT_MODES.find(item => item.id === mode)!.label} 만들어줘`, outgoingContext, { provider: session.provider, model: session.state.model ?? '', effort: session.effort ?? null })
+        session.refresh()
+      } else await session.send(text, attachments, outgoingContext)
     },
-    [draft, pendingQuotes, session.send, setDraft, sourcePanelId]
+    [draft, pendingQuotes, session, setDraft, sourcePanelId, workspace, mode, conversationKey]
   )
 
   const removeQuote = useCallback((index: number) => {
@@ -368,6 +381,7 @@ export function ChatSurface({
     <>
       <ConversationListMenu
         courseId={courseId}
+        workspaceKey={workspace ? workspaceKey(workspace) : undefined}
         currentConversationId={conversationKey}
         surface={surface}
         onNewConversation={handleNewConversation}
@@ -467,6 +481,8 @@ export function ChatSurface({
       <Composer
         ref={composerRef}
         sourcePanelId={sourcePanelId}
+        placeholder={ASSISTANT_MODES.find(item => item.id === mode)?.placeholder}
+        materialRoot={workspace?.kind === 'project' ? workspace.rootRelPath : undefined}
         courseId={courseId}
         conversationId={conversationKey}
         provider={provider}

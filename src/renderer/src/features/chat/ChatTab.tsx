@@ -5,8 +5,10 @@ import type { TabDescriptor } from '../../../../shared/tabs'
 import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useHasBeenShown } from '../workspace/useHasBeenShown'
-import { ChatSurface } from './ChatSurface'
+import { openWorkspaceAssistant } from '../assistantPanel/assistantController'
+import { useWorkspacePlacement } from '../workspace/placementContext'
 import { useChatSessionStore } from './chatSessionStore'
+import { workspaceKey } from '../../../../shared/types/workspace'
 
 function descriptorFromParams(params: unknown): TabDescriptor | null {
   if (typeof params !== 'object' || params === null) {
@@ -26,7 +28,8 @@ function useResolvedConversationId(
   props: IDockviewPanelProps,
   courseId: string | null,
   fromPayload: string | undefined,
-  enabled: boolean
+  enabled: boolean,
+  scope: string | undefined
 ): string | null {
   const [resolved, setResolved] = useState<string | null>(fromPayload ?? null)
 
@@ -40,7 +43,7 @@ function useResolvedConversationId(
       return
     }
     let cancelled = false
-    void invoke('chat:conversations', { courseId })
+    void invoke('chat:conversations', { courseId, ...(scope ? { workspaceKey: scope } : {}) })
       .then(({ conversations }) => conversations[0]?.id ?? crypto.randomUUID())
       .catch(() => crypto.randomUUID())
       .then((conversationId) => {
@@ -60,12 +63,13 @@ function useResolvedConversationId(
     }
     // props.api is stable for the panel's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId, enabled, fromPayload])
+  }, [courseId, enabled, fromPayload, scope])
 
   return resolved
 }
 
 export default function ChatTab(props: IDockviewPanelProps): JSX.Element {
+  const placement = useWorkspacePlacement()
   const hasBeenShown = useHasBeenShown(props.api)
   const descriptor = descriptorFromParams(props.params)
   const active = usePanelActive(props.api)
@@ -75,7 +79,8 @@ export default function ChatTab(props: IDockviewPanelProps): JSX.Element {
     props,
     courseId,
     isChat ? descriptor.payload.conversationId : undefined,
-    hasBeenShown
+    hasBeenShown,
+    courseId ? workspaceKey(placement?.workspace?.courseId === courseId ? placement.workspace : { kind: 'course', courseId }) : undefined
   )
 
   // The first message names the conversation — rename the tab to match, the
@@ -108,13 +113,10 @@ export default function ChatTab(props: IDockviewPanelProps): JSX.Element {
     // conversation that is about to change identity.
     return <div className="chat-tab" data-kind="resolving" />
   }
-  return (
-    <ChatSurface
-      courseId={courseId}
-      conversationId={conversationId}
-      sourcePanelId={descriptor.payload.sourcePanelId}
-      variant="tab"
-      active={active}
-    />
-  )
+  return <LegacyConversationHandoff courseId={courseId} conversationId={conversationId} active={active} workspace={placement?.workspace} onClose={() => props.api.close()} />
+}
+function LegacyConversationHandoff({ courseId, conversationId, active, workspace, onClose }: { courseId: string; conversationId: string; active: boolean; onClose: () => void; workspace?: import('../../../../shared/types/workspace').WorkspaceRef | null | undefined }): JSX.Element {
+  const open = (): void => { openWorkspaceAssistant(workspace?.courseId === courseId ? workspace : { kind: 'course', courseId }, { conversationId }) }
+  useEffect(() => { if (active) { open(); onClose() } }, [active, courseId, conversationId])
+  return <div className="chat-tab chat-loading"><p>이 대화는 오른쪽 AI에서 이어갈 수 있어요.</p><button type="button" onClick={open}>AI에서 대화 열기</button></div>
 }

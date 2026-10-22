@@ -97,6 +97,12 @@ function owned(event: IpcMainInvokeEvent, id: string): Tab {
   if (!tab || tab.host !== host || tab.view.webContents.isDestroyed()) throw new Error('Browser tab closed')
   return tab
 }
+/** Annotation can inspect only a visible native page owned by this app window. */
+export function annotationBrowserTarget(event: IpcMainInvokeEvent, tabId: string): { contents: WebContents; visible: boolean; bounds: Electron.Rectangle | null; courseId: string | null } {
+  const tab = owned(event, tabId)
+  return { contents: tab.view.webContents, visible: tab.view.getVisible(), bounds: tab.bounds ?? null,
+    courseId: browsingContext(tab.view.webContents.id)?.courseId ?? null }
+}
 function state(wc: WebContents): BrowserPageState {
   const stateRevision = (stateRevisions.get(wc) ?? 0) + 1
   stateRevisions.set(wc, stateRevision)

@@ -48,7 +48,7 @@ export interface LearningIpcContract {
   'learning:importPreview': { req: { binding: LearningBinding; relPath: string; sourceCourseId?: string }; res: LearningRunResult }
   'learning:importSave': { req: ImportLearningDraftInput; res: LearningProjectSnapshot }
   'study:generate': {
-    req: { courseId: string; packId: string; binding?: LearningBinding; rootRelPath?: string; source?: LearningGenerationSource; ai?: LearningAiSettings }
+    req: { courseId: string; packId: string; binding?: LearningBinding; rootRelPath?: string; source?: LearningGenerationSource; ai?: LearningAiSettings; conversation?: import('../types/chatCapabilities').StudyConversationRequest }
     res: LearningRunResult
   }
 }

@@ -12,7 +12,7 @@ vi.mock('../../../src/renderer/src/app/toast', () => ({
   showToast: vi.fn()
 }))
 
-import { registerTabCloseGuard } from '../../../src/renderer/src/features/workspace/tabCloseGuard'
+import { registerResourceCloseGuard, registerTabCloseGuard } from '../../../src/renderer/src/features/workspace/tabCloseGuard'
 import { showToast } from '../../../src/renderer/src/app/toast'
 import { invoke } from '../../../src/renderer/src/lib/ipc'
 import {
@@ -24,9 +24,14 @@ import {
   retainedTabDescriptors,
   resetWorkspaceStoreForTests,
   useWorkspaceStore,
+  reconcileWorkspaceMaterialRename,
+  flushLearningResourcesForPath,
   moveWorkspacePanel
 } from '../../../src/renderer/src/stores/workspaceStore'
+import { workspaceKey } from '../../../src/shared/types/workspace'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
+import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
+import { useWorkspaceAssistantStore } from '../../../src/renderer/src/features/assistantPanel/workspaceAssistantStore'
 import {
   resetBrowserGuestsForTests,
   useBrowserGuests
@@ -43,7 +48,7 @@ const showToastMock = vi.mocked(showToast)
 
 interface FakePanel {
   id: string
-  params?: { descriptor: TabDescriptor }
+  params?: { descriptor: TabDescriptor; [key: string]: unknown }
   api: {
     setActive: ReturnType<typeof vi.fn>
     close: ReturnType<typeof vi.fn>
@@ -183,6 +188,43 @@ function liveDock(): FakeDockview {
 const pdfA = descriptorFor('pdf', { courseId: 'c1', relPath: 'a.pdf' })
 const pdfB = descriptorFor('pdf', { courseId: 'c1', relPath: 'b.pdf' })
 
+test('projects sharing an owner hydrate, retain and save independent tab layouts', async () => {
+  const first = { kind: 'project' as const, courseId: 'c1', rootRelPath: 'English' }
+  const second = { kind: 'project' as const, courseId: 'c1', rootRelPath: 'Review' }
+  const firstDock = liveDock(), secondDock = liveDock()
+  const state = useWorkspaceStore.getState()
+  state.showWorkspace(first)
+  state.attachCourseApi(workspaceKey(first), firstDock.asApi())
+  await settle()
+  state.openTab(pdfA)
+  state.notifyLayoutChanged()
+  state.showWorkspace(second)
+  state.attachCourseApi(workspaceKey(second), secondDock.asApi())
+  await settle()
+  state.openTab(pdfB)
+  state.notifyLayoutChanged()
+  expect(useWorkspaceStore.getState().activeCourseId).toBe('c1')
+  expect(useWorkspaceStore.getState().activeWorkspace).toEqual(second)
+  expect(retainedTabDescriptors(workspaceKey(first))).toEqual([pdfA])
+  expect(retainedTabDescriptors(workspaceKey(second))).toEqual([pdfB])
+  state.showWorkspace(first)
+  expect(useWorkspaceStore.getState().openTabs).toEqual({ [tabPanelId(pdfA)]: pdfA })
+  await state.flushPendingSave()
+  const reads = invokeMock.mock.calls.filter(([channel]) => channel === 'layout:get').map(([, input]) => input)
+  expect(reads).toEqual([{ courseId: 'c1', projectRootRelPath: 'English' }, { courseId: 'c1', projectRootRelPath: 'Review' }])
+  const written = invokeMock.mock.calls.flatMap(([channel, input]) => channel === 'layout:save' ? [input] : channel === 'layout:saveMany' ? (input as { layouts: unknown[] }).layouts : [])
+  expect(written).toEqual(expect.arrayContaining([expect.objectContaining({ courseId: 'c1', projectRootRelPath: 'English' }), expect.objectContaining({ courseId: 'c1', projectRootRelPath: 'Review' })]))
+})
+
+test('a project removal checks browser close guards even without resource binding', async () => {
+  const workspace = { kind: 'project' as const, courseId: 'c1', rootRelPath: 'Review' }
+  const dock = liveDock(), state = useWorkspaceStore.getState()
+  state.showWorkspace(workspace); state.attachCourseApi(workspaceKey(workspace), dock.asApi()); await settle()
+  state.openTab(descriptorFor('browser', { tabId: 'pending-form', initialUrl: 'https://example.test' }))
+  const stop = registerTabCloseGuard(descriptor => descriptor.kind !== 'browser')
+  try { expect(await prepareCloseLearningSpace(workspace, false)).toBe(false) } finally { stop() }
+})
+
 async function settle(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
@@ -211,6 +253,21 @@ beforeEach(() => {
 })
 
 describe('captured new-tab destination', () => {
+  for (const retained of [false, true]) test(`reopening ${retained ? 'retained' : 'active'} PDF preserves its page-note pairing`, async () => {
+    const dock = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    state.openTab(pdfA)
+    const panel = dock.getPanel(tabPanelId(pdfA))!
+    const pageNotePair = { id: 'pair', role: 'source', otherPanelId: 'notes' }
+    panel.params = { descriptor: pdfA, pageNotePair, scrollLinked: true }
+    Object.assign(dock, { getGroup: () => ({ id: 'original', panels: [panel], activePanel: panel }) })
+    if (retained) { state.setActiveCourse('c2'); state.attachCourseApi('c2', liveDock().asApi()); await settle() }
+    state.openTab(pdfA, { target: { courseId: 'c1', groupId: 'original' } })
+    expect(panel.api.updateParameters).toHaveBeenCalledWith({ descriptor: pdfA, pageNotePair, scrollLinked: true })
+    expect(panel.api.setActive).toHaveBeenCalledOnce()
+    expect(useWorkspaceStore.getState().activeCourseId).toBe(retained ? 'c2' : 'c1')
+  })
+
   test('background creation in another pane preserves the focused pane', async () => {
     const dock = liveDock(), state = useWorkspaceStore.getState()
     state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
@@ -252,6 +309,53 @@ describe('captured new-tab destination', () => {
     expect(dock.panels).toHaveLength(0)
     expect(showToastMock).toHaveBeenCalledWith(expect.stringContaining('영역이 닫혔어요'))
   })
+})
+
+test('renaming a dormant project preserves its selected draft conversation and remembered sidebar', () => {
+  const before = { kind: 'project' as const, courseId: 'c1', rootRelPath: 'Old/Review' }
+  const after = { ...before, rootRelPath: 'Archive/Review' }
+  useWorkspaceAssistantStore.setState({ spaces: { [workspaceKey(before)]: { conversationId: 'unsent-draft', mode: 'quiz' } } })
+  const ui = useUiStore.getState()
+  ui.setRightRailScope(workspaceKey(before)); ui.setRightRailTab('ai'); ui.toggleRightRail()
+  ui.setRightRailScope('c1')
+  expect(retainedTabDescriptors(workspaceKey(before))).toEqual([])
+  reconcileWorkspaceMaterialRename('c1', 'Old', 'Archive')
+  expect(useWorkspaceAssistantStore.getState().spaces[workspaceKey(before)]).toBeUndefined()
+  expect(useWorkspaceAssistantStore.getState().spaces[workspaceKey(after)]).toEqual({ conversationId: 'unsent-draft', mode: 'quiz' })
+  ui.setRightRailScope(workspaceKey(after))
+  expect(useUiStore.getState()).toMatchObject({ rightRailOpen: false, rightRailTab: 'ai' })
+})
+
+test('project path changes wait for relevant learning writes without closing any pane', async () => {
+  const dock = liveDock(), state = useWorkspaceStore.getState()
+  state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+  const resource: TabDescriptor = { kind: 'learning-resource', payload: { courseId: 'c1', rootRelPath: 'Reading/Project', resource: { kind: 'article', id: 'article' } } }
+  state.openTab(resource)
+  let finish!: (allowed: boolean) => void
+  const check = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve }))
+  const unregister = registerResourceCloseGuard(resource, check)
+  try {
+    const waiting = flushLearningResourcesForPath('c1', 'Reading')
+    await Promise.resolve()
+    expect(check).toHaveBeenCalledOnce()
+    expect(dock.getPanel(tabPanelId(resource))?.api.close).not.toHaveBeenCalled()
+    finish(true)
+    expect(await waiting).toBe(true)
+    expect(dock.getPanel(tabPanelId(resource))).toBeDefined()
+  } finally { unregister() }
+})
+
+test('failed learning drafts veto a path change while unrelated folders are unaffected', async () => {
+  const dock = liveDock(), state = useWorkspaceStore.getState()
+  state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+  const resource: TabDescriptor = { kind: 'learning-resource', payload: { courseId: 'c1', rootRelPath: 'Review', resource: { kind: 'artifact', id: 'quiz' } } }
+  state.openTab(resource)
+  const unregister = registerResourceCloseGuard(resource, async () => false)
+  try {
+    expect(await flushLearningResourcesForPath('c1', 'Review')).toBe(false)
+    expect(await flushLearningResourcesForPath('c1', 'Unrelated')).toBe(true)
+    expect(dock.getPanel(tabPanelId(resource))).toBeDefined()
+  } finally { unregister() }
 })
 
 describe('cross-course placement transfer', () => {

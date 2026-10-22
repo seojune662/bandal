@@ -18,7 +18,7 @@ export interface FileDropTarget {
   }
 }
 
-export function useFileDropTarget(courseId: string | null): FileDropTarget {
+export function useFileDropTarget(courseId: string | null, rootRelPath = ''): FileDropTarget {
   const [isDropActive, setDropActive] = useState(false)
   const depthRef = useRef(0)
 
@@ -61,9 +61,9 @@ export function useFileDropTarget(courseId: string | null): FileDropTarget {
       event.preventDefault()
       reset()
       const files = [...event.dataTransfer.files]
-      if (files.length > 0) void importDroppedFiles(courseId, files)
+      if (files.length > 0) void importDroppedFiles(courseId, files, rootRelPath)
     },
-    [courseId, reset]
+    [courseId, rootRelPath, reset]
   )
 
   return {

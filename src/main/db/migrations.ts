@@ -14,6 +14,7 @@ import type { Database } from 'better-sqlite3'
 import { deriveConversationTitle } from '../features/agent/chatRepo'
 import schemaSql from './schema.sql?raw'
 import { RECORDING_SCHEMA } from '../features/recordings/schema'
+import { workspaceKey } from '../../shared/types/workspace'
 
 export interface Migration {
   version: number
@@ -1085,8 +1086,34 @@ export const migrations: Migration[] = [
       WHERE deleted_at IS NULL;`)
     const columns = db.prepare('PRAGMA table_info(whiteboards)').all() as { name: string }[]
     if (!columns.some(column => column.name === 'added_at')) db.exec('ALTER TABLE whiteboards ADD COLUMN added_at INTEGER')
+  } },
+  { version: 38, name: 'project-workspaces', up: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS project_tabs_layout (
+      course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      root_rel_path TEXT NOT NULL, layout_json TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(course_id, root_rel_path)
+    );
+    CREATE TABLE IF NOT EXISTS workspace_layout_backups (
+      scope_key TEXT PRIMARY KEY, layout_json TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS project_groups (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS project_navigation (
+      course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      root_rel_path TEXT NOT NULL,
+      group_id TEXT REFERENCES project_groups(id) ON DELETE SET NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(course_id, root_rel_path)
+    );
+    CREATE TABLE IF NOT EXISTS app_workspace_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS workspace_chat_sessions (session_id TEXT PRIMARY KEY REFERENCES agent_sessions(id) ON DELETE CASCADE, workspace_key TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_workspace_chat_sessions_key ON workspace_chat_sessions(workspace_key);`)
+    const sessions = db.prepare("SELECT a.id,a.course_id FROM agent_sessions a JOIN courses c ON c.id=a.course_id WHERE c.workspace_kind='study-space'").all() as { id: string; course_id: string }[]
+    const bind = db.prepare('INSERT OR IGNORE INTO workspace_chat_sessions(session_id,workspace_key) VALUES(?,?)')
+    for (const session of sessions) bind.run(session.id, workspaceKey({ kind: 'project', courseId: session.course_id, rootRelPath: '' }))
   } }
-
 ]
 
 /** Creates the bookkeeping table if needed and returns applied versions. */

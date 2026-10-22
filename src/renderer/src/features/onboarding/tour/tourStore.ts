@@ -15,8 +15,8 @@ import { shouldShowOnboarding } from '../onboardingModel'
 import { TOUR_STEP_COUNT, TOUR_STEPS } from './tourScript'
 import type { TourBeforeAction } from './tourTypes'
 import { onboardingCopy } from '../onboardingCopy'
-import { captureLauncherContext } from '../../launcher/launcherContext'
-import { tabPanelId } from '../../workspace/tabIdentity'
+import { useWorkspaceAssistantStore } from '../../assistantPanel/workspaceAssistantStore'
+import { workspaceKey, type WorkspaceRef } from '../../../../../shared/types/workspace'
 import samplePdf from '../../../../../../web-demo/public/sample.pdf?inline'
 
 export type TourStatus =
@@ -53,9 +53,10 @@ let tourGeneration = 0
 type TourLocation = {
   selectedCourseId: string | null
   activeCourseId: string | null
+  activeWorkspace: WorkspaceRef | null
   activePanelId: string | null
   surface: WorkspaceSurface
-  ui: Pick<ReturnType<typeof useUiStore.getState>, 'leftRailOpen' | 'courseRailOpen' | 'leftRailPanel' | 'rightRailOpen' | 'isSettingsOpen' | 'settingsCategory' | 'isBoardOverlayOpen' | 'isLinkGraphOpen'>
+  ui: Pick<ReturnType<typeof useUiStore.getState>, 'leftRailOpen' | 'courseRailOpen' | 'leftRailPanel' | 'rightRailOpen' | 'rightRailTab' | 'isSettingsOpen' | 'settingsCategory' | 'isBoardOverlayOpen' | 'isLinkGraphOpen'>
 }
 let previousLocation: TourLocation | null = null
 
@@ -64,10 +65,10 @@ function captureLocation(): TourLocation {
   const ui = useUiStore.getState()
   return {
     selectedCourseId: useCoursesStore.getState().selectedCourseId,
-    activeCourseId: workspace.activeCourseId, activePanelId: workspace.activePanelId,
+    activeCourseId: workspace.activeCourseId, activeWorkspace: workspace.activeWorkspace, activePanelId: workspace.activePanelId,
     surface: workspace.surface,
     ui: { leftRailOpen: ui.leftRailOpen, courseRailOpen: ui.courseRailOpen, leftRailPanel: ui.leftRailPanel,
-      rightRailOpen: ui.rightRailOpen, isSettingsOpen: ui.isSettingsOpen, settingsCategory: ui.settingsCategory,
+      rightRailOpen: ui.rightRailOpen, rightRailTab: ui.rightRailTab, isSettingsOpen: ui.isSettingsOpen, settingsCategory: ui.settingsCategory,
       isBoardOverlayOpen: ui.isBoardOverlayOpen, isLinkGraphOpen: ui.isLinkGraphOpen }
   }
 }
@@ -80,9 +81,10 @@ async function restoreLocation(): Promise<void> {
   const active = available(previous.activeCourseId)
   courses.selectCourse(available(previous.selectedCourseId))
   const workspace = useWorkspaceStore.getState()
-  workspace.showCourseWorkspace(active)
-  if (active) {
-    await waitForWorkspaceCourse(active)
+  const previousWorkspace = active ? previous.activeWorkspace ?? { kind: 'course' as const, courseId: active } : null
+  workspace.showWorkspace(previousWorkspace)
+  if (previousWorkspace) {
+    await waitForWorkspace(previousWorkspace)
     if (previous.activePanelId && useWorkspaceStore.getState().openTabs[previous.activePanelId]) {
       useWorkspaceStore.getState().activatePanel(previous.activePanelId)
     }
@@ -134,13 +136,13 @@ function unknownCourse(error: unknown): boolean {
   return message.toLowerCase().includes('unknown course')
 }
 
-async function waitForWorkspaceCourse(
-  courseId: string,
+async function waitForWorkspace(
+  workspace: WorkspaceRef,
   timeoutMs = 3_000
 ): Promise<void> {
   const ready = (): boolean => {
     const state = useWorkspaceStore.getState()
-    return state.activeCourseId === courseId && state.hydration === 'ready'
+    return state.activeWorkspaceKey === workspaceKey(workspace) && state.hydration === 'ready'
   }
   if (ready()) return
 
@@ -180,9 +182,10 @@ async function prepareStep(
   courses.selectCourse(courseId)
   const workspace = useWorkspaceStore.getState()
   workspace.showCourseWorkspace(courseId)
-  await waitForWorkspaceCourse(courseId)
+  await waitForWorkspace({ kind: 'course', courseId })
   if (!isCurrent() || useWorkspaceStore.getState().activeCourseId !== courseId) return
-  if (action === 'show-materials') return
+  if (action === 'show-materials') { ui.setRightRailTab('materials'); return }
+  if (action === 'show-projects') { ui.setHomeTab('learning'); return }
   const pdf = descriptorFor('pdf', { courseId, relPath: seedPdfPath })
   if (action === 'open-reading') {
     workspace.openTab(pdf)
@@ -194,17 +197,10 @@ async function prepareStep(
   if (!isCurrent()) return
   await waitForPaint()
   if (!isCurrent()) return
-  if (action === 'open-assistant') {
-    // Open only this document's actual sidebar. Never fall back to a new chat
-    // or dispatch a prompt if the document is still mounting.
-    const panel = document.querySelector<HTMLElement>(`[data-tour-panel="${CSS.escape(tabPanelId(pdf))}"]`)
-    const toggle = panel?.querySelector<HTMLButtonElement>('.tab-assistant-toggle')
-    if (toggle?.getAttribute('aria-expanded') === 'false') toggle.click()
-    return
+  if (action === 'open-assistant' || action === 'show-ai-modes') {
+    ui.showAssistant()
+    useWorkspaceAssistantStore.getState().setMode({ kind: 'course', courseId }, action === 'show-ai-modes' ? 'quiz' : 'chat')
   }
-  await captureLauncherContext()
-  if (!isCurrent()) return
-  useUiStore.setState({ leftRailOpen: true, courseRailOpen: true, leftRailPanel: 'plugins' })
 }
 
 /**
@@ -430,7 +426,7 @@ export const useTourStore = create<TourStore>()((set, get) => {
         })
         useCoursesStore.getState().selectCourse(course.id)
         useWorkspaceStore.getState().showCourseWorkspace(course.id)
-        await waitForWorkspaceCourse(course.id)
+        await waitForWorkspace({ kind: 'course', courseId: course.id })
 
         set({
           status: 'running',

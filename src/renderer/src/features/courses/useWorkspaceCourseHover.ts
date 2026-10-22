@@ -1,3 +1,5 @@
+import { workspaceFromKey } from '../../../../shared/types/workspace'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import type { DragEvent, HTMLAttributes } from 'react'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { BANDAL_TAB_DRAG_MIME, matchesWorkspaceMoveData } from '../workspace/tabDrag'
@@ -11,13 +13,13 @@ export function useWorkspaceCourseHover(): { rowProps(courseId: string, enabled:
     const enter = (event: DragEvent<HTMLDivElement>): void => {
       const source = tabDragSession.getSource(), courses = useCoursesStore.getState()
       if (!enabled || !source || tabDragSession.getSnapshot() !== 'tab' || !event.dataTransfer.types.includes(BANDAL_TAB_DRAG_MIME) ||
-        !courses.courses.some(course => course.id === courseId)) return
+        !courses.courses.some(course => course.id === workspaceFromKey(courseId).courseId)) return
       event.preventDefault()
       event.stopPropagation()
       event.dataTransfer.dropEffect = 'move'
       // Native DnD can change child targets or omit dragleave during a course
       // render. Selection must follow the current entry, never a queued timer.
-      if (courses.selectedCourseId !== courseId) navigateWorkspaceCourseHover(source.nonce, courseId)
+      if (useWorkspaceStore.getState().activeWorkspaceKey !== courseId) navigateWorkspaceCourseHover(source.nonce, courseId)
     }
     return {
       onDragEnter: enter,

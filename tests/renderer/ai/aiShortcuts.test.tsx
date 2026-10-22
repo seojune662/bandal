@@ -10,12 +10,12 @@ import type { TabDescriptor } from '../../../src/shared/tabs'
 vi.mock('../../../src/renderer/src/i18n', () => ({ useLocale: () => 'ko-KR' }))
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 let root: Root | undefined
-const workspaceActions = { openTab: useWorkspaceStore.getState().openTab, activatePanel: useWorkspaceStore.getState().activatePanel, showCourseWorkspace: useWorkspaceStore.getState().showCourseWorkspace }
+const workspaceActions = { openTab: useWorkspaceStore.getState().openTab, activatePanel: useWorkspaceStore.getState().activatePanel, showWorkspace: useWorkspaceStore.getState().showWorkspace }
 const saved = new Map<string, string>()
 const storage = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => saved.set(key, value), clear: () => saved.clear() }
 beforeEach(() => { Object.defineProperty(window, 'localStorage', { configurable: true, value: storage }) })
 const tab = (tabId: string, initialUrl: string, isPrivate = false): TabDescriptor => ({ kind: 'browser', payload: { tabId, initialUrl, ...(isPrivate ? { isPrivate } : {}) } })
-afterEach(() => { if (root) act(() => root!.unmount()); root = undefined; window.localStorage.clear(); resetBrowserGuestsForTests(); vi.restoreAllMocks(); useWorkspaceStore.setState({ ...workspaceActions, openTabs: {}, activePanelId: null, activeCourseId: null, surface: 'course' }) })
+afterEach(() => { if (root) act(() => root!.unmount()); root = undefined; window.localStorage.clear(); resetBrowserGuestsForTests(); vi.restoreAllMocks(); useWorkspaceStore.setState({ ...workspaceActions, openTabs: {}, activePanelId: null, activeCourseId: null, activeWorkspace: null, activeWorkspaceKey: null, surface: 'course' }) })
 
 test('prefers active matching normal tab then live visit recency; reads live URL', () => {
   const tabs = { first: tab('a', 'https://example.com'), second: tab('b', 'https://gemini.google.com/app'), private: tab('p', 'https://gemini.google.com/app', true) }
@@ -32,11 +32,12 @@ test('accepts restored conversations and ChatGPT legacy host, excluding private 
 test('focuses current workspace without opening/navigating and creates a default-profile browser when missing', () => {
   const openTab = vi.spyOn(useWorkspaceStore.getState(), 'openTab').mockImplementation(() => undefined)
   const activatePanel = vi.spyOn(useWorkspaceStore.getState(), 'activatePanel').mockImplementation(() => undefined)
-  const showCourseWorkspace = vi.spyOn(useWorkspaceStore.getState(), 'showCourseWorkspace').mockImplementation(() => undefined)
-  useWorkspaceStore.setState({ activeCourseId: 'course', openTabs: { match: tab('a', 'https://claude.ai/chat/123') }, activePanelId: null })
+  const showWorkspace = vi.spyOn(useWorkspaceStore.getState(), 'showWorkspace').mockImplementation(() => undefined)
+  const workspace = { kind: 'project' as const, courseId: 'course', rootRelPath: 'Review' }
+  useWorkspaceStore.setState({ activeCourseId: 'course', activeWorkspace: workspace, openTabs: { match: tab('a', 'https://claude.ai/chat/123') }, activePanelId: null })
   openAiShortcut('claude')
   expect(activatePanel).toHaveBeenCalledWith('match')
-  expect(showCourseWorkspace).toHaveBeenCalledWith('course')
+  expect(showWorkspace).toHaveBeenCalledWith(workspace)
   expect(openTab).not.toHaveBeenCalled()
   openAiShortcut('gemini')
   expect(openTab).toHaveBeenCalledWith({ kind: 'browser', payload: { tabId: expect.any(String), initialUrl: 'https://gemini.google.com/app', profileId: 'default' } })
@@ -44,7 +45,7 @@ test('focuses current workspace without opening/navigating and creates a default
 test('reuses a temporary null-course tab and does not search other courses', () => {
   const openTab = vi.spyOn(useWorkspaceStore.getState(), 'openTab').mockImplementation(() => undefined)
   const activatePanel = vi.spyOn(useWorkspaceStore.getState(), 'activatePanel').mockImplementation(() => undefined)
-  vi.spyOn(useWorkspaceStore.getState(), 'showCourseWorkspace').mockImplementation(() => undefined)
+  vi.spyOn(useWorkspaceStore.getState(), 'showWorkspace').mockImplementation(() => undefined)
   useWorkspaceStore.setState({ activeCourseId: null, openTabs: { temporary: tab('temp', 'https://chatgpt.com/c/123') } })
   openAiShortcut('chatgpt')
   expect(activatePanel).toHaveBeenCalledWith('temporary')

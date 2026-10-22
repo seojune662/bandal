@@ -68,7 +68,10 @@ export interface StudyToolDefinition {
 }
 
 export interface RunStudyToolInput {
+  conversation?: import('./chatCapabilities').StudyConversationRequest
   courseId: string
+  /** Original material owner when the output/conversation lives in a linked project. */
+  sourceCourseId?: string
   tool: StudyToolId
   /** Target file; null runs against the whole course. */
   relPath: string | null

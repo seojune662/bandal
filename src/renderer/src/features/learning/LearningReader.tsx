@@ -13,9 +13,10 @@ import { LearningSources } from './LearningSources'
 
 interface ReaderSelection { value: ReaderWordSelection; anchor: ReaderSelectionAnchor }
 
-export function LearningReader({ project, article, active = true, onUpdate, onComplete, onArticle }: {
+export function LearningReader({ project, article, active = true, visible = true, onUpdate, onComplete, onArticle }: {
   project: LearningProjectSnapshot; article: LearningArticleSnapshot
   active?: boolean
+  visible?: boolean
   onUpdate: (project: LearningProjectSnapshot) => void; onComplete: () => void; onArticle: (id: string) => void
 }): JSX.Element {
   const [selected, setSelected] = useState<ReaderSelection | null>(null)
@@ -44,7 +45,7 @@ export function LearningReader({ project, article, active = true, onUpdate, onCo
   const selectedWord = occurrence ? project.words.find(word => word.id === occurrence.wordId) : selected ? learningWordForSurface(project.words, selected.value.surface) : undefined
   const priorExamples = selectedWord ? project.occurrences.filter(item => item.wordId === selectedWord.id && item.sourceRef.articleId !== article.id) : []
   const closeSelection = useCallback(() => setSelected(null), [])
-  const progress = useReaderProgress(root, project, article, onUpdate, caught => setError(learningError(caught)))
+  const progress = useReaderProgress(root, project, article, onUpdate, caught => setError(learningError(caught)), visible)
 
   useEffect(() => {
     mounted.current = true; working.current = false

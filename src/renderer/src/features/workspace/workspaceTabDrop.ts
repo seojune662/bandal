@@ -1,3 +1,4 @@
+import { workspaceFromKey } from '../../../../shared/types/workspace'
 import { showToast } from '../../app/toast'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { moveWorkspacePanel, useWorkspaceStore, workspaceApiForCourse, type WorkspacePanelMovePosition } from '../../stores/workspaceStore'
@@ -18,8 +19,8 @@ function waitForCourseWorkspace(courseId: string): Promise<boolean> {
     }
     const check = (): void => {
       const courses = useCoursesStore.getState(), state = useWorkspaceStore.getState()
-      if (courses.selectedCourseId !== courseId || !courses.courses.some(course => course.id === courseId)) { finish(false); return }
-      if (state.activeCourseId !== courseId) return
+      if (courses.selectedCourseId !== workspaceFromKey(courseId).courseId || !courses.courses.some(course => course.id === workspaceFromKey(courseId).courseId)) { finish(false); return }
+      if (state.activeWorkspaceKey !== courseId) return
       if (state.hydration === 'error' || state.surface !== 'course') { finish(false); return }
       if (state.hydration === 'ready' && workspaceApiForCourse(courseId)) finish(true)
     }
@@ -38,16 +39,16 @@ export async function dropWorkspaceTabOnCourse(
   if (source.courseId === targetCourseId || !beginWorkspaceCourseMoveDrop(source.nonce)) return false
   let accepted = false
   try {
-    if (useCoursesStore.getState().selectedCourseId !== targetCourseId && !navigateWorkspaceCourseHover(source.nonce, targetCourseId)) return false
+    if (useWorkspaceStore.getState().activeWorkspaceKey !== targetCourseId && !navigateWorkspaceCourseHover(source.nonce, targetCourseId)) return false
     if (!await waitForCourseWorkspace(targetCourseId)) {
-      if (useCoursesStore.getState().selectedCourseId === targetCourseId)
+      if (isWorkspaceCourseMoveDropCurrent(source.nonce) && useCoursesStore.getState().selectedCourseId === workspaceFromKey(targetCourseId).courseId && useWorkspaceStore.getState().activeWorkspaceKey === targetCourseId)
         showToast('과목을 불러오지 못해 탭을 옮기지 못했어요. 원래 과목의 탭은 그대로 있어요.', 'danger')
       return false
     }
     // A subscriber may navigate again in the same turn that hydration becomes
     // ready, before this continuation runs. Do not commit behind that choice.
     const state = useWorkspaceStore.getState(), api = workspaceApiForCourse(targetCourseId)
-    if (!isWorkspaceCourseMoveDropCurrent(source.nonce) || useCoursesStore.getState().selectedCourseId !== targetCourseId || state.activeCourseId !== targetCourseId || state.hydration !== 'ready' || state.surface !== 'course' || !api) return false
+    if (!isWorkspaceCourseMoveDropCurrent(source.nonce) || useWorkspaceStore.getState().activeWorkspaceKey !== targetCourseId || state.activeWorkspaceKey !== targetCourseId || state.hydration !== 'ready' || state.surface !== 'course' || !api) return false
     const target = position ?? (api.activeGroup ? { groupId: api.activeGroup.id, direction: 'within' as const, index: api.activeGroup.panels.length } : undefined)
     accepted = await moveWorkspacePanel({ sourceCourseId: source.courseId, panelId: source.panelId, targetCourseId, ...(target ? { position: target } : {}) })
     return accepted

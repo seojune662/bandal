@@ -63,6 +63,7 @@ export function milestoneDestination(
 }
 
 function focusTarget(target: FocusTarget): void {
+  if (target === 'assistant-panel-toggle') { useUiStore.getState().showAssistant(); return }
   const selector = `[data-tour="${target}"]`
   const reveal = (): void => {
     const element = document.querySelector<HTMLElement>(selector)
@@ -70,7 +71,6 @@ function focusTarget(target: FocusTarget): void {
     element.scrollIntoView({ block: 'nearest' })
     if (!element.hasAttribute('tabindex')) element.tabIndex = -1
     element.focus()
-    if (target === 'assistant-panel-toggle' && element.getAttribute('aria-expanded') !== 'true') element.click()
   }
 
   if (target === 'favorites-section') {
@@ -228,14 +228,14 @@ export function HelpHub(): JSX.Element {
 
   return (
     <>
-      <Tooltip label="더 보기" placement="top">
+      <Tooltip label="도움말" placement="top">
         <button
           ref={triggerRef}
           type="button"
           className="rail-nav__item"
           aria-haspopup="menu"
           aria-expanded={menu !== null}
-          aria-label="더 보기"
+          aria-label="도움말"
           onClick={(event) => {
             if (menu !== null) {
               closeMenu()
@@ -246,7 +246,7 @@ export function HelpHub(): JSX.Element {
             void refreshMilestones(selectedCourseId)
           }}
         >
-          <span aria-hidden="true">⋯</span>
+          <Icon name="help" />
         </button>
       </Tooltip>
 

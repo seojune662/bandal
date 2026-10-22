@@ -1085,17 +1085,17 @@ function PdfViewer({
     }
     const handleNavigation = (event: Event): void => {
       const detail = (event as CustomEvent<PdfPageNavigationTarget>).detail
-      if (detail.courseId !== courseId || detail.relPath !== relPath) return
-      navigate(takePdfPageNavigation(courseId, relPath) ?? detail.page)
+      if (detail.courseId !== courseId || detail.relPath !== relPath || detail.panelId && detail.panelId !== panelId) return
+      navigate(takePdfPageNavigation(courseId, relPath, panelId) ?? detail.page)
     }
     window.addEventListener(PDF_PAGE_NAVIGATION_EVENT, handleNavigation)
-    const pendingPage = takePdfPageNavigation(courseId, relPath)
+    const pendingPage = takePdfPageNavigation(courseId, relPath, panelId)
     if (pendingPage !== null) navigate(pendingPage)
     return () => {
       window.removeEventListener(PDF_PAGE_NAVIGATION_EVENT, handleNavigation)
       if (frame !== null) cancelAnimationFrame(frame)
     }
-  }, [courseId, jumpToPage, numPages, relPath])
+  }, [courseId, jumpToPage, numPages, relPath, panelId])
 
   const handleAspect = useCallback((page: number, aspect: number): void => {
     setPageAspects((current) => {

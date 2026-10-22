@@ -1,3 +1,4 @@
+import { registerResourceCloseGuard } from '../workspace/tabCloseGuard'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LearningArtifact, LearningCardRating, LearningProjectSnapshot, LearningQuizAttempt } from '../../../../shared/types/learning'
 import { invoke } from '../../lib/ipc'
@@ -47,6 +48,13 @@ export function LearningQuiz({ artifact, project, onUpdate, onArticle }: { artif
     void request.catch(() => {})
     return request
   }
+  useEffect(() => registerResourceCloseGuard({ kind: 'learning-resource', payload: { ...project.binding, resource: { kind: 'artifact', id: artifact.id } } }, async () => {
+    let saving: Promise<void>
+    do { saving = saveQueue.current; await saving.catch(() => {}) } while (saveQueue.current !== saving)
+    if (failedAnswers.current.size) { setError('저장하지 못한 답이 있어요. 답 다시 저장 후 닫아 주세요.'); return false }
+    return !finishing.current
+  }), [project.binding.courseId, project.binding.rootRelPath, artifact.id])
+
   const finish = async (grade = true): Promise<void> => {
     if (finishing.current) return
     finishing.current = true

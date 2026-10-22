@@ -1,3 +1,4 @@
+import { newProject, showProjects, projectSettings } from './helpers/projectWorkspace'
 import { expect, test } from '@playwright/test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -7,7 +8,7 @@ import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { chooseLearningAi, configureEnglishForm, installLearningAiFixture } from './helpers/learning'
 
 const rail = (bandal: BandalApp) => bandal.page.getByRole('navigation', { name: '앱 메뉴' })
-const learning = (bandal: BandalApp) => bandal.page.getByRole('complementary', { name: '학습 공간 목록' })
+const learning = (bandal: BandalApp) => bandal.page.getByRole('complementary', { name: '프로젝트 목록' })
 async function isolateRuns(bandal: BandalApp): Promise<void> {
   await installLearningAiFixture(bandal)
   await bandal.app.evaluate(({ ipcMain }) => {
@@ -30,9 +31,8 @@ test('English starts from explicit topics and AI in an independent space while a
     await page.evaluate(courseId => window.bandal.invoke('learning:create', { placement: 'standalone', name: '경제 복습', topic: '과목 자료', purpose: 'course-review', linkedCourseId: courseId, ai: { provider: 'gemini', model: 'pro', effort: null } }), course.id)
     await page.getByRole('button', { name: '자료 새로고침', exact: true }).click()
     await page.locator('[data-material-path="경제.md"]').click()
-    await rail(bandal).getByRole('button', { name: '도구', exact: true }).click()
-    const plugins = page.getByRole('complementary', { name: '학습 도구' })
-    await plugins.locator('.launcher-feature').filter({ has: page.locator('strong').filter({ hasText: /^영어 글 읽기$/ }) }).getByRole('button').first().click()
+    await newProject(page)
+    await page.getByRole('dialog', { name: '새 학습', exact: true }).getByRole('button', { name: '영어 글 읽기', exact: false }).click()
     const dialog = page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByLabel('학습 공간 이름', { exact: true })).toHaveValue('')
@@ -48,29 +48,30 @@ test('English starts from explicit topics and AI in an independent space while a
     await expect(dialog.locator('select option[value="default"]')).toHaveCount(0)
     await dialog.getByRole('button', { name: '공간 만들고 첫 글 찾기', exact: true }).click()
     await expect(dialog).toBeHidden()
-    await expect(page.getByLabel('학습 AI 변경')).toHaveText('Gemini · pro')
+    await expect(page.locator('.project-list-row[data-selected=true]')).toContainText('우주와 기술')
     const projects = await page.evaluate(async () => (await window.bandal.invoke('learning:list', {})).projects)
     const english = projects.find(project => project.name === '우주와 기술')!
     expect(english).toMatchObject({ purpose: 'english-reading', topicIds: ['space', 'technology-ai', 'science'], readingSetupConfirmed: true, binding: { rootRelPath: '' }, ai: { provider: 'gemini', model: 'pro', effort: null } })
     expect(english.binding.courseId).not.toBe(course.id)
     expect(await bandal.app.evaluate(() => (globalThis as any).spacesProbe.runs)).toEqual([{ binding: english.binding, kind: 'find-articles', packId: 'vocab-chain-en' }])
     expect(await bandal.app.evaluate(() => (globalThis as any).spacesProbe.legacy)).toEqual([])
-    await rail(bandal).getByRole('button', { name: '과목', exact: true }).click()
+    await page.locator('.app-rail:not([hidden])').getByRole('tab', { name: '과목', exact: true }).click()
     const courses = page.getByRole('complementary', { name: '과목 목록' })
     await expect(courses.getByRole('button', { name: '한국어 경제 과목', exact: true })).toBeVisible()
     await expect(courses.getByRole('button', { name: '우주와 기술', exact: true })).toHaveCount(0)
     await expect(courses.getByRole('button', { name: '경제 복습', exact: true })).toHaveCount(0)
-    await rail(bandal).getByRole('button', { name: '학습', exact: true }).click()
-    await expect(learning(bandal).getByRole('region', { name: '영어 이어읽기' })).toContainText('우주와 기술')
-    await expect(learning(bandal).getByRole('region', { name: '과목 복습' })).toContainText('경제 복습')
+    await showProjects(bandal.page)
+    await expect(learning(bandal)).toContainText('우주와 기술')
+    await expect(learning(bandal)).toContainText('경제 복습')
     await page.screenshot({ path: info.outputPath('learning-spaces-separated.png') })
-    await learning(bandal).getByRole('region', { name: '과목 복습' }).getByRole('button').first().click()
-    await expect(page.locator('.learning-hero:visible')).toContainText('내 자료로 복습을 시작하세요.')
+    await learning(bandal).locator('.project-list-row__open').filter({hasText:'경제 복습'}).click()
+    await expect(page.locator('.project-list-row[data-selected=true]')).toContainText('경제 복습')
+    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await expect(page.getByRole('button', { name: '첫 영어 글 찾기', exact: true })).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: '학습 화면' }).getByRole('button', { name: '읽기', exact: true })).toHaveCount(0)
-    await page.getByRole('navigation', { name: '학습 화면' }).getByRole('button', { name: '퀴즈 · 카드', exact: true }).click()
+    await expect(page.getByRole('navigation', { name: '학습 화면' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '내 단어로 퀴즈 만들기', exact: true })).toHaveCount(0)
-    await expect(page.locator('.learning-empty:visible')).toContainText('원본 자료')
+    await expect(page.locator('.project-materials')).toContainText('퀴즈')
   } finally { await bandal.close() }
 })
 
@@ -87,9 +88,9 @@ test('an unclassified old course root keeps word evidence and its path until exp
     const original = 'An economy changes over time.'
     writeFileSync(join(course.folderPath, 'old.md'), original)
     await page.evaluate(input => window.bandal.invoke('learning:saveWord', input), { binding: project.binding, surface: 'economy', sentence: original, sourceRef: { kind: 'material', pathScope: 'course', relPath: 'old.md', quote: original, contentHash: learningHash(original) } })
-    await rail(bandal).getByRole('button', { name: '학습', exact: true }).click()
-    await learning(bandal).getByRole('region', { name: '종류 확인 필요' }).getByRole('button').first().click()
-    await page.getByRole('button', { name: '학습 종류와 AI 확인하기', exact: true }).click()
+    await showProjects(bandal.page)
+    await learning(bandal).locator('.project-list-row__open').filter({hasText:'예전 학습'}).click()
+    await projectSettings(page, '예전 학습')
     const settings = page.getByRole('dialog', { name: '학습 공간 설정' })
     const classify = settings.getByLabel('이 폴더를 독립 학습 공간으로 분류')
     await expect(classify).not.toBeChecked()
@@ -103,7 +104,7 @@ test('an unclassified old course root keeps word evidence and its path until exp
     expect(saved.occurrences[0]!.sourceRef.quote).toBe(original)
     expect(saved.binding).toEqual(project.binding)
     expect(await page.evaluate(async id => (await window.bandal.invoke('courses:list', {})).find(course => course.id === id)?.workspaceKind, course.id)).toBe('course')
-    await page.getByRole('button', { name: '공간 설정', exact: true }).click()
+    await projectSettings(page, '예전 학습')
     await settings.getByLabel('이 폴더를 독립 학습 공간으로 분류').check()
     await settings.getByRole('button', { name: '설정 저장', exact: true }).click()
     await expect(settings).toBeHidden()
@@ -117,8 +118,7 @@ test('a model rejection exposes the actual run details and requires a different 
   const bandal = await launchBandal()
   try {
     await isolateRuns(bandal)
-    await rail(bandal).getByRole('button', { name: '학습', exact: true }).click()
-    await learning(bandal).getByRole('button', { name: '새 학습', exact: true }).click()
+    await newProject(bandal.page)
     await bandal.page.getByRole('dialog', { name: '새 학습', exact: true }).getByRole('button', { name: '영어 글 읽기', exact: false }).click()
     const settings = bandal.page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await configureEnglishForm(settings, '오류 복구 읽기')
@@ -126,8 +126,8 @@ test('a model rejection exposes the actual run details and requires a different 
     await expect(settings).toBeHidden()
     // This is a failure of the current visit. Hydrate the initial home first so
     // the injected run is not correctly classified as a historical failure.
-    await expect(bandal.page.getByLabel('학습 AI 변경')).toHaveText('Gemini · pro')
-    await expect(bandal.page.locator('.learning-hero:visible')).toContainText('관심 있는 글부터 읽어보세요.')
+    await expect(bandal.page.locator('.project-list-row[data-selected=true]')).toContainText('오류 복구 읽기')
+    await bandal.page.getByRole('tab', {name:'AI',exact:true}).click()
     const course = await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(course => course.name === '오류 복구 읽기')!)
     const binding = { courseId: course.id, rootRelPath: '' }
     const repo = createLearningRepo({ getCourseFolder: () => course.folderPath })

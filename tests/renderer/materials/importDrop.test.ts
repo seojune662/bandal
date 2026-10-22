@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const harness = vi.hoisted(() => ({
   pathForFile: vi.fn<(file: File) => string>(),
+  flush: vi.fn<() => Promise<boolean>>(),
   courses: [] as Array<{ id: string; folderPath: string }>
 }))
 
@@ -20,12 +21,15 @@ vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({
   useMaterialsStore: { getState: () => ({ loadTree: vi.fn() }) }
 }))
 
+vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ flushLearningResourcesForPath: harness.flush }))
+
 vi.mock('../../../src/renderer/src/app/toast', () => ({
   showToast: vi.fn()
 }))
 
 import {
   classifyDrop,
+  importDroppedFiles,
   isSelfMaterialDrop,
   relPathInsideCourse
 } from '../../../src/renderer/src/features/materials/importDrop'
@@ -35,11 +39,16 @@ import {
 } from '../../../src/renderer/src/features/materials/materialFileDrag'
 import { MATERIAL_MOVE_MIME } from '../../../src/renderer/src/features/materials/materialMoveDrag'
 import { canAcceptUrlDrop } from '../../../src/renderer/src/features/materials/urlDrop'
+import { invoke } from '../../../src/renderer/src/lib/ipc'
+import { showToast } from '../../../src/renderer/src/app/toast'
 
 // node 환경 — materialFileDrag 의 window 리스너를 위해 EventTarget 스텁.
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
 
 beforeEach(() => {
+  harness.flush.mockReset().mockResolvedValue(true)
+  vi.mocked(invoke).mockReset()
+  vi.mocked(showToast).mockClear()
   const stub = new EventTarget() as EventTarget & { setTimeout: typeof setTimeout }
   stub.setTimeout = ((handler: () => void, delay?: number) =>
     setTimeout(handler, delay)) as typeof setTimeout
@@ -47,6 +56,25 @@ beforeEach(() => {
     configurable: true,
     value: stub
   })
+})
+
+test('native folder drop waits for learning writes and stops with a warning when they fail', async () => {
+  harness.courses = [{ id: 'course', folderPath: '/u/course' }]
+  harness.pathForFile.mockReturnValue('/u/course/Reading')
+  let finish!: (allowed: boolean) => void
+  harness.flush.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const moving = importDroppedFiles('course', [new File([], 'Reading')], 'Archive')
+  await Promise.resolve()
+  expect(invoke).not.toHaveBeenCalled()
+  finish(false)
+  expect(await moving).toEqual([])
+  expect(invoke).not.toHaveBeenCalled()
+  expect(showToast).toHaveBeenCalledWith(expect.stringContaining('이동하지 않았어요'), 'danger')
+  expect(harness.flush).toHaveBeenCalledWith('course', 'Reading')
+
+  vi.mocked(invoke).mockResolvedValueOnce({ relPath: 'Archive/Reading' })
+  expect(await importDroppedFiles('course', [new File([], 'Reading')], 'Archive')).toEqual(['Archive/Reading'])
+  expect(invoke).toHaveBeenCalledWith('materials:move', { courseId: 'course', fromRelPath: 'Reading', toDirRelPath: 'Archive' })
 })
 
 afterEach(() => {

@@ -10,6 +10,7 @@ import { showToast } from '../../app/toast'
 import { invoke, pathForFile } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
+import { flushLearningResourcesForPath } from '../../stores/workspaceStore'
 import { urlFromDataTransfer } from '../browser/urlDrop'
 import { getMaterialFileDrag } from './materialFileDrag'
 import { MATERIAL_MOVE_MIME } from './materialMoveDrag'
@@ -159,6 +160,10 @@ export async function importDroppedFiles(
   const moved: string[] = []
   for (const fromRelPath of toMove) {
     try {
+      if (!await flushLearningResourcesForPath(courseId, fromRelPath)) {
+        showToast('학습 자료를 저장하지 못해 폴더를 이동하지 않았어요. 열려 있는 학습 창에서 저장을 다시 시도해 주세요.', 'danger')
+        continue
+      }
       const { relPath } = await invoke('materials:move', {
         courseId,
         fromRelPath,

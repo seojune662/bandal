@@ -23,7 +23,8 @@ export async function validateConnectedLearningAi(ai: LearningAiSettings,
 /** Learning never inherits a CLI's global default model or skips connection preflight. */
 export async function sendLearningWithSession(
   manager: SessionManager, courseId: string, sessionId: string, prompt: string,
-  ai: LearningAiSettings, validateAi: (ai: LearningAiSettings) => Promise<LearningAiSettings>
+  ai: LearningAiSettings, validateAi: (ai: LearningAiSettings) => Promise<LearningAiSettings>,
+  attachments?: import('../../../shared/types/chat').ChatAttachment[]
 ): Promise<unknown> {
   const validated = await validateAi(ai).catch(error => {
     const failure = learningFailure(error)
@@ -32,5 +33,5 @@ export async function sendLearningWithSession(
   const { availability } = await manager.open(courseId, sessionId, 'study')
   assertConnected(availability)
   manager.setModel(courseId, sessionId, validated.model, validated.effort)
-  return manager.send(courseId, sessionId, prompt)
+  return manager.send(courseId, sessionId, prompt, attachments)
 }

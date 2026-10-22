@@ -1,3 +1,4 @@
+import { resetWorkspaceStoreForTests, useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
@@ -7,6 +8,8 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: vi.fn(async () => 
 let dispose: () => void
 const originalSelectCourse = useCoursesStore.getState().selectCourse
 beforeEach(() => {
+  resetWorkspaceStoreForTests()
+  useWorkspaceStore.setState({ activeCourseId: 'source', activeWorkspaceKey: 'source', activeWorkspace: {kind: 'course', courseId: 'source'} })
   useCoursesStore.setState({ selectCourse: originalSelectCourse, selectedCourseId: 'source', courses: ['source', 'target', 'third'].map(id => ({ id } as never)) })
   vi.spyOn(useCoursesStore.getState(), 'selectCourse').mockImplementation(id => { useCoursesStore.setState({ selectedCourseId: id }) })
   dispose = installWorkspaceCourseMoveNavigation()
@@ -85,7 +88,7 @@ test('a deleted origin is not restored by cancel', () => {
 })
 
 test('a canceled temporary workspace visit restores the null origin', () => {
-  tabDragSession.end(); useCoursesStore.setState({ selectedCourseId: null })
+  tabDragSession.end(); useCoursesStore.setState({ selectedCourseId: null }); useWorkspaceStore.getState().showWorkspace(null)
   tabDragSession.beginTab({ courseId: null, panelId: 'scratch', nonce: 'temporary' })
   navigateWorkspaceCourseHover('temporary', 'target'); tabDragSession.end()
   expect(useCoursesStore.getState().selectedCourseId).toBeNull()

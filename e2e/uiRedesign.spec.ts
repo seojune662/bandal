@@ -96,6 +96,7 @@ test('neutral appearance preserves document geometry, navigation and settings', 
           width
         )
         await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
+        await page.getByRole('tab', { name: '자료', exact: true }).click()
         await page.locator('[data-material-path="Lecture.pdf"]').click()
         await expect(
           page.locator('.react-pdf__Page canvas').first()
@@ -249,7 +250,7 @@ test('global menus, course drag, resizing and enlarged text remain reachable', a
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     await expect(page.locator('.global-navigation')).toBeHidden()
     await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
-    await page.getByRole('button', { name: '더 보기', exact: true }).click()
+    await page.getByRole('button', { name: '도움말', exact: true }).click()
     await expect(
       page.getByRole('menuitem', { name: '연결 그래프', exact: true })
     ).toBeVisible()

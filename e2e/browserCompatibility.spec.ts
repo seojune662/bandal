@@ -530,13 +530,13 @@ test('profiles isolate logins and history, switch a live tab and inherit popup s
   } finally { await bandal.close(); await site.close() }
 })
 
-test('tab assistant stays beside native pages while browser remains interactive', async () => {
+test('workspace assistant stays beside native pages while browser remains interactive', async () => {
   const site = await fixture(), bandal = await launchBandal()
   try {
     await createCourse(bandal.page, '채팅 겹침 검증')
     const root = await openTab(bandal, `${site.origin}/lecture`)
-    await bandal.page.getByRole('button', { name: 'AI 보조 사이드바 펼치기' }).click()
-    await expect(bandal.page.locator('.tab-assistant')).toBeVisible()
+    await bandal.page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await expect(bandal.page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeVisible()
     await bandal.app.evaluate(({ webContents }, id) => {
       const guest = webContents.fromId(id)!
       guest.focus(); guest.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] }); guest.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] })
@@ -548,8 +548,8 @@ test('tab assistant stays beside native pages while browser remains interactive'
     }, root)
     await expect(bandal.page.locator('.global-navigation')).toBeVisible()
     expect(await run(bandal, root, 'document.querySelector("h1").textContent')).toBe('Lecture page')
-    await bandal.page.locator('.tab-assistant-header').getByRole('button', { name: 'AI 보조 사이드바 접기' }).click()
-    await expect(bandal.page.locator('.tab-assistant')).toBeHidden()
+    await bandal.page.getByRole('tab', { name: '자료', exact: true }).click()
+    await expect(bandal.page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeHidden()
   } finally { await bandal.close(); await site.close() }
 })
 
@@ -684,9 +684,9 @@ test('closing a dirty tab can be cancelled without removing its tab or native pa
     expect(await run(bandal, id, 'document.body.textContent')).toBe('Draft')
     await bandal.app.evaluate(({ app }) => { app.quit() })
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).quitPrompts)).toBe(2)
-    await bandal.page.getByRole('button', { name: 'AI 보조 사이드바 펼치기' }).click()
-    await expect(bandal.page.locator('.tab-assistant')).toBeVisible()
-    await bandal.page.locator('.tab-assistant-header').getByRole('button', { name: 'AI 보조 사이드바 접기' }).click()
+    await bandal.page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await expect(bandal.page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeVisible()
+    await bandal.page.getByRole('tab', { name: '자료', exact: true }).click()
     // Cancelling quit must keep the background material watcher running.
     const course = (await bandal.page.evaluate(() => window.bandal.invoke('courses:list', {})))[0]!
     writeFileSync(join(course.folderPath, '종료 취소 후 새 자료.md'), '# 종료 취소 뒤 작성한 자료\n')
@@ -811,7 +811,7 @@ test('settings occlusion survives late bounds, nested dialogs and newly created 
     await page.getByRole('button', { name: '메일함 넓히기' }).click()
     await expect(page.getByRole('dialog', { name: '메일함' })).toBeVisible()
     await expect.poll(() => visibleNativePages(bandal)).toEqual([])
-    await page.evaluate(() => document.querySelector<HTMLButtonElement>('button[aria-label="자료 사이드바 접기"]')!.click())
+    await page.evaluate(() => document.querySelector<HTMLButtonElement>('button[aria-label="오른쪽 사이드바 접기"]')!.click())
     await expect(page.getByRole('dialog', { name: '메일함' })).toHaveCount(0)
     await expect.poll(() => visibleNativePages(bandal)).toEqual([root])
   } finally { await bandal.close(); await site.close() }
@@ -827,7 +827,7 @@ test('split native pages follow sidebar motion and only overlapping popovers hid
     await page.getByRole('menuitem', { name: '오른쪽에 분할해서 열기', exact: true }).click()
     await expect.poll(async () => (await visibleNativePages(bandal)).length).toBe(2)
     const pages = await visibleNativePages(bandal)
-    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
     await expect(page.locator('aside.app-rail--left')).toBeHidden()
     const anchors = await page.locator('.browser-anchor').evaluateAll(elements => elements.map(element => {
       const { x, y, width, height } = element.getBoundingClientRect(); return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }

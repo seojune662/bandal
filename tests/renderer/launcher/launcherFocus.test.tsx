@@ -82,14 +82,16 @@ test('closing the rail cancels a pending focus while settings is fading out', as
   expect(document.activeElement).toBe(outside)
 })
 
-test('search finds each full action label shown on its tool card', async () => {
-  inventory.entries = ['vocab-chain-en', 'quiz', 'flashcards', 'summary'].map(packId => ({ kind: 'pack', id: `pack:${packId}`, packId, label: packId, description: '', source: 'builtin', enabled: true, unavailableReason: null, schemaVersion: 2, worksOn: ['course'], usesWeb: false, outputs: { dir: '복습', primary: packId }, ...(packId === 'vocab-chain-en' ? { experience: 'article-vocabulary' as const } : {}) }))
+test('More searches plugins and excludes AI packs from the app extension list', async () => {
+  inventory.entries = [
+    { kind: 'plugin-command', id: 'word-count', pluginId: 'word-count', pluginName: '통계', commandId: 'count', label: '단어 수', description: '문서 통계', source: 'extension', enabled: true, unavailableReason: null, defaultChord: null, menuLocations: [] },
+    { kind: 'pack', id: 'pack:quiz', packId: 'quiz', label: '퀴즈 만들기', description: '', source: 'builtin', enabled: true, unavailableReason: null, schemaVersion: 2, worksOn: ['course'], usesWeb: false, outputs: { dir: '복습', primary: 'quiz' } }
+  ]
   await act(async () => { root!.render(<FeatureLauncherPanel hidden={false} />) })
-  for (const label of ['영어 글 읽기', '퀴즈 만들기', '카드 만들기', '요약하기']) {
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search(), label)
-      search().dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    expect([...document.querySelectorAll('.launcher-feature strong')].map(element => element.textContent)).toEqual([label])
-  }
+  expect([...document.querySelectorAll('.launcher-feature strong')].map(element => element.textContent)).toEqual(['단어 수'])
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search(), '통계')
+    search().dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect([...document.querySelectorAll('.launcher-feature strong')].map(element => element.textContent)).toEqual(['단어 수'])
 })

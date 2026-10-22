@@ -370,6 +370,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       ref={setRefs}
       className="pdf-page"
       data-pdf-page={pageNumber}
+      data-document-revision={props.documentRevision}
       aria-label={`${pageNumber} 페이지`}
       tabIndex={-1}
       style={{ width, height, outline: 'none' }}

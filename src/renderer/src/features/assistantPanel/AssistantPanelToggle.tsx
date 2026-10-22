@@ -1,19 +1,2 @@
-import { Tooltip } from '../../components/Tooltip'
-import { usePanelAssistant } from './panelContext'
-
-/** Browser and material viewers share their existing toolbar row with AI. */
-export function AssistantPanelToggle({ className = '' }: { className?: string }): JSX.Element | null {
-  const assistant = usePanelAssistant()
-  if (assistant === null) return null
-  const label = assistant.open ? 'AI 보조 사이드바 접기' : 'AI 보조 사이드바 펼치기'
-  return <Tooltip label={label} placement="bottom">
-    <button
-      type="button"
-      className={`tab-assistant-toggle ${className}`}
-      data-tour="assistant-panel-toggle"
-      aria-expanded={assistant.open}
-      aria-label={label}
-      onClick={assistant.toggle}
-    ><span aria-hidden="true">✦</span><span className="tab-assistant-toggle__label">AI</span></button>
-  </Tooltip>
-}
+/** AI lives in the workspace sidebar. Kept for toolbar compatibility. */
+export function AssistantPanelToggle(_props: { className?: string }): JSX.Element | null { return null }

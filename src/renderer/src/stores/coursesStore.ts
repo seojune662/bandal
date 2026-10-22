@@ -13,6 +13,8 @@ import { invoke } from '../lib/ipc'
 import type { ImmerStore } from './immerStore'
 import { ensureSettingsLoaded, settingsSnapshot } from './settingsSnapshot'
 import { closeResourceTabs, useWorkspaceStore } from './workspaceStore'
+import { rememberedWorkspace } from '../features/workspace/workspaceSelection'
+import { useUiStore } from './uiStore'
 
 interface CoursesState {
   courses: Course[]
@@ -147,6 +149,22 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           (course) => course.id === get().selectedCourseId
         )
         if (!selectionStillExists) {
+          const rememberedSpace = settings?.restoreLastCourse ? rememberedWorkspace() : null
+          const spaceOwner = rememberedSpace && courses.find(course => course.id === rememberedSpace.courseId)
+          if (rememberedSpace && spaceOwner) {
+            let exists = true
+            if (rememberedSpace.kind === 'project') {
+              try { await invoke('learning:get', { binding: { courseId: rememberedSpace.courseId, rootRelPath: rememberedSpace.rootRelPath } }) } catch { exists = false }
+            }
+            if (sequence !== loadSequence) return
+            if (exists) {
+              get().selectCourse(rememberedSpace.courseId, { preserveSurface: true })
+              useWorkspaceStore.getState().showWorkspace(rememberedSpace)
+              // Keep the user's independently selected home list when present.
+              if (!localStorage.getItem('bandal:home-tab')) useUiStore.getState().setHomeTab(rememberedSpace.kind === 'project' ? 'learning' : 'courses')
+              return
+            }
+          }
           // [R3] 부팅(또는 선택 과목 소멸) 시: 설정이 켜져 있고 기록된
           // 과목이 아직 살아 있으면 그 과목을, 아니면 첫 과목을 고른다.
           const remembered =
@@ -156,7 +174,9 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
             courses.some((course) => course.id === settings.lastActiveCourseId)
               ? settings.lastActiveCourseId
               : null
-          get().selectCourse(remembered ?? courses[0]?.id ?? null, { preserveSurface: useWorkspaceStore.getState().surface !== 'course' })
+          const candidate = courses.find(course => course.id === remembered) ?? courses.find(course => course.workspaceKind !== 'study-space') ?? courses[0]
+          get().selectCourse(candidate?.id ?? null, { preserveSurface: useWorkspaceStore.getState().surface !== 'course' })
+          if (candidate?.workspaceKind === 'study-space') useWorkspaceStore.getState().showWorkspace({ kind: 'project', courseId: candidate.id, rootRelPath: '' })
         }
         // [Gap B] 부팅에서 고른 과목도 영속 — 안 그러면 과목을 한 번도
         // 전환하지 않은 사용자는 lastActiveCourseId 가 영영 비어 있다.

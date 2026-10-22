@@ -5,6 +5,7 @@
  * so the sidebar only needs a one-line call.
  */
 
+import type { WorkspaceRef } from '../../../../shared/types/workspace'
 import type { TabDescriptor } from '../../../../shared/tabs'
 import type { MaterialKind } from '../../../../shared/types/materials'
 import { showToast } from '../../app/toast'
@@ -17,6 +18,8 @@ import { isViewableFile } from '../file/fileFormats'
 
 interface OpenMaterialOptions {
   newInstance?: boolean
+  workspace?: WorkspaceRef | null
+  navigateToOwner?: boolean
 }
 
 export const MATERIAL_OPEN_DEDUPE_MS = 5 * 60 * 1000
@@ -58,7 +61,7 @@ export function openMaterialInWorkspace(
 ): void {
   const courseId = useMaterialsStore.getState().activeCourseId
   if (courseId === null) return
-  openMaterialInCourse(courseId, kind, relPath, options)
+  openMaterialInCourse(courseId, kind, relPath, { ...options, workspace: options?.workspace ?? useWorkspaceStore.getState().activeWorkspace })
 }
 
 /**
@@ -75,10 +78,11 @@ export function openMaterialInCourse(
   const request = ++latestOpenRequest
   const initialWorkspace = useWorkspaceStore.getState()
   const initialCourse = useCoursesStore.getState().selectedCourseId
+  const destination = options?.navigateToOwner ? { kind: 'course' as const, courseId } : options?.workspace ?? initialWorkspace.activeWorkspace ?? { kind: 'course' as const, courseId }
   const stillRequested = (): boolean => {
     const current = useWorkspaceStore.getState()
     return request === latestOpenRequest && current.surface === initialWorkspace.surface &&
-      current.activeCourseId === initialWorkspace.activeCourseId &&
+      current.activeWorkspaceKey === initialWorkspace.activeWorkspaceKey &&
       current.activePanelId === initialWorkspace.activePanelId &&
       useCoursesStore.getState().selectedCourseId === initialCourse
   }
@@ -88,8 +92,8 @@ export function openMaterialInCourse(
       showToast('원본 과목을 찾을 수 없어요.', 'danger')
       return
     }
-    courses.selectCourse(courseId)
-    useWorkspaceStore.getState().showCourseWorkspace(courseId)
+    if (courses.selectedCourseId !== destination.courseId) courses.selectCourse(destination.courseId, { preserveSurface: true })
+    useWorkspaceStore.getState().showWorkspace(destination)
     if (options?.newInstance === true) {
       useWorkspaceStore.getState().openTab(descriptor, { newInstance: true })
       return

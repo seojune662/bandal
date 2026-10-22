@@ -1,3 +1,5 @@
+import { revealAnnotation } from '../annotation/revealAnnotation'
+import { StudyResultCard } from './StudyResultCard'
 /**
  * Ordered message stream: user bubbles on the right, assistant turns as
  * readable answers with a single progress indicator and a copy action.
@@ -44,6 +46,7 @@ const BlockRenderer = memo(function BlockRenderer({
       // block inside a normal turn has no bubble form.
       return null
     case 'artifact':
+      if (block.artifact.learning || block.artifact.pending) return <StudyResultCard artifact={block.artifact} />
       return <div className="chat-artifact"><span>{block.artifact.name}</span><button type="button" onClick={() => void invoke('chat:openArtifact', { courseId: block.artifact.courseId, relPath: block.artifact.relPath }).catch(() => undefined)}>열기</button><button type="button" onClick={() => { void invoke('materials:reveal', { courseId: block.artifact.courseId, relPath: block.artifact.relPath }).catch(() => undefined) }}>파일 위치</button></div>
     case 'text':
       return <TextBlock block={block} />
@@ -147,6 +150,7 @@ const UserMessage = memo(function UserMessage({
           </div>
         )}
         {contexts.map((context, index) => <div className="chat-context-chips" key={index}>
+          {context.references?.map((reference, i) => <button type="button" className="chat-context-chip" key={reference.id} title={`원본 보기: ${reference.quote ?? reference.title}`} onClick={() => void revealAnnotation(reference)}>{i + 1}. {reference.title}{reference.page ? ` · ${reference.page}쪽` : ''}{reference.comment ? ` · ${reference.comment}` : ''}</button>)}
           {context.files?.map((file) => <span className="chat-context-chip" key={file.relPath}>{file.name}</span>)}
           {context.creation && <span className="chat-context-chip">{CREATION_LABELS[context.creation]} 만들기</span>}
           {context.skillNames?.map((name) => <span className="chat-context-chip" key={name}>{name}</span>)}

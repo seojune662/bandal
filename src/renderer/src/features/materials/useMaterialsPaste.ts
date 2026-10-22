@@ -65,10 +65,14 @@ export function useMaterialsPaste({
   }, [])
 
   useEffect(
-    () => () => {
-      if (clearTimerRef.current !== null) window.clearTimeout(clearTimerRef.current)
+    () => {
+      activeCourse.current = courseId
+      return () => {
+        activeCourse.current = null
+        if (clearTimerRef.current !== null) window.clearTimeout(clearTimerRef.current)
+      }
     },
-    []
+    [courseId]
   )
 
   useEffect(() => { setPasteNotice(null) }, [courseId])
@@ -84,8 +88,7 @@ export function useMaterialsPaste({
         return
       }
 
-      const isFileImport = plan.kind === 'files'
-      const targetName = isFileImport ? `${courseName} 루트` : destinationName
+      const targetName = destinationName
       showNotice(`${targetName}에 추가됩니다`)
       setIsPasting(true)
       await nextPaint()
@@ -93,7 +96,7 @@ export function useMaterialsPaste({
       const created: string[] = []
       try {
         if (plan.kind === 'files') {
-          const imported = await importMaterialPaths(courseId, plan.paths)
+          const imported = await importMaterialPaths(courseId, plan.paths, dirRelPath)
           if (activeCourse.current !== courseId) return
           onCreated(imported)
           if (imported.length > 0) showNotice(`${targetName}에 추가했어요`, true)

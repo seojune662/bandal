@@ -5,9 +5,12 @@ import { createCourse, launchBandal } from './helpers/launch'
 
 async function beginDrag(page: Page, source: Locator, x: number, y: number): Promise<void> {
   const box = (await source.boundingBox())!
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  // Compact icon tabs deliberately replace the centre icon with a hover X.
+  // Start a drag on the tab surface outside that separate close-button target.
+  const sourceX = box.x + (box.width < 56 ? 2 : box.width / 2)
+  await page.mouse.move(sourceX, box.y + box.height / 2)
   await page.mouse.down()
-  await page.mouse.move(box.x + box.width / 2 + 10, box.y + box.height / 2, { steps: 3 })
+  await page.mouse.move(sourceX + 10, box.y + box.height / 2, { steps: 3 })
   await page.mouse.move(x, y, { steps: 12 })
   await page.mouse.move(x + 1, y)
 }
@@ -112,7 +115,8 @@ for (const theme of ['light', 'dark'] as const) {
         await page.getByRole('button', { name: '자료 새로고침' }).click()
         for (const title of Object.values(titles)) await page.locator(`[data-material-path="${title}.md"]`).click()
         const tab = (name: keyof typeof titles): Locator => page.locator('.dv-tab').filter({ has: page.locator('.workspace-tab__title', { hasText: new RegExp(`^${titles[name]}$`) }) })
-        await tab('first').click()
+        await tab('first').focus()
+        await page.keyboard.press('Enter')
         await tab('third').scrollIntoViewIfNeeded()
         await tab('third').hover()
         const longLabel = tab('third').locator('.workspace-tab__title')
@@ -139,8 +143,9 @@ for (const theme of ['light', 'dark'] as const) {
         await expect(tab('third')).toHaveCount(0)
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+T' : 'Control+Shift+T')
         await expect(tab('third')).toHaveClass(/dv-active-tab/)
-        await tab('first').click()
-        await tab('second').click({ button: 'middle' })
+        await tab('first').focus()
+        await page.keyboard.press('Enter')
+        await tab('second').click({ button: 'middle', position: { x: 2, y: 10 } })
         await expect(tab('first')).toHaveClass(/dv-active-tab/)
         await expect(tab('second')).toHaveCount(0)
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+T' : 'Control+Shift+T')

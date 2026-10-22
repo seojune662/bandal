@@ -58,7 +58,8 @@ export interface ChatSessionApi {
 export function useChatSession(
   courseId: string,
   conversationId: string,
-  surface: ChatSurface = 'app'
+  surface: ChatSurface = 'app',
+  workspaceKey?: string
 ): ChatSessionApi {
   const snapshot = useChatSessionStore(
     useCallback(
@@ -68,8 +69,8 @@ export function useChatSession(
   )
 
   useEffect(
-    () => acquireChatSession(courseId, conversationId, surface),
-    [courseId, conversationId, surface]
+    () => acquireChatSession(courseId, conversationId, surface, workspaceKey),
+    [courseId, conversationId, surface, workspaceKey]
   )
 
   const send = useCallback(

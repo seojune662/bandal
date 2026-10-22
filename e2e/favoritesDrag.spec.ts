@@ -188,21 +188,22 @@ test('drags a real dockview tab into course favorites', async () => {
     // Widening the allowed operation to copyMove must preserve dockview's
     // original move behavior. Add a second tab and reorder the first one.
     await page.locator('.workspace-add-tab').click()
-    await page.getByRole('option', { name: /^AI/ }).click()
-    const aiTab = page.locator('.dv-tab', {
-      has: page.locator('.workspace-tab__title', { hasText: 'AI 튜터' })
+    await page.getByRole('option', { name: /^마크다운(?:\s|$)/ }).click()
+    const noteTab = page.locator('.dv-tab', {
+      has: page.locator('.workspace-tab__title', { hasText: /^새 마크다운/ })
     })
-    await expect(aiTab).toBeVisible()
-    const aiBox = await aiTab.boundingBox()
-    expect(aiBox).not.toBeNull()
-    await tab.dragTo(aiTab, {
+    await expect(noteTab).toBeVisible()
+    const noteTitle = await noteTab.locator('.workspace-tab__title').textContent()
+    const noteBox = await noteTab.boundingBox()
+    expect(noteBox).not.toBeNull()
+    await tab.dragTo(noteTab, {
       targetPosition: {
-        x: Math.max(1, aiBox!.width - 2),
-        y: aiBox!.height / 2
+        x: Math.max(1, noteBox!.width - 2),
+        y: noteBox!.height / 2
       }
     })
     await expect(page.locator('.dv-tab .workspace-tab__title')).toHaveText([
-      'AI 튜터',
+      noteTitle!,
       '학업 보드'
     ])
   } catch (error) {

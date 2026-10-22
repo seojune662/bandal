@@ -1,3 +1,4 @@
+import { repointProjectWorkspaces } from '../../db/projectWorkspacePaths'
 import { randomUUID } from 'node:crypto'
 import { ConflictError, ValidationError } from '../../db/errors'
 import { assertMaterialPathAvailable, type MaterialPathLock } from '../materials/materialPathJournal'
@@ -53,6 +54,7 @@ export function createLearningPathOutbox(deps: Deps) {
           db.transaction(() => {
             const current = first()
             if (current?.sequence !== row!.sequence || current.operation_id !== row!.operation_id || current.request_json !== row!.request_json) throw new ConflictError('Learning path queue changed during replay')
+            repointProjectWorkspaces(db, input)
             db.prepare(`DELETE FROM ${table} WHERE sequence=? AND operation_id=?`).run(row!.sequence, row!.operation_id)
           })()
         }

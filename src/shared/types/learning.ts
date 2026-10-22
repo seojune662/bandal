@@ -161,6 +161,9 @@ export interface LearningDraft {
   wordUpdates?: Array<{ wordId: string; occurrenceId?: string; meaning: string; lemma?: string; pronunciation?: string; partOfSpeech?: string }>
 }
 export interface LearningRun {
+  retryOf?: string
+  instructions?: string
+  chatContext?: import('./chatCapabilities').ChatContext
   id: string; kind: LearningRunKind
   packId?: string
   purpose?: LearningPurpose
@@ -242,6 +245,8 @@ export interface UpdateLearningRunInput extends LearningMutation { run: Learning
 export interface ImportLearningDraftInput extends LearningMutation { draft: LearningDraft; runId?: string }
 export interface LearningMaterialRequest { binding: LearningBinding; id: string }
 export interface StartLearningRunInput extends LearningMutation {
+  instructions?: string
+  chatContext?: import('./chatCapabilities').ChatContext
   kind: LearningRunKind; provider?: string; articleIds?: string[]; wordIds?: string[]
   packId?: string
   sourceRefs?: LearningSourceRef[]

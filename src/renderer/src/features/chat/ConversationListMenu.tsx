@@ -17,6 +17,7 @@ type LoadState = 'idle' | 'loading' | 'ready' | 'error'
 
 export interface ConversationListMenuProps {
   courseId: string
+  workspaceKey?: string | undefined
   currentConversationId: string
   surface?: ChatSurface
   onNewConversation: () => void
@@ -77,6 +78,7 @@ function relativeTime(value: string | null): string {
 
 export function ConversationListMenu({
   courseId,
+  workspaceKey,
   currentConversationId,
   surface = 'app',
   onNewConversation,
@@ -102,7 +104,7 @@ export function ConversationListMenu({
     const requestSerial = ++requestSerialRef.current
     setLoadState('loading')
     try {
-      const result = await invoke('chat:conversations', { courseId, surface })
+      const result = await invoke('chat:conversations', { courseId, surface, ...(workspaceKey ? { workspaceKey } : {}) })
       if (!mountedRef.current || requestSerial !== requestSerialRef.current) {
         return
       }
@@ -115,7 +117,7 @@ export function ConversationListMenu({
       console.error('[Bandal] 대화 목록을 불러오지 못했습니다.', error)
       setLoadState('error')
     }
-  }, [courseId, surface])
+  }, [courseId, surface, workspaceKey])
 
   useEffect(() => {
     mountedRef.current = true

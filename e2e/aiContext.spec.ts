@@ -41,6 +41,7 @@ test.describe('AI material context and screen selection', () => {
     await expect(page.getByRole('textbox', { name: '메시지 입력' })).toBeVisible()
     expect((await snapshot()).material).toMatchObject({ page: 2, relPath: 'context.pdf' })
     await expect(page.locator('.chat-context-auto')).toContainText('context.pdf · 2쪽')
+    await page.getByRole('tablist', { name: '오른쪽 사이드바' }).getByRole('tab', { name: '자료', exact: true }).click()
     await page.locator('[data-material-path="context.md"]').click()
     const editor = page.locator('[aria-label="마크다운 필기 편집기"]')
     await expect(editor).toBeVisible()

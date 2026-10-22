@@ -57,7 +57,8 @@ describe('migrations', () => {
       { version: 34, name: 'board-task-schedule-range' },
       { version: 35, name: 'conversation-access-policy' },
       { version: 36, name: 'course-workspace-kind' },
-      { version: 37, name: 'material-added-state' }
+      { version: 37, name: 'material-added-state' },
+      { version: 38, name: 'project-workspaces' }
     ])
   })
 
@@ -227,7 +228,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(37)
+    expect(count.n).toBe(38)
   })
 
   test('adds a persistent default color to existing board tasks (migration 030)', () => {

@@ -39,7 +39,7 @@ vi.mock('../../../src/renderer/src/features/account/SidebarAccountEntry', () => 
 }))
 vi.mock('../../../src/renderer/src/features/help/HelpHub', () => ({
   HelpHub: () => (
-    <button type="button" className="rail-nav__item" aria-label="더 보기" />
+    <button type="button" className="rail-nav__item" aria-label="도움말" />
   )
 }))
 vi.mock('../../../src/renderer/src/features/university/UniversityShortcuts', () => ({
@@ -151,7 +151,7 @@ describe('CourseSidebar course menu', () => {
     expect(invokeMock).toHaveBeenCalledWith('update:status', {})
     expect(container.querySelector('.rail-update-button')).toBeNull()
     expect(labels).toEqual([
-      '과목', '학습', '학업 보드 열기', 'AI', '도구', '커뮤니티', '더 보기', '내 프로필', '설정'
+      '홈', '학업 보드 열기', '더보기', '커뮤니티', '도움말', '내 프로필', '설정'
     ])
   })
 

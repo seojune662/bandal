@@ -595,3 +595,39 @@ div.toast {
   width: min(100%, 80rem);
   height: min(100%, 48rem);
 }
+
+/* A single shared rail, with chrome owned by the shell rather than a dock group. */
+.right-sidebar { display:flex; flex-direction:column; width:var(--rail-right-width); height:100%; min-height:0; border-left:1px solid var(--shell-divider); background:var(--bg-surface); }
+.right-sidebar__tabs { display:flex; align-items:stretch; gap:6px; height:var(--chrome-height); min-height:var(--chrome-height); padding:0 calc(var(--icon-button-size) + 16px) 0 12px; border-bottom:1px solid var(--shell-divider); }
+.right-sidebar__tabs button { display:grid; place-items:center; position:relative; width:36px; height:100%; color:var(--text-muted); -webkit-app-region:no-drag; }
+.right-sidebar__tabs button[aria-selected='true'] { color:var(--text-primary); }
+.right-sidebar__tabs button[aria-selected='true']::after { content:''; position:absolute; bottom:0; left:8px; right:8px; height:2px; border-radius:2px; background:currentColor; }
+.right-sidebar > section { flex:1; min-height:0; overflow:hidden; }
+.right-sidebar > section[hidden] { display:none; }
+.right-sidebar > section > .app-rail { height:100%; border-left:0; }
+.right-sidebar-toggle { position:absolute; z-index:46; right:8px; top:0; height:var(--chrome-height); display:flex; align-items:center; -webkit-app-region:no-drag; }
+.right-sidebar-toggle button { background:var(--bg-surface); }
+.app-shell[data-right-rail='closed'] .right-sidebar { visibility:hidden; pointer-events:none; }
+.app-shell[data-right-rail='closed'] .workspace-host { --right-sidebar-toggle-inset:44px; }
+.home-tabs { display:flex; align-items:center; gap:12px; }
+.home-tabs button { position:relative; padding:6px 0; font-size:var(--text-base); color:var(--text-muted); font-weight:500; white-space:nowrap; }
+.home-tabs button[aria-selected='true'] { color:var(--text-primary); font-weight:650; }
+.home-tabs button[aria-selected='true']::after { content:''; position:absolute; bottom:0; height:2px; left:0; right:0; background:currentColor; border-radius:2px; }
+.materials-heading { flex-direction:column; align-items:stretch; gap:8px; }
+.materials-heading__text { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.materials-heading__actions { display:flex; justify-content:space-between; width:100%; }
+.materials-heading__actions .materials-view-picker__trigger { width:var(--icon-button-size); height:var(--icon-button-size); padding:0; justify-content:center; }
+.materials-heading__actions .materials-view-picker__trigger > span { display:none; }
+.materials-create-menu { position:relative; }
+.materials-create-menu > .context-menu { position:absolute; z-index:60; right:0; top:calc(100% + 4px); min-width:160px; }
+/* The shell control reserves its corner even when no Dockview group exists. */
+.app-shell[data-right-rail='closed'] .workspace-group-actions[data-window-corner='right'] { margin-inline-end:44px; }
+:root[data-platform='win32'] .right-sidebar-toggle { right:var(--window-controls-inset); }
+:root[data-platform='win32'] .right-sidebar__tabs { padding-right:calc(var(--window-controls-inset) + 44px); }
+:root[data-platform='win32'] .app-shell[data-right-rail='closed'] .workspace-group-actions[data-window-corner='right'] { margin-inline-end:calc(var(--window-controls-inset) + 44px); }
+.right-sidebar { container-type:inline-size; }
+@container (max-width: 270px) {
+  :root[data-platform='win32'] .right-sidebar__tabs { padding-top:var(--chrome-height); padding-right:8px; height:calc(var(--chrome-height) * 2); min-height:calc(var(--chrome-height) * 2); }
+}
+.materials-heading__actions .materials-view-menu { left:0; right:auto; }
+.materials-import-menu > .context-menu { left:0; right:auto; min-width:150px; }

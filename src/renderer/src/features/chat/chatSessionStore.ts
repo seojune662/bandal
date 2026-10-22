@@ -48,6 +48,7 @@ interface ChatSessionStoreState {
 }
 
 interface ConversationRuntime {
+  workspaceKey?: string
   /** The course this conversation belongs to (needed for reopen). */
   courseId: string
   surface: ChatSurface
@@ -207,7 +208,8 @@ async function openConversation(
     const result = await invoke('chat:open', {
       courseId,
       sessionId: conversationId,
-      surface: surface ?? runtime.surface
+      surface: surface ?? runtime.surface,
+      ...(runtime.workspaceKey ? { workspaceKey: runtime.workspaceKey } : {})
     })
     if (version !== runtime.openVersion) {
       return
@@ -282,11 +284,13 @@ function handleBatch(
 export function acquireChatSession(
   courseId: string,
   conversationId: string,
-  surface: ChatSurface = 'app'
+  surface: ChatSurface = 'app',
+  workspaceKey?: string
 ): () => void {
   const runtime = runtimeFor(courseId, conversationId)
   runtime.courseId = courseId
   runtime.surface = surface
+  if (workspaceKey) runtime.workspaceKey = workspaceKey
   if (useChatSessionStore.getState().sessions[conversationId] === undefined) {
     updateSnapshot(conversationId, (current) => ({ ...current }))
   }

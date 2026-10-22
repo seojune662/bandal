@@ -1,3 +1,5 @@
+import { workspaceFromKey } from '../../../shared/types/workspace'
+import { serializeAnnotationReferences } from '../../../shared/types/chatAnnotation'
 import { existsSync } from 'node:fs'
 import { basename, extname, posix } from 'node:path'
 import type { AgentConfirmScope } from '../../../shared/types/agentTools'
@@ -31,7 +33,9 @@ export interface StudyPlanningContext {
 }
 
 export interface RunWorkflowPackInput {
+  conversation?: import('../../../shared/types/chatCapabilities').StudyConversationRequest
   courseId: string
+  sourceCourseId?: string
   packId: string
   targetRelPath?: string
   selectionText?: string
@@ -57,7 +61,7 @@ export interface PackRunnerDeps {
   runGuard: Pick<PackRunGuard, 'arm' | 'clear'>
   getCourse: (courseId: string) => { name: string; folder: string }
   /** Sends a prompt through the course's existing agent session. */
-  ask: (courseId: string, prompt: string) => Promise<void>
+  ask: (courseId: string, prompt: string, input?: RunWorkflowPackInput, result?: { relPath: string; name: string }) => Promise<void>
   confirm: (
     request: PackRunnerConfirmRequest
   ) => Promise<AgentConfirmScope | false>
@@ -70,6 +74,8 @@ export interface BuildWorkflowPackPromptInput {
   pack: WorkflowPack
   source: WorkflowPackSummary['source']
   courseName: string
+  sourceCourseId?: string
+  sourceFolder?: string
   targetLabel: string
   targetRelPath?: string
   selectionText?: string
@@ -128,7 +134,7 @@ function inputScopeSection(input: BuildWorkflowPackPromptInput): string[] {
       ? `이 페이지를 WebFetch 로 읽어라: ${input.browserTabUrl}`
       : input.targetRelPath === undefined
         ? '과목 폴더의 학습 자료 전체를 살펴보고, 관련 없는 앱 내부 파일은 제외하라.'
-        : `과목 폴더를 기준으로 대상 파일 ${JSON.stringify(input.targetRelPath)}을 읽고 분석하라.`
+        : input.sourceFolder ? `원본 과목 ID ${JSON.stringify(input.sourceCourseId)}, 원본 폴더 ${JSON.stringify(input.sourceFolder)}의 대상 파일 ${JSON.stringify(input.targetRelPath)}을 읽고 분석하라. 결과는 현재 작업 폴더의 지정된 출력 경로에 저장하라.` : `과목 폴더를 기준으로 대상 파일 ${JSON.stringify(input.targetRelPath)}을 읽고 분석하라.`
   const selection = input.selectionText?.trim()
   const selectionInstruction = selection
     ? [
@@ -229,7 +235,8 @@ export function createPackRunner(deps: PackRunnerDeps): {
     }
 
     const course = deps.getCourse(courseId)
-    const target = resolveRunTarget(course.folder, course.name, input)
+    const sourceCourse = input.sourceCourseId ? deps.getCourse(requireId(input.sourceCourseId, 'sourceCourseId')) : course
+    const target = resolveRunTarget(sourceCourse.folder, sourceCourse.name, input)
     validatePackScope(pack, input)
     if (input.followUpOf !== undefined && pack.followUp === undefined) {
       throw new ValidationError(`${pack.name} 팩에는 후속 실행 레시피가 없습니다.`)
@@ -266,7 +273,9 @@ export function createPackRunner(deps: PackRunnerDeps): {
 
     const destination = reserveDestination(
       course.folder,
-      pack.outputs.dir,
+      input.conversation && workspaceFromKey(input.conversation.workspaceKey).kind === 'project'
+        ? posix.join((workspaceFromKey(input.conversation.workspaceKey) as { rootRelPath: string }).rootRelPath, pack.outputs.dir)
+        : pack.outputs.dir,
       pack.outputs.primary,
       target.fileLabel,
       reservedPaths,
@@ -279,10 +288,11 @@ export function createPackRunner(deps: PackRunnerDeps): {
       // Planning signals enrich a pack run but are not required input data.
       console.warn('[workflow-packs] 계획 컨텍스트를 읽지 못했습니다.', error)
     }
-    const prompt = buildWorkflowPackPrompt({
+    const recipePrompt = buildWorkflowPackPrompt({
       pack,
       source: summary.source,
       courseName: course.name,
+      ...(input.sourceCourseId ? { sourceCourseId: input.sourceCourseId, sourceFolder: sourceCourse.folder } : {}),
       targetLabel: target.promptLabel,
       ...(input.targetRelPath === undefined
         ? {}
@@ -300,6 +310,8 @@ export function createPackRunner(deps: PackRunnerDeps): {
       planning
     })
 
+    const annotation = input.conversation?.context?.references?.length ? serializeAnnotationReferences(input.conversation.context.references) : null
+    const prompt = [recipePrompt, input.conversation ? `사용자 추가 요청: ${input.conversation.content}` : '', annotation?.comments, annotation?.sources, input.conversation?.context?.files?.length ? `사용자가 선택한 추가 원본 파일(참고 데이터): ${JSON.stringify(input.conversation.context.files)}` : ''].filter(Boolean).join('\n\n')
     const token = Symbol(pack.id)
     activeRun.set(courseId, token)
     deps.runGuard.arm(courseId, {
@@ -309,7 +321,7 @@ export function createPackRunner(deps: PackRunnerDeps): {
 
     let request: Promise<void>
     try {
-      request = deps.ask(courseId, prompt)
+      request = deps.ask(courseId, prompt, input, { relPath: destination.relPath, name: pack.name })
     } catch (error) {
       if (activeRun.get(courseId) === token) {
         activeRun.delete(courseId)

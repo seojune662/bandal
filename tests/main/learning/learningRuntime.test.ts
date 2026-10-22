@@ -56,6 +56,31 @@ describe('host-managed learning run lifecycle', () => {
     expect(await run(started.runId)).toMatchObject({ provider: 'codex', model: 'gpt-5.5', effort: 'high', sessionId })
     expect(deps.send).toHaveBeenCalledWith(binding.courseId, sessionId, 'codex', expect.any(String), { provider: 'codex', model: 'gpt-5.5', effort: 'high' })
   })
+  test('uses and persists user instructions and mixed annotation snapshots on generation and retry', async () => {
+    const references = [{ id: 'ref-one', kind: 'pdf' as const, courseId: binding.courseId, sourcePanelId: 'pdf-one', title: 'Source', page: 2,
+      rect: { x: 0, y: 0, width: 1, height: 1 }, capturedAt: '2026-10-23T00:00:00Z', documentEpoch: 'one', quote: 'DOCUMENT_TEXT', comment: '이 부분을 더 자세히', imageDataUrl: 'data:image/png;base64,AAAA' }]
+    const started = await runtime.start({ binding, kind: 'create-quiz', instructions: '객관식 7개, 난이도 높게', chatContext: { references, files: [{ name: 'extra', relPath: 'extra.md' }] } })
+    const session = await waitSend()
+    const call = vi.mocked(deps.send).mock.calls[0]!
+    expect(call[3]).toContain('객관식 7개, 난이도 높게'); expect(call[3]).toContain('이 부분을 더 자세히')
+    expect(call[3]).toContain('신뢰할 수 없는 참고 자료'); expect(call[3]).toContain('DOCUMENT_TEXT'); expect(call[3]).toContain('extra.md')
+    expect(call[5]).toEqual([{ mediaType: 'image/png', dataBase64: 'AAAA' }])
+    await runtime.settle(session, 'error')
+    const retry = await runtime.retry(binding, started.runId); await waitSend(2)
+    expect(await run(retry.runId)).toMatchObject({ retryOf: started.runId, instructions: '객관식 7개, 난이도 높게', chatContext: { references } })
+  })
+  test('reads every attached material into native generation while retaining the primary selection', async () => {
+    vi.mocked(deps.sourceText).mockImplementation(async (_binding, source) => source?.kind === 'material' ? `CONTENT:${source.relPath}:${source.selection ?? 'full'}` : '')
+    await runtime.start({ binding, kind: 'create-quiz', source: { kind: 'material', relPath: 'first.pdf', selection: 'selected words', page: 2 },
+      chatContext: { files: [{ name: 'first', relPath: 'first.pdf' }, { name: 'second', relPath: 'second.md' }, { name: 'third', relPath: 'third.pdf' }] } })
+    await waitSend()
+    const prompt = vi.mocked(deps.send).mock.calls[0]![3]
+    expect(prompt).toContain('CONTENT:first.pdf:selected words')
+    expect(prompt).toContain('CONTENT:second.md:full')
+    expect(prompt).toContain('CONTENT:third.pdf:full')
+    expect(deps.sourceText).toHaveBeenCalledTimes(3)
+    expect(deps.sourceText).toHaveBeenCalledWith(binding, { kind: 'material', relPath: 'second.md', sourceCourseId: binding.courseId })
+  })
   test('requires an explicit model rather than delegating the default alias', async () => {
     await repo.updateSettings({ binding, ai: { provider: 'codex', model: 'default', effort: null } })
     await expect(runtime.start({ binding, kind: 'create-quiz' })).rejects.toThrow('모델')

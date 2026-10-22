@@ -1,3 +1,4 @@
+import { HomeTabs } from './HomeTabs'
 import { useDismissableMenu } from '../../components/useDismissableMenu'
 import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -11,6 +12,7 @@ import { showToast } from '../../app/toast'
 import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
 import { useCoursesStore } from '../../stores/coursesStore'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { AiShortcuts } from '../ai/AiShortcuts'
 import {
@@ -70,6 +72,7 @@ export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Ele
   const courses = useMemo(() => allCourses.filter(course => course.workspaceKind !== 'study-space'), [allCourses])
   const groups = useCoursesStore((state) => state.groups)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
+  const inProject = useWorkspaceStore(state => state.activeWorkspace?.kind === 'project')
   const isLoading = useCoursesStore((state) => state.isLoading)
   const pendingCourseId = useCoursesStore((state) => state.pendingCourseId)
   const error = useCoursesStore((state) => state.error)
@@ -327,7 +330,7 @@ export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Ele
   const renderCourse = (course: Course, dragEnabled: boolean): JSX.Element => {
     const expanded = !collapsedCourseIds.has(course.id)
     return <CourseListItem key={course.id} course={course}
-      selected={course.id === selectedCourseId} pending={course.id === pendingCourseId}
+      selected={!inProject && course.id === selectedCourseId} pending={course.id === pendingCourseId}
       expanded={expanded} menuOpen={contextMenu?.course.id === course.id}
       dropBefore={dropTarget?.kind === 'before' && dropTarget.courseId === course.id}
       dragging={draggingCourseId === course.id} dragProps={rowDragProps(course, dragEnabled)}
@@ -339,13 +342,13 @@ export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Ele
   }
 
   return (
-    <aside className="app-rail app-rail--left" aria-label="과목 목록" hidden={hidden}>
+    <aside id="courses-list-panel" className="app-rail app-rail--left" aria-label="과목 목록" hidden={hidden}>
       <UniversityShortcuts />
       <AiShortcuts />
 
       <div className="rail-heading">
         <div>
-          <h2>과목</h2>
+          <HomeTabs />
         </div>
         <Tooltip label="과목 추가" placement="bottom">
           <button

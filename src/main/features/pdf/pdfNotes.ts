@@ -180,7 +180,7 @@ export function createPdfNotesService(deps: PdfNotesDeps) {
     if (orientation !== 'portrait' && orientation !== 'landscape') throw new ValidationError('orientation must be portrait or landscape')
     const title = (typeof request.title === 'string' ? request.title : '').replace(/[/\\:*?"<>|\u0000-\u001f]/g, '').trim().slice(0, 120) || '노트'
     // Notes collect in one folder so the sidebar can list and manage them.
-    const dirRelPath = NOTES_FOLDER
+    const dirRelPath = request.dirRelPath === undefined ? NOTES_FOLDER : request.dirRelPath === '' ? '' : relativePath(request.dirRelPath)
     const pdf = await PDFDocument.create()
     pdf.setTitle(title); pdf.setCreator('Bandal'); setPaper(pdf, paper, orientation)
     drawPaper(pdf.addPage(noteSize(orientation)), paper)

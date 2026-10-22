@@ -79,11 +79,11 @@ test.describe('sidebars', () => {
   test('the materials sidebar can be reopened with no tabs open', async () => {
     const { page } = bandal
 
-    await page.getByRole('button', { name: '자료 사이드바 접기' }).click()
-    const expand = page.getByRole('button', { name: '자료 사이드바 펼치기' })
+    await page.getByRole('button', { name: '오른쪽 사이드바 접기' }).click()
+    const expand = page.getByRole('button', { name: '오른쪽 사이드바 펼치기' })
     await expect(expand).toHaveCount(1)
     await expand.click()
-    await expect(page.getByRole('button', { name: '자료 사이드바 접기' })).toHaveCount(1)
+    await expect(page.getByRole('button', { name: '오른쪽 사이드바 접기' })).toHaveCount(1)
   })
 
   test('sidebar resize handles support keyboard adjustment and retain the chosen width', async () => {
@@ -112,7 +112,7 @@ test.describe('sidebars', () => {
       page.getByRole('button', { name: '과목 사이드바 펼치기' })
     ).toHaveCount(1)
     await expect(
-      page.getByRole('button', { name: '자료 사이드바 접기' })
+      page.getByRole('button', { name: '오른쪽 사이드바 접기' })
     ).toHaveCount(1)
   })
   test('Cmd/Ctrl+S toggles the entire rail once and widgets keep independent cards', async ({}, info) => {
@@ -144,10 +144,10 @@ test.describe('sidebars', () => {
     const course = page.locator('aside.app-rail--left')
     const search = course.getByRole('searchbox')
     await search.fill('알고')
-    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
     await expect(menu).toBeVisible()
     await expect(course).toBeHidden()
-    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
     await expect(course).toBeVisible()
     await expect(search).toHaveValue('알고')
     await search.fill('')
@@ -159,7 +159,7 @@ test.describe('sidebars', () => {
     await expect(page.getByRole('button', { name: '앱으로 돌아가기' })).toBeVisible()
     await page.keyboard.press('ControlOrMeta+s')
     await expect(page.locator('.settings-sidebar')).toBeVisible()
-    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
     await expect(page.locator('.shell-settings-overlay')).toHaveCount(0)
     await expect(course).toBeVisible()
   })
@@ -241,7 +241,7 @@ test('shell controls remain reachable over the academic board and retained tab c
     await toggle.click()
     await page.getByRole('button', { name: '설정', exact: true }).click()
     await expect(page.locator('.settings-sidebar')).toBeVisible()
-    const courseButton = page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true })
+    const courseButton = page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true })
     expect(await courseButton.evaluate(button => {
       const rect = button.getBoundingClientRect()
       return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))
@@ -250,7 +250,7 @@ test('shell controls remain reachable over the academic board and retained tab c
     await expect(page.locator('.settings-sidebar')).toBeHidden()
     await toggle.click()
     await expect(page.locator('.settings-sidebar')).toBeVisible()
-    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
     await expect(page.locator('.shell-settings-overlay')).toHaveCount(0)
     await expect(page.locator('.board-overlay')).toHaveCount(0)
     await expect(page.locator('aside.app-rail--left')).toBeVisible()

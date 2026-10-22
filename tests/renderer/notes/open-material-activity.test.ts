@@ -20,7 +20,7 @@ vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: {
-    getState: () => ({ openTab: openTabMock, showCourseWorkspace: showCourseWorkspaceMock })
+    getState: () => ({ openTab: openTabMock, showWorkspace: showCourseWorkspaceMock })
   }
 }))
 
@@ -65,8 +65,8 @@ describe('material-opened activity deduplication', () => {
     openMaterialInCourse('course-activity', 'note', 'quiz/activity-test.md')
     openMaterialInCourse('course-activity', 'note', 'quiz/activity-test.md')
 
-    expect(selectCourseMock).toHaveBeenCalledWith('course-activity')
-    expect(showCourseWorkspaceMock).toHaveBeenCalledWith('course-activity')
+    expect(selectCourseMock).toHaveBeenCalledWith('course-activity', { preserveSurface: true })
+    expect(showCourseWorkspaceMock).toHaveBeenCalledWith({ kind: 'course', courseId: 'course-activity' })
     expect(openTabMock).toHaveBeenCalledTimes(2)
     expect(showToastMock).not.toHaveBeenCalled()
     expect(invokeMock).toHaveBeenCalledTimes(1)

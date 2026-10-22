@@ -261,11 +261,11 @@ test.describe('pdf scroll preservation', () => {
       await expect(page.locator('aside.app-rail--left')).toBeVisible()
       await expectPageSixPreserved()
 
-      await page.getByRole('button', { name: '자료 사이드바 접기' }).click()
+      await page.getByRole('button', { name: '오른쪽 사이드바 접기' }).click()
       await expect(page.locator('aside.app-rail--right')).toBeHidden()
       await expectPageSixPreserved()
 
-      await page.getByRole('button', { name: '자료 사이드바 펼치기' }).click()
+      await page.getByRole('button', { name: '오른쪽 사이드바 펼치기' }).click()
       await expect(page.locator('aside.app-rail--right')).toBeVisible()
       await expectPageSixPreserved()
 
@@ -341,7 +341,7 @@ test.describe('pdf scroll preservation', () => {
       await expect.poll(() => scroller.evaluate(element => element.clientHeight)).toBeLessThan(previousHeight)
       await expectPageSixPreserved()
       await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
-      await page.getByRole('button', { name: '자료 사이드바 접기' }).click()
+      await page.getByRole('button', { name: '오른쪽 사이드바 접기' }).click()
       await expect(page.locator('aside.app-rail--left')).toBeHidden()
       await expect(page.locator('aside.app-rail--right')).toBeHidden()
       await expectPageSixPreserved()

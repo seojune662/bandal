@@ -1,3 +1,6 @@
+import type { ProjectGroup } from '../../../../shared/projectNavigation'
+import type { LearningProjectSnapshot } from '../../../../shared/types/learning'
+import { LearningCreateDialog } from './LearningCreateDialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { LearningProjectSummary } from '../../../../shared/types/learning'
@@ -19,7 +22,8 @@ export async function restoreLearningSpace(project: LearningProjectSummary): Pro
   notifyLearningChanged()
 }
 
-export function LearningSpaceMenu({ project, contextRequest = 0 }: { project: LearningProjectSummary; contextRequest?: number }): JSX.Element {
+export function LearningSpaceMenu({ project, contextRequest = 0, groups = [], groupId = null, onMoveGroup }: { project: LearningProjectSummary; contextRequest?: number; groups?: ProjectGroup[]; groupId?: string | null; onMoveGroup?: (id: string | null) => void }): JSX.Element {
+  const [settingsProject, setSettingsProject] = useState<LearningProjectSnapshot | null>(null)
   const [menu, setMenu] = useState(false)
   const [mode, setMode] = useState<'rename' | 'delete' | null>(null)
   const [position, setPosition] = useState({ left: 0, top: 0 })
@@ -31,7 +35,7 @@ export function LearningSpaceMenu({ project, contextRequest = 0 }: { project: Le
   useDismissableMenu(menu, root, close)
   const open = (): void => {
     const rect = trigger.current?.getBoundingClientRect()
-    if (rect) setPosition({ left: Math.max(8, Math.min(rect.right - 184, window.innerWidth - 192)), top: Math.min(rect.bottom + 4, window.innerHeight - 148) })
+    if (rect) setPosition({ left: Math.max(8, Math.min(rect.right - 184, window.innerWidth - 192)), top: Math.min(rect.bottom + 4, window.innerHeight - 260) })
     setMenu(true)
   }
   useEffect(() => { if (contextRequest) open() }, [contextRequest])
@@ -45,10 +49,13 @@ export function LearningSpaceMenu({ project, contextRequest = 0 }: { project: Le
       const index = items.indexOf(document.activeElement as HTMLButtonElement)
       items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
     }}>
+      <button type="button" role="menuitem" onClick={() => { close(); void invoke('learning:get', { binding: project.binding }).then(setSettingsProject).catch(error => showToast(learningError(error), 'danger')) }}><Icon name="settings" /> 프로젝트 설정</button>
+      {onMoveGroup && <label className="project-move-group">그룹 이동<select aria-label="프로젝트 그룹" value={groupId ?? ''} onChange={event => { onMoveGroup(event.target.value || null); close() }}><option value="">그룹 없음</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>}
       <button type="button" role="menuitem" onClick={() => { close(); setMode('rename') }}><Icon name="pencil" /> 이름 변경</button>
       <button type="button" role="menuitem" onClick={() => { close(); void invoke('materials:reveal', { courseId: project.binding.courseId, relPath: project.binding.rootRelPath || '.' }).catch(error => showToast(learningError(error), 'danger')) }}><Icon name="folder" /> 폴더 열기</button>
       <button type="button" role="menuitem" onClick={() => { close(); setMode('delete') }}><Icon name="trash" /> 목록에서 삭제</button>
     </div>, document.body)}
+    {settingsProject && <LearningCreateDialog project={settingsProject} onClose={() => setSettingsProject(null)} onCreated={() => { setSettingsProject(null); notifyLearningChanged() }} />}
     {mode && <LearningManageDialog project={project} mode={mode} name={name} onClose={() => setMode(null)} />}
   </>
 }
@@ -83,10 +90,10 @@ function LearningManageDialog({ project, mode, name, onClose }: { project: Learn
       onClose()
     } catch (caught) { setError(learningError(caught)); setPending(false) }
   }
-  return createPortal(<div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !pending) onClose() }}><section ref={root} className="course-dialog learning-manage-dialog" role={mode === 'delete' ? 'alertdialog' : 'dialog'} aria-modal="true" aria-label={mode === 'delete' ? '학습 공간을 목록에서 삭제' : '학습 공간 이름 변경'}>
-    <h2>{mode === 'delete' ? '목록에서 삭제할까요?' : '학습 공간 이름 변경'}</h2>
+  return createPortal(<div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !pending) onClose() }}><section ref={root} className="course-dialog learning-manage-dialog" role={mode === 'delete' ? 'alertdialog' : 'dialog'} aria-modal="true" aria-label={mode === 'delete' ? '프로젝트를 목록에서 삭제' : '프로젝트 이름 변경'}>
+    <h2>{mode === 'delete' ? '목록에서 삭제할까요?' : '프로젝트 이름 변경'}</h2>
     <form onSubmit={event => { event.preventDefault(); void submit() }}>
-      {mode === 'rename' ? <label className="learning-field"><span>이름</span><input aria-label="이름" className="text-field" value={value} onChange={event => setValue(event.target.value)} autoFocus maxLength={120} required disabled={pending} /><small>폴더 이름과 저장된 기록은 바뀌지 않아요.</small></label> : <p><strong>{name}</strong>이(가) 학습 목록에서 사라집니다. 파일·원본 과목·학습 기록은 보존되며, ‘삭제한 학습’에서 복원할 수 있어요. 진행 중인 AI 작업은 취소됩니다.</p>}
+      {mode === 'rename' ? <label className="learning-field"><span>이름</span><input aria-label="이름" className="text-field" value={value} onChange={event => setValue(event.target.value)} autoFocus maxLength={120} required disabled={pending} /><small>폴더 이름과 저장된 기록은 바뀌지 않아요.</small></label> : <p><strong>{name}</strong>이(가) 프로젝트 목록에서 사라집니다. 파일·원본 과목·학습 기록은 보존되며, ‘삭제한 프로젝트’에서 복원할 수 있어요. 진행 중인 AI 작업은 취소됩니다.</p>}
       {error && <p className="learning-error" role="alert">{error}</p>}
       <footer className="dialog-actions"><button className="button button--secondary" type="button" disabled={pending} onClick={onClose}>취소</button><button className={`button button--${mode === 'delete' ? 'danger' : 'primary'}`} type="submit" disabled={pending || !value.trim()}>{pending ? '저장 중…' : mode === 'delete' ? '목록에서 삭제' : '이름 저장'}</button></footer>
     </form>

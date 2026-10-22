@@ -1,3 +1,5 @@
+import { PROJECT_NAVIGATION_CHANNELS, type ProjectNavigationContract } from '../projectNavigation'
+import { ANNOTATION_CHANNELS, type AnnotationIpcContract } from './annotationContract'
 import type { SharedMaterialRequest } from '../types/share'
 import type { ExternalSourceLocation } from '../types/externalSources'
 import type { BillingState, RuntimeSyncState, RuntimeSyncConflict } from '../types/subscription'
@@ -180,7 +182,7 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
   followUpOf?: string
 }
 
-export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
+export interface IpcContract extends AnnotationIpcContract, ProjectNavigationContract, CommunityIpcContract, StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
   'share:list': { req: Record<string, never>; res: SharedMaterialRequest[] }
   'share:import': { req: { id: string; courseId: string; dirRelPath: string }; res: { relPaths: string[] } }
   'share:dismiss': { req: { id: string }; res: { ok: true } }
@@ -323,7 +325,7 @@ export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContrac
   'externalSources:pickPhotos': { req: Record<string, never>; res: ExternalSourceLocation | null }
   'externalSources:list': { req: { id: string }; res: ExternalSourceLocation }
   'externalSources:thumbnail': { req: { id: string }; res: { dataUrl: string | null } }
-  'externalSources:import': { req: { id: string; courseId: string }; res: ImportResult }
+  'externalSources:import': { req: { id: string; courseId: string; dirRelPath?: string }; res: ImportResult }
   'materials:snapshot': { req: { courseId: string }; res: { tree: MaterialNode[] | null } }
   'materials:tree': {
     req: { courseId: string }
@@ -604,7 +606,7 @@ export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContrac
     res: import('../types/aiAccess').AiAccessPolicy
   }
   'chat:open': {
-    req: { courseId: string; sessionId: string; surface?: ChatSurface }
+    req: { courseId: string; sessionId: string; surface?: ChatSurface; workspaceKey?: string }
     res: ChatOpenResult
   }
   /** Sends a user message; streaming arrives via `chat:event-batch`. */
@@ -659,7 +661,7 @@ export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContrac
   }
   /** Conversation list for a course (zero-message conversations excluded). Defaults to app. */
   'chat:conversations': {
-    req: { courseId: string; surface?: ChatSurface }
+    req: { courseId: string; surface?: ChatSurface; workspaceKey?: string }
     res: { conversations: ChatConversationSummary[] }
   }
   /** Soft-deletes a conversation and closes its warm CLI process, if any. */
@@ -1107,7 +1109,7 @@ export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContrac
   // study TASK board (board:listTasks / createTask). Two unrelated features
   // under one prefix is how a handler ends up wired to the wrong repo.
   'pdfNotes:create': {
-    req: { courseId: string; title: string; paper: 'blank' | 'lines' | 'grid' | 'dots'; orientation: 'portrait' | 'landscape' }
+    req: { dirRelPath?: string; courseId: string; title: string; paper: 'blank' | 'lines' | 'grid' | 'dots'; orientation: 'portrait' | 'landscape' }
     res: { relPath: string }
   }
   'pdfNotes:info': {
@@ -1571,15 +1573,15 @@ export interface IpcContract extends CommunityIpcContract, StudyMarketIpcContrac
 
   // -- layout (dockview persistence per course) -----------------------------
   'layout:get': {
-    req: { courseId: string }
-    res: { layout: unknown | null }
+    req: { courseId: string; projectRootRelPath?: string }
+    res: { layout: unknown | null; legacyProjectLayout?: boolean }
   }
   'layout:save': {
-    req: { courseId: string; layout: unknown }
+    req: { courseId: string; projectRootRelPath?: string; layout: unknown }
     res: { ok: true }
   }
   'layout:saveMany': {
-    req: { layouts: Array<{ courseId: string; layout: unknown }> }
+    req: { layouts: Array<{ courseId: string; projectRootRelPath?: string; layout: unknown }> }
     res: { ok: true }
   }
 
@@ -1685,10 +1687,12 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
  * here actually got a handler.
  */
 export const IPC_CHANNELS = [
+  ...ANNOTATION_CHANNELS,
   'pdfNotes:create', 'pdfNotes:info', 'pdf:restructure', 'pdfNotes:migrateLegacy', 'pdfNotes:migrationStatus',
   ...STUDY_MARKET_CHANNELS,
   ...COMMUNITY_CHANNELS,
   ...LEARNING_CHANNELS,
+  ...PROJECT_NAVIGATION_CHANNELS,
   ...RECORDING_CHANNELS,
   'presentation:runtime', 'presentation:installRuntime', 'presentation:cancelRuntime',
   'presentation:prepare', 'presentation:cancelPrepare', 'presentation:pdfStart',

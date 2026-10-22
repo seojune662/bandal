@@ -4,12 +4,10 @@ import { useUiStore } from '../stores/uiStore'
 import { SidebarAccountEntry } from '../features/account/SidebarAccountEntry'
 import { HelpHub } from '../features/help/HelpHub'
 import { TabKindIcon } from '../features/workspace/workspaceIcons'
-import { openActiveAssistant, useActiveAssistantOpen } from '../features/assistantPanel/assistantController'
 import { captureLauncherContext } from '../features/launcher/launcherContext'
 import { Tooltip } from '../components/Tooltip'
 import { Icon } from './icons'
 import { useWorkspaceStore } from '../stores/workspaceStore'
-import { openLearningHome, returnToCourseWorkspace } from '../features/learning/learningNavigation'
 import { RailUpdateButton } from '../features/updates/RailUpdateButton'
 import './global-navigation.css'
 
@@ -20,39 +18,26 @@ export function GlobalNavigation(): JSX.Element {
   const graphOpen = useUiStore((state) => state.isLinkGraphOpen)
   const courseOpen = useUiStore((state) => state.courseRailOpen)
   const leftPanel = useUiStore((state) => state.leftRailPanel)
-  const assistantOpen = useActiveAssistantOpen()
   const leftOpen = useUiStore((state) => state.leftRailOpen)
   const surface = useWorkspaceStore((state) => state.surface)
-  const openCourses = (): void => {
+  const openHome = (): void => {
     const ui = useUiStore.getState()
-    if (useWorkspaceStore.getState().surface !== 'course') { returnToCourseWorkspace(); return }
-    if (ui.isSettingsOpen || ui.isBoardOverlayOpen || ui.isLinkGraphOpen || ui.leftRailPanel !== 'courses') ui.showCourses()
+    const workspace = useWorkspaceStore.getState()
+    ui.closeSettings(); ui.closeBoardOverlay(); ui.closeLinkGraph()
+    if (workspace.surface === 'community' || workspace.surface === 'study-market') {
+      if (workspace.activeWorkspace) workspace.showWorkspace(workspace.activeWorkspace)
+      else workspace.showCourseWorkspace(null)
+    }
+    if (ui.leftRailPanel === 'plugins') ui.setHomeTab('courses')
+    else if (ui.isSettingsOpen || ui.isBoardOverlayOpen || ui.isLinkGraphOpen || workspace.surface === 'community' || workspace.surface === 'study-market' || !ui.leftRailOpen || !ui.courseRailOpen) useUiStore.setState({ leftRailOpen: true, courseRailOpen: true })
     else ui.toggleCourseRail()
   }
   return (
     <nav className="global-navigation" aria-label="앱 메뉴" aria-hidden={!leftOpen}
       {...{ inert: !leftOpen ? '' : undefined }}>
-      <Tooltip label="과목" placement="right">
-        <button
-          className="rail-nav__item"
-          aria-label="과목"
-          aria-expanded={surface === 'course' && courseOpen && leftPanel === 'courses' && !boardOpen && !settingsOpen && !graphOpen}
-          aria-controls="course-rail"
-          data-active={(!boardOpen && !settingsOpen && !graphOpen && surface === 'course' && courseOpen && leftPanel === 'courses') || undefined}
-          onClick={openCourses}
-        >
-          <Icon name="folder" />
-        </button>
-      </Tooltip>
-      <Tooltip label="학습" placement="right">
-        <button className="rail-nav__item" aria-label="학습"
-          aria-expanded={courseOpen && leftPanel === 'learning' && !boardOpen && !settingsOpen && !graphOpen}
-          aria-controls="learning-home"
-          data-active={surface === 'learning-home' && !boardOpen && !settingsOpen && !graphOpen || undefined}
-          onClick={openLearningHome}>
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5.5C9 3.5 5.5 3.5 3 4.5v14c2.5-1 6-1 9 1 3-2 6.5-2 9-1v-14c-2.5-1-6-1-9 1Z" /><path d="M12 5.5v14" />
-          </svg>
+      <Tooltip label="홈" placement="right">
+        <button className="rail-nav__item" aria-label="홈" aria-expanded={courseOpen && leftPanel !== 'plugins' && !boardOpen && !settingsOpen && !graphOpen} aria-controls="course-rail" data-active={courseOpen && leftPanel !== 'plugins' && !boardOpen && !settingsOpen && !graphOpen && surface !== 'community' && surface !== 'study-market' || undefined} onClick={openHome}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" /></svg>
         </button>
       </Tooltip>
       <Tooltip label="학업 보드" placement="right">
@@ -69,31 +54,21 @@ export function GlobalNavigation(): JSX.Element {
           <TabKindIcon kind="board" />
         </button>
       </Tooltip>
-      <Tooltip label="AI" placement="right">
-        <button className="rail-nav__item" aria-label="AI" aria-pressed={assistantOpen}
-          data-active={assistantOpen && !boardOpen && !settingsOpen && !graphOpen || undefined}
-          onPointerDown={event => { if (event.button === 0) event.preventDefault() }}
-          onClick={() => {
-            const ui = useUiStore.getState()
-            ui.closeSettings(); ui.closeBoardOverlay(); ui.closeLinkGraph()
-            void openActiveAssistant()
-          }}><span aria-hidden="true">✦</span></button>
-      </Tooltip>
-      <Tooltip label="도구" placement="right">
-        <button className="rail-nav__item" aria-label="도구"
+      <Tooltip label="더보기" placement="right">
+        <button className="rail-nav__item" aria-label="더보기"
           aria-expanded={surface !== 'study-market' && surface !== 'community' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}
           aria-controls="plugins-panel"
           data-active={surface !== 'study-market' && surface !== 'community' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}
           onPointerDown={event => { if (event.button === 0) { event.preventDefault(); void captureLauncherContext() } }}
           onClick={event => {
             if (surface === 'study-market' || surface === 'community') {
-              useWorkspaceStore.getState().showCourseWorkspace(useWorkspaceStore.getState().activeCourseId)
+              useWorkspaceStore.getState().showWorkspace(useWorkspaceStore.getState().activeWorkspace)
               useUiStore.setState({ courseRailOpen: false })
             }
             if (event.detail === 0) void captureLauncherContext()
             useUiStore.getState().togglePluginsPanel()
           }}>
-          <Icon name="puzzle" />
+          <span aria-hidden="true">···</span>
         </button>
       </Tooltip>
       <Tooltip label="커뮤니티" placement="right">

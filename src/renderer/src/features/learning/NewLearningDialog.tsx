@@ -14,9 +14,9 @@ export function LearningStartActions({ onChoose }: { onChoose?: () => void }): J
   return <div className="learning-start-actions">{options.map(option => <button className="learning-start-action" type="button" key={option.kind} onClick={() => { onChoose?.(); launchNewLearning(option.kind) }}><span aria-hidden="true" className="learning-start-symbol">{option.symbol}</span><span><strong>{option.title}</strong><small>{option.detail}</small></span><Icon name="chevronRight" /></button>)}</div>
 }
 
-export function NewLearningDialog({ onClose }: { onClose: () => void }): JSX.Element {
+export function NewLearningDialog({ onClose, onStart }: { onClose: () => void; onStart?: () => void }): JSX.Element {
   const root = useRef<HTMLElement>(null)
   useFocusTrap(root, { active: true, onEscape: onClose })
   useEffect(() => acquirePointerPassthrough(), [])
-  return createPortal(<div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={root} className="course-dialog learning-start-dialog" role="dialog" aria-modal="true" aria-label="새 학습"><header className="course-dialog__header"><h2>어떤 학습을 시작할까요?</h2><button type="button" className="bare-icon-button" aria-label="닫기" onClick={onClose}><Icon name="x" /></button></header><LearningStartActions onChoose={onClose} /></section></div>, document.body)
+  return createPortal(<div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={root} className="course-dialog learning-start-dialog" role="dialog" aria-modal="true" aria-label="새 학습"><header className="course-dialog__header"><h2>어떤 학습을 시작할까요?</h2><button type="button" className="bare-icon-button" aria-label="닫기" onClick={onClose}><Icon name="x" /></button></header><LearningStartActions onChoose={onStart ?? onClose} /></section></div>, document.body)
 }

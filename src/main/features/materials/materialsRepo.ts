@@ -5,13 +5,14 @@
 
 import {
   cpSync, copyFileSync, existsSync, lstatSync, mkdirSync,
-  renameSync, statSync, unlinkSync,
+  renameSync, statSync, unlinkSync, rmSync,
   writeFileSync
 } from 'node:fs'
 import { readFile, stat, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, posix, sep, relative } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { traceSyncWork } from '../../performanceTrace'
+import { copyProjectWorkspaces } from '../../db/projectWorkspacePaths'
 import type { Database } from 'better-sqlite3'
 import type { ImportResult, MaterialFileContent, MaterialKind,
   MaterialNode, MaterialSearchHit } from '../../../shared/types/materials'
@@ -792,7 +793,15 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       } else {
         copyFileSync(sourceAbs, candidateAbs)
       }
-      addedState.recordAdded(input.courseId, candidateRelPath, sourceKind === 'dir')
+      try {
+        db.transaction(() => {
+          if (sourceKind === 'dir') copyProjectWorkspaces(db, { courseId: input.courseId, fromRelPath: input.relPath, toRelPath: candidateRelPath, isDirectory: true })
+          addedState.recordAdded(input.courseId, candidateRelPath, sourceKind === 'dir')
+        })()
+      } catch (error) {
+        rmSync(candidateAbs, { recursive: sourceKind === 'dir', force: true })
+        throw error
+      }
       invalidate(requireId(input.courseId, 'courseId'))
       return { relPath: candidateRelPath }
     },

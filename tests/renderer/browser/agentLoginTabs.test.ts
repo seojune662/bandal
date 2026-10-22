@@ -4,16 +4,17 @@ import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ip
 const fixture = vi.hoisted(() => ({
   tabs: [] as any[], nav: {} as Record<string, { url: string }>, courseId: null as string | null,
   activeBrowserId: null as string | null, priorPanel: null as string | null,
-  selectCourse: vi.fn(), close: vi.fn(), closeTemporary: vi.fn(), activate: vi.fn(), settings: vi.fn(), toast: vi.fn()
+  aiOpen: false, workspace: null as any,
+  selectCourse: vi.fn(), close: vi.fn(), closeTemporary: vi.fn(), activate: vi.fn(), settings: vi.fn(), toast: vi.fn(), showAssistant: vi.fn(), closeSettings: vi.fn()
 }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => ({ selectCourse: (id: string | null) => { fixture.selectCourse(id); fixture.courseId = id } }) } }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   retainedTabDescriptors: () => fixture.tabs,
   workspaceApiForCourse: () => ({ panels: fixture.tabs.map(descriptor => ({ params: { descriptor }, api: { close: fixture.closeTemporary } })) }),
-  useWorkspaceStore: { getState: () => ({ surface: 'course', activeCourseId: fixture.courseId, activePanelSource: () => fixture.priorPanel ? { panelId: fixture.priorPanel } : null, activeBrowserTabId: () => fixture.activeBrowserId, closeTabsMatching: fixture.close, activatePanel: fixture.activate, notifyLayoutChanged: vi.fn() }) }
+  useWorkspaceStore: { getState: () => ({ surface: 'course', activeCourseId: fixture.courseId, activeWorkspace: fixture.workspace, activePanelSource: () => fixture.priorPanel ? { panelId: fixture.priorPanel } : null, activeBrowserTabId: () => fixture.activeBrowserId, closeTabsMatching: fixture.close, activatePanel: fixture.activate, notifyLayoutChanged: vi.fn() }) }
 }))
 vi.mock('../../../src/renderer/src/features/browser/browserGuestsStore', () => ({ useBrowserGuests: { getState: () => ({ nav: fixture.nav }) } }))
-vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: { getState: () => ({ openSettings: fixture.settings }) } }))
+vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: { getState: () => ({ openSettings: fixture.settings, closeSettings: fixture.closeSettings, showAssistant: fixture.showAssistant, rightRailOpen: fixture.aiOpen, rightRailTab: 'ai' }) } }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: fixture.toast }))
 import { getAgentLoginForTab, installAgentLoginTabLifecycle, isLoginTabUrl, prepareAgentLoginTab } from '../../../src/renderer/src/features/browser/agentLoginTabs'
 import { resetAgentConnectionsForTests, useAgentConnectionStore } from '../../../src/renderer/src/features/chat/agentConnectionStore'
@@ -29,8 +30,20 @@ function begin() {
   fixture.activeBrowserId = 'owned-tab'
   return payload
 }
-afterEach(() => { stop?.(); stop = undefined; fixture.tabs = []; fixture.nav = {}; fixture.courseId = null; fixture.activeBrowserId = null; fixture.priorPanel = null; vi.clearAllMocks(); resetAgentConnectionsForTests(); setIpcAdapter(null) })
+afterEach(() => { stop?.(); stop = undefined; fixture.tabs = []; fixture.nav = {}; fixture.courseId = null; fixture.activeBrowserId = null; fixture.priorPanel = null; fixture.aiOpen = false; fixture.workspace = null; vi.clearAllMocks(); resetAgentConnectionsForTests(); setIpcAdapter(null) })
 describe('managed login tabs', () => {
+  test('returns to the global assistant when sign-in started without a central document panel', () => {
+    fixture.aiOpen = true; fixture.courseId = 'course'; fixture.workspace = { kind: 'course', courseId: 'course' }; begin()
+    progress!({ provider: 'codex', requestId: 'attempt', stage: 'done' })
+    expect(fixture.showAssistant).toHaveBeenCalledOnce()
+    expect(fixture.settings).not.toHaveBeenCalled()
+  })
+  test('does not steal focus after the user changed the project during sign-in', () => {
+    fixture.aiOpen = true; fixture.courseId = 'course'; fixture.workspace = { kind: 'project', courseId: 'course', rootRelPath: 'one' }; begin()
+    fixture.workspace = { kind: 'project', courseId: 'course', rootRelPath: 'two' }
+    progress!({ provider: 'codex', requestId: 'attempt', stage: 'done' })
+    expect(fixture.showAssistant).not.toHaveBeenCalled(); expect(fixture.settings).not.toHaveBeenCalled()
+  })
   test('reopens the same private tab and leaves no-course users in AI settings after cancellation', () => {
     const payload = begin()
     expect(prepareAgentLoginTab(payload, 'duplicate')).toEqual({ tabId: 'owned-tab', courseId: null })

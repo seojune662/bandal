@@ -1,3 +1,5 @@
+import { workspaceFromKey } from '../../../../shared/types/workspace'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { tabDragSession, type WorkspaceTabDragSource } from './tabDragSession'
 
@@ -12,6 +14,7 @@ interface HoverNavigation {
   ended: boolean
 }
 const navigations = new Map<string, HoverNavigation>()
+let selectingWorkspace = false
 let pendingSources: readonly WorkspaceTabDragSource[] = []
 const retentionListeners = new Set<() => void>()
 
@@ -33,9 +36,11 @@ function finish(navigation: HoverNavigation): void {
   navigations.delete(navigation.nonce)
   const courses = useCoursesStore.getState()
   if (!navigation.navigated || navigation.accepted || navigation.externalSelection ||
-    tabDragSession.getSnapshot() !== null || courses.selectedCourseId !== navigation.expected ||
-    (navigation.origin !== null && !courses.courses.some(course => course.id === navigation.origin))) return
-  courses.selectCourse(navigation.origin)
+    tabDragSession.getSnapshot() !== null || useWorkspaceStore.getState().activeWorkspaceKey !== navigation.expected ||
+    (navigation.origin !== null && !courses.courses.some(course => course.id === workspaceFromKey(navigation.origin!).courseId))) return
+  const origin = navigation.origin === null ? null : workspaceFromKey(navigation.origin)
+  courses.selectCourse(origin?.courseId ?? null, { preserveSurface: true })
+  useWorkspaceStore.getState().showWorkspace(origin)
 }
 
 /** Hover navigation belongs to one drag, not to the tab's resource binding. */
@@ -48,21 +53,28 @@ export function installWorkspaceCourseMoveNavigation(): () => void {
     activeNonce = source?.nonce ?? null
     if (previous) { previous.ended = true; if (!previous.pending) finish(previous) }
     if (source) {
-      const origin = useCoursesStore.getState().selectedCourseId
+      const origin = useWorkspaceStore.getState().activeWorkspaceKey
       navigations.set(source.nonce, { nonce: source.nonce, origin, expected: origin, navigated: false,
         externalSelection: false, pending: false, accepted: false, ended: false })
     }
   }
   const stopSource = tabDragSession.subscribe(sourceChanged)
-  const stopCourse = useCoursesStore.subscribe((state, previous) => {
-    if (state.selectedCourseId === previous.selectedCourseId) return
+  const stopCourse = useWorkspaceStore.subscribe((state, previous) => {
+    if (selectingWorkspace || state.activeWorkspaceKey === previous.activeWorkspaceKey) return
     for (const navigation of navigations.values()) {
-      if ((navigation.nonce === activeNonce || navigation.pending) && state.selectedCourseId !== navigation.expected)
+      if ((navigation.nonce === activeNonce || navigation.pending) && state.activeWorkspaceKey !== navigation.expected)
         navigation.externalSelection = true
     }
   })
+  const stopOwner = useCoursesStore.subscribe((state, previous) => {
+    if (selectingWorkspace || state.selectedCourseId === previous.selectedCourseId) return
+    for (const navigation of navigations.values()) {
+      const expectedOwner = navigation.expected === null ? null : workspaceFromKey(navigation.expected).courseId
+      if ((navigation.nonce === activeNonce || navigation.pending) && state.selectedCourseId !== expectedOwner) navigation.externalSelection = true
+    }
+  })
   sourceChanged()
-  return () => { stopSource(); stopCourse(); navigations.clear(); retainSources([]) }
+  return () => { stopSource(); stopCourse(); stopOwner(); navigations.clear(); retainSources([]) }
 }
 
 export function navigateWorkspaceCourseHover(nonce: string, courseId: string): boolean {
@@ -70,7 +82,12 @@ export function navigateWorkspaceCourseHover(nonce: string, courseId: string): b
   const navigation = navigations.get(nonce)
   if (navigation?.externalSelection) return false
   if (navigation) { navigation.expected = courseId; navigation.navigated = true }
-  useCoursesStore.getState().selectCourse(courseId)
+  const workspace = workspaceFromKey(courseId)
+  selectingWorkspace = true
+  try {
+    useCoursesStore.getState().selectCourse(workspace.courseId, { preserveSurface: true })
+    useWorkspaceStore.getState().showWorkspace(workspace)
+  } finally { selectingWorkspace = false }
   return true
 }
 

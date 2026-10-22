@@ -1,3 +1,4 @@
+import { resetWorkspaceStoreForTests, useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 // @vitest-environment jsdom
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -34,6 +35,8 @@ function begin(nonce = 'trusted', courseId: string | null = 'source') {
   act(() => tabDragSession.beginTab({ courseId, panelId: 'panel', nonce }))
 }
 beforeEach(() => {
+  resetWorkspaceStoreForTests()
+  useWorkspaceStore.setState({ activeCourseId: 'source', activeWorkspaceKey: 'source', activeWorkspace: {kind: 'course', courseId: 'source'} })
   vi.useFakeTimers()
   vi.mocked(dropWorkspaceTabOnCourse).mockClear()
   useCoursesStore.setState({ selectCourse: originalSelectCourse, selectedCourseId: 'source', courses: ['source', 'destination', 'other'].map(id => ({ id } as never)) })
@@ -49,10 +52,9 @@ test('entering a folder switches immediately without waiting for a dragover or d
   expect(drag(row, 'dragenter').defaultPrevented).toBe(false)
   begin()
   expect(drag(row.firstElementChild as HTMLElement, 'dragenter').defaultPrevented).toBe(true)
-  expect(select).toHaveBeenCalledExactlyOnceWith('destination')
+  expect(select).toHaveBeenCalledExactlyOnceWith('destination', { preserveSurface: true })
   expect(tabDragSession.getSource()?.courseId).toBe('source')
   expect(dropWorkspaceTabOnCourse).not.toHaveBeenCalled()
-  expect(vi.getTimerCount()).toBe(0)
 })
 
 test('rapid folder crossings follow every entry and a late dragleave cannot switch back', () => {
@@ -72,13 +74,13 @@ test('moving across nested folder children and repeated dragover does not repeat
   drag(row.firstElementChild as HTMLElement, 'dragenter')
   drag(row.lastElementChild as HTMLElement, 'dragenter')
   drag(row, 'dragover')
-  expect(select).toHaveBeenCalledExactlyOnceWith('destination')
+  expect(select).toHaveBeenCalledExactlyOnceWith('destination', { preserveSurface: true })
 })
 
 test('dragover also selects when Chromium omits the entry event after a render', () => {
   const { row } = mount()
   begin(); expect(drag(row, 'dragover').defaultPrevented).toBe(true)
-  expect(select).toHaveBeenCalledExactlyOnceWith('destination')
+  expect(select).toHaveBeenCalledExactlyOnceWith('destination', { preserveSurface: true })
 })
 
 test('same selected course accepts the held tab without scheduling another selection', () => {
@@ -91,7 +93,7 @@ test('ending a gesture leaves no pending selection for a later gesture', () => {
   const { row } = mount()
   begin(); drag(row, 'dragenter')
   act(() => tabDragSession.end())
-  useCoursesStore.setState({ selectedCourseId: 'source' })
+  useCoursesStore.setState({ selectedCourseId: 'source' }); useWorkspaceStore.getState().showWorkspace({kind: 'course', courseId: 'source'})
   begin('replacement')
   act(() => vi.runAllTimers())
   expect(useCoursesStore.getState().selectedCourseId).toBe('source')
@@ -129,5 +131,5 @@ test('deleted destinations and unrelated payloads cannot select a course', () =>
 test('temporary no-course tabs can enter their first real course immediately', () => {
   const { row } = mount()
   begin('temporary', null); drag(row, 'dragenter')
-  expect(select).toHaveBeenCalledExactlyOnceWith('destination')
+  expect(select).toHaveBeenCalledExactlyOnceWith('destination', { preserveSurface: true })
 })

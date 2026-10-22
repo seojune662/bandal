@@ -6,6 +6,7 @@ import { createLearningRepo } from '../src/main/features/learning/learningRepo'
 import { splitLearningParagraphs } from '../src/main/features/learning/model'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { configureEnglishForm, installLearningAiFixture } from './helpers/learning'
+import { newProject, openProjectResource } from './helpers/projectWorkspace'
 
 async function resize(bandal: BandalApp, width: number): Promise<void> {
   await bandal.app.evaluate(({ BrowserWindow }, width) => {
@@ -33,8 +34,7 @@ test('offline dictionary preserves chosen meanings, supports keyboard reading an
       ipcMain.removeHandler('learning:run')
       ipcMain.handle('learning:run', (_event, input) => { runs.push(input); return { runId: 'reading-fixture', binding: input.binding } })
     })
-    await page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '학습', exact: true }).click()
-    await page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button', { name: '새 학습', exact: true }).click()
+    await newProject(page)
     await page.getByRole('dialog', { name: '새 학습', exact: true }).getByRole('button', { name: '영어 글 읽기', exact: false }).click()
     const setup = page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await configureEnglishForm(setup, '사전 읽기 검증')
@@ -50,8 +50,7 @@ test('offline dictionary preserves chosen meanings, supports keyboard reading an
       session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (_details, callback) => callback({ cancel: true }))
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('learning:changed', { binding })
     }, binding)
-    const nav = page.getByRole('navigation', { name: '학습 화면' })
-    await nav.getByRole('button', { name: '읽기', exact: true }).click()
+    await openProjectResource(page, 'Reading without waiting')
     await expect(page.locator('.learning-reader h1')).toHaveText('Reading without waiting')
     await expect(page.getByRole('button', { name: '이 글의 단어장', exact: true })).toHaveAttribute('aria-expanded', 'false')
     const inflation = page.getByRole('button', { name: '“Inflation” 뜻 보기', exact: true })
@@ -114,9 +113,10 @@ test('offline dictionary preserves chosen meanings, supports keyboard reading an
       reader.scrollTop += element.getBoundingClientRect().top - reader.getBoundingClientRect().top - 100
     })
     await expect.poll(async () => (await repo.read(binding)).articles[0]!.progress.paragraphId).toBe('p12')
-    await nav.getByRole('button', { name: '나의 단어', exact: true }).click()
+    await openProjectResource(page, '단어장')
+    await expect(page.locator('.learning-reader')).toBeHidden()
     await resize(bandal, 900)
-    await nav.getByRole('button', { name: '읽기', exact: true }).click()
+    await page.locator('.workspace-tab__title').getByText('Reading without waiting', { exact: true }).click()
     await expect.poll(() => page.locator('[data-learning-paragraph="p12"]').evaluate(element => Math.round(element.getBoundingClientRect().top - element.closest('.learning-reader')!.getBoundingClientRect().top))).toBe(100)
     const timings = await page.evaluate(async () => {
       const values: number[] = []
@@ -177,9 +177,9 @@ test('material palette keeps its source through search and setup and starts only
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).paletteCalls.length)).toBe(1)
     expect(await bandal.app.evaluate(() => (globalThis as any).paletteCalls[0])).toMatchObject({ courseId: course.id, packId: 'quiz', source: { kind: 'material', relPath: 'Aerodynamics.pdf' } })
     await expect(palette).toBeHidden()
-    await expect(page.locator('.learning-topbar:visible')).toContainText('팔레트 복습')
-    const coursesButton = page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '과목', exact: true })
-    if (await coursesButton.getAttribute('aria-expanded') !== 'true') await coursesButton.click()
+    await expect(page.locator('.project-list-row__open[aria-current="page"]')).toContainText('팔레트 복습')
+    await expect(page.getByRole('main', { name: '작업 공간' }).getByRole('heading', { name: '팔레트 복습', exact: true })).toBeVisible()
+    await page.locator('.app-rail:not([hidden])').getByRole('tab', { name: '과목', exact: true }).click()
     await page.getByRole('complementary', { name: '과목 목록' }).locator('.course-row').filter({ hasText: '학습 팔레트 검증' }).click()
     await resize(bandal, 800)
     await page.evaluate(() => window.bandal.invoke('settings:set', { theme: 'light' }))

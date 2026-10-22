@@ -85,7 +85,7 @@ function useOpenUrlForwarding(): void {
               profileId: profileId ?? 'default',
               ...(isPrivate === true ? { isPrivate: true } : {})
             }),
-            courseId, background === true
+            courseId, background === true, payload.openerTabId
           )
         if (!retained && adoptedTabId) {
           void invoke('browser:destroyPage', { tabId: adoptedTabId }).catch(() => undefined)

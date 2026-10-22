@@ -23,10 +23,10 @@ function project(): LearningProjectSnapshot {
   return { schemaVersion: 1, projectId: 'project', revision: 1, name: 'English', topic: 'Cities', level: 'intermediate', readingMinutes: 5, createdAt: 'now', updatedAt: 'now', articles: [], words: [], occurrences: [], artifacts: [], cards: [], quizAttempts: [], runs: [], history: [], exports: [], binding, recovery: 'none', warnings: [] }
 }
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } { let resolve!: (value: T) => void; return { promise: new Promise(done => { resolve = done }), resolve } }
-function render(value = project(), onUpdate = vi.fn(), active = true): HTMLDivElement {
+function render(value = project(), onUpdate = vi.fn(), active = true, visible = true): HTMLDivElement {
   let host = document.querySelector<HTMLDivElement>('#reader-host')
   if (!host) { host = document.createElement('div'); host.id = 'reader-host'; document.body.append(host); root = createRoot(host) }
-  act(() => root!.render(<LearningReader project={value} article={article} active={active} onUpdate={onUpdate} onComplete={() => {}} onArticle={() => {}} />))
+  act(() => root!.render(<LearningReader project={value} article={article} active={active} visible={visible} onUpdate={onUpdate} onComplete={() => {}} onArticle={() => {}} />))
   return host
 }
 function setup(handler: (channel: string, input: Record<string, unknown>) => Promise<unknown>): ReturnType<typeof vi.fn> {
@@ -162,6 +162,34 @@ describe('reader dictionary', () => {
     const saved = [{ id: 'occurrence', wordId: 'bank', ...first, meaning: '은행', createdAt: 'now' }]
     expect(readerSavedOccurrence(saved, first)?.id).toBe('occurrence')
     expect(readerSavedOccurrence(saved, second)).toBeUndefined()
+  })
+
+  test('flushes the current paragraph when hidden and restores it after reflow without saving hidden scroll events', async () => {
+    const frames = new Map<number, FrameRequestCallback>()
+    let frameId = 0
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.set(++frameId, callback); return frameId })
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(id => { frames.delete(id) })
+    const frame = (): void => { const callbacks = [...frames.values()]; frames.clear(); act(() => callbacks.forEach(callback => callback(0))) }
+    const state = project()
+    const invoke = setup(async () => state)
+    render(state)
+    const reader = document.querySelector<HTMLElement>('.learning-reader')!
+    const paragraph = document.querySelector<HTMLElement>('[data-learning-paragraph="p1"]')!
+    Object.defineProperties(reader, { scrollHeight: { value: 3000 }, clientHeight: { value: 500 } })
+    vi.spyOn(reader, 'getBoundingClientRect').mockReturnValue({ top: 40 } as DOMRect)
+    let paragraphOffset = 600
+    vi.spyOn(paragraph, 'getBoundingClientRect').mockImplementation(() => ({ top: 40 + paragraphOffset - reader.scrollTop, bottom: 200 + paragraphOffset - reader.scrollTop }) as DOMRect)
+    frame()
+    act(() => { reader.scrollTop = 500; reader.dispatchEvent(new Event('scroll')) })
+    render(state, vi.fn(), false, false)
+    await act(async () => {})
+    expect(invoke).toHaveBeenCalledWith('learning:saveProgress', expect.objectContaining({ articleId: article.id, paragraphId: 'p1', scrollFraction: .2 }))
+    paragraphOffset = 1400
+    act(() => { reader.scrollTop = 0; reader.dispatchEvent(new Event('scroll')) })
+    render(state, vi.fn(), true, true)
+    frame()
+    expect(reader.scrollTop).toBe(1300)
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'learning:saveProgress')).toHaveLength(1)
   })
 })
 

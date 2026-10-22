@@ -1,0 +1,10 @@
+.annotation-controls { display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:4px 0;color:var(--text-muted);font-size:var(--text-xs); }
+.annotation-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text-secondary); }
+.annotation-trigger:hover,.annotation-trigger[aria-pressed='true'] { color:var(--accent);background:var(--accent-muted); }
+.annotation-mode { display:flex;border:1px solid var(--border-strong);border-radius:var(--radius-sm);overflow:hidden; }
+.annotation-mode button { padding:4px 7px; }
+.annotation-mode button[aria-pressed='true'] { color:var(--text-primary);background:var(--bg-raised); }
+.annotation-hint,.annotation-error { width:100%; }
+.annotation-error { color:var(--danger); }
+.annotation-highlight { position:fixed;z-index:150;pointer-events:none;border:2px solid var(--focus-ring);border-radius:5px;background:color-mix(in srgb,var(--focus-ring) 9%,transparent);box-sizing:border-box; }
+.annotation-highlight span { position:absolute;bottom:100%;left:0;margin-bottom:5px;padding:5px 9px;white-space:nowrap;border-radius:5px;background:var(--text-primary);color:var(--bg-surface);font-size:var(--text-xs); }

@@ -376,3 +376,16 @@
 .materials-items--gallery > li { flex: 0 0 90px; }
 .materials-items--gallery .material-card-preview { height: 78px; padding: 4px; }
 .materials-items--gallery .material-card-metadata { display: none; }
+
+.project-materials { padding:0 8px 8px; border-bottom:1px solid var(--shell-divider); margin-bottom:8px; }
+.project-materials details > summary { cursor:pointer; padding:10px 4px; font-size:var(--text-xs); color:var(--text-secondary); }
+.project-materials small { color:var(--text-muted); margin-left:auto; font-size:11px; }
+.project-materials ul { list-style:none; padding:0; margin:0; }
+.project-materials li > button, .project-materials__resource { display:flex; align-items:center; gap:8px; padding:8px; width:100%; min-width:0; text-align:left; font-size:var(--text-xs); border-radius:var(--radius-sm); }
+.project-materials button > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.project-materials button > svg { flex:none; color:var(--text-muted); }
+.project-materials button:hover { background:var(--sidebar-hover); }
+.project-materials button[data-selected] { background:var(--sidebar-selection); }
+.project-materials__action { margin:4px 8px; font-size:var(--text-xs); color:var(--text-secondary); text-decoration:underline; text-underline-offset:3px; }
+.project-move-group { display:flex; flex-direction:column; gap:5px; padding:8px; font-size:var(--text-xs); color:var(--text-secondary); }
+.project-move-group select { padding:5px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); }

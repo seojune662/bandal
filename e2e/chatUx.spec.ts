@@ -117,8 +117,9 @@ test.describe('shared chat composer, readable replies and confirmations', () => 
     await page.getByRole('button', { name: /PDF 만들기/ }).click()
     await expect(page.locator('.chat-context-chips:not(.chat-context-auto)')).toContainText('PDF 만들기')
     await page.getByRole('button', { name: '추가', exact: true }).click()
-    await page.getByRole('button', { name: /^과목 자료/ }).click()
+    await page.getByRole('button', { name: /^자료 선택/ }).click()
     await page.getByRole('dialog', { name: '대화에 추가' }).getByRole('button', { name: /강의 메모.md/ }).click()
+    await page.getByRole('button', { name: '선택한 1개 추가' }).click()
     const input = page.getByRole('textbox', { name: '메시지 입력' })
     await input.fill('요약 문서를 만들어줘')
     await page.getByRole('button', { name: '메시지 보내기' }).click()
@@ -251,9 +252,10 @@ test.describe('shared chat composer, readable replies and confirmations', () => 
   test('material sidebar keeps long equations inside a readable scrolling table', async ({}, info) => {
     const { page, app } = bandal
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setSize(1440, 900))
+    await page.getByRole('tablist', { name: '오른쪽 사이드바' }).getByRole('tab', { name: '자료', exact: true }).click()
     await page.locator('[data-material-path="강의 메모.md"]').click()
-    await page.getByRole('button', { name: 'AI 보조 사이드바 펼치기' }).click()
-    const sidebar = page.locator('.tab-assistant:visible')
+    await page.getByRole('tablist', { name: '오른쪽 사이드바' }).getByRole('tab', { name: 'AI', exact: true }).click()
+    const sidebar = page.locator('.workspace-assistant:visible')
     const input = sidebar.getByRole('textbox', { name: '메시지 입력' })
     await expect(input).toBeVisible()
     await emitEvents([
@@ -261,11 +263,11 @@ test.describe('shared chat composer, readable replies and confirmations', () => 
       { type: 'text-final', blockId: 'sidebar-equations', text: AERODYNAMICS_REPLY },
       { type: 'turn-complete', stopReason: 'success' }
     ])
-    const table = sidebar.getByRole('table')
+    const table = sidebar.getByRole('table').last()
     await expect(table).toBeVisible()
     await expect(sidebar.locator('.katex-error')).toHaveCount(0)
     expect(await sidebar.locator('.chat-scroll').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
-    expect(await sidebar.locator('.chat-md__table-wrap').evaluate(element => element.getBoundingClientRect().right <= element.closest('.tab-assistant')!.getBoundingClientRect().right)).toBe(true)
+    expect(await sidebar.locator('.chat-md__table-wrap').last().evaluate(element => element.getBoundingClientRect().right <= element.closest('.workspace-assistant')!.getBoundingClientRect().right)).toBe(true)
     await input.fill('다음 질문')
     await sidebar.locator('.chat-scroll').evaluate(element => {
       const table = element.querySelector('table')!

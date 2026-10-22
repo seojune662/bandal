@@ -5,6 +5,20 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyAddedLinesChanged, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
+
+test('workspace AI, annotation and project navigation retain their focused desktop checks', () => {
+  for (const [input, expected] of [
+    ['src/renderer/src/features/annotation/AnnotationOverlay.tsx', 'e2e/annotation.spec.ts'],
+    ['src/main/features/browser/annotationPickerSource.ts', 'e2e/annotation.spec.ts'],
+    ['src/renderer/src/features/assistantPanel/WorkspaceAssistantPanel.tsx', 'e2e/workspaceStudyModes.spec.ts'],
+    ['src/renderer/src/features/chat/studyMode.ts', 'e2e/workspaceStudyModes.spec.ts'],
+    ['src/main/db/projectNavigationRepo.ts', 'e2e/projectGroups.spec.ts']
+  ]) {
+    const plan = planChecks([input])
+    assert.equal(plan.full, false)
+    assert.ok(plan.e2e.includes(expected))
+  }
+})
 import { matchingRun } from './reuse-ci.mjs'
 import { onlyCommunityRegistrationChanged, communityE2eFiles, onlyTabPickerChanged, tabPickerE2eFiles, onlyMaterialChromeChanged, materialChromeE2eFiles, materialChromeE2eGrep, main as runAffectedChecks } from './affected-checks.mjs'
 

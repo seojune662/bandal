@@ -71,11 +71,11 @@ test('browser chrome stays in one row with working AI and accessible tools in na
     await info.attach('compact-header-geometry', { body: JSON.stringify({ toolbarHeight: toolbarBox.height, redundantRowHeight: toolbarBox.y - documentBox.y }), contentType: 'application/json' })
     await capture('browser-chrome-dark.png')
 
-    await toolbar.getByRole('button', { name: 'AI 보조 사이드바 펼치기' }).click()
-    const assistant = page.getByRole('complementary', { name: '탭 보조 사이드바' })
+    await page.getByRole('tab', { name: 'AI', exact: true }).click()
+    const assistant = page.getByRole('tabpanel', { name: 'AI', exact: true })
     await expect(assistant).toBeVisible()
-    await expect(toolbar.getByRole('button', { name: 'AI 보조 사이드바 접기' })).toHaveAttribute('aria-expanded', 'true')
-    await toolbar.getByRole('button', { name: 'AI 보조 사이드바 접기' }).click()
+    await expect(page.getByRole('tab', { name: 'AI', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await expect(assistant).toBeHidden()
     await page.evaluate(() => window.bandal.invoke('settings:set', { theme: 'light' }))
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
@@ -207,11 +207,11 @@ test('browser chrome stays in one row with working AI and accessible tools in na
     await expect(panel.locator('.browser-login-message')).toHaveText('채움')
     const controls = await panel.evaluate(element => {
       const box = (selector: string) => element.querySelector<HTMLElement>(selector)!.getBoundingClientRect().toJSON()
-      return { ai: box('.browser-assistant-toggle'), key: box('.browser-login-account'), message: box('.browser-login-message') }
+      return { profile: box('.browser-profile-trigger'), key: box('.browser-login-account'), message: box('.browser-login-message') }
     })
-    expect(controls.ai.y).toBe(controls.key.y)
+    await expect(panel.locator('.browser-assistant-toggle')).toHaveCount(0)
     for (const neighbor of [controls.key, controls.message]) {
-      const overlap = controls.ai.left < neighbor.right && controls.ai.right > neighbor.left && controls.ai.top < neighbor.bottom && controls.ai.bottom > neighbor.top
+      const overlap = controls.profile.left < neighbor.right && controls.profile.right > neighbor.left && controls.profile.top < neighbor.bottom && controls.profile.bottom > neighbor.top
       expect(overlap).toBe(false)
     }
     await capture('browser-chrome-minimum-window.png')

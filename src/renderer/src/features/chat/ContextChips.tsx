@@ -4,8 +4,9 @@ import { invoke, onPush } from '../../lib/ipc'
 import { updateComposerDraft, useComposerDraft } from './composerDraftStore'
 const pending = new Map<string, Promise<MessageContextSnapshot>>()
 function load(courseId: string, sourcePanelId?: string | undefined): Promise<MessageContextSnapshot> {
-  let request = pending.get(`${courseId}:${sourcePanelId ?? ''}`)
-  if (!request) { request = invoke('chat:context', { courseId, ...(sourcePanelId ? { sourcePanelId } : {}) }).finally(() => pending.delete(`${courseId}:${sourcePanelId ?? ''}`)); pending.set(`${courseId}:${sourcePanelId ?? ''}`, request) }
+  const key = JSON.stringify([courseId, sourcePanelId ?? null])
+  let request = pending.get(key)
+  if (!request) { request = invoke('chat:context', { courseId, ...(sourcePanelId === undefined ? {} : { sourcePanelId }) }).finally(() => pending.delete(key)); pending.set(key, request) }
   return request
 }
 export function useMaterialContext(courseId: string, sourcePanelId?: string | undefined) {
@@ -14,7 +15,7 @@ export function useMaterialContext(courseId: string, sourcePanelId?: string | un
     let active = true
     setSnapshot(null); setError(false)
     const refresh = (): void => { void load(courseId, sourcePanelId).then(value => { if (active) { setSnapshot(value); setError(false) } }).catch(() => { if (active) setError(true) }) }
-    const off = onPush('assistant:contextChanged', event => { if (event.courseId === courseId) refresh() })
+    const off = onPush('assistant:contextChanged', event => { if (sourcePanelId || event.courseId === courseId) refresh() })
     refresh(); window.addEventListener('focus', refresh)
     return () => { active = false; off(); window.removeEventListener('focus', refresh) }
   }, [courseId, sourcePanelId])

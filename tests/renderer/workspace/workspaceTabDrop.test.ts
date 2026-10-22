@@ -5,9 +5,9 @@ import { dropWorkspaceTabOnCourse } from '../../../src/renderer/src/features/wor
 
 const fixture = vi.hoisted(() => {
   const courseListeners = new Set<(state: any, previous: any) => void>()
-  const workspaceListeners = new Set<() => void>()
+  const workspaceListeners = new Set<(state: any, previous: any) => void>()
   const state = { selectedCourseId: 'source', courses: [{ id: 'source' }, { id: 'target' }, { id: 'other' }], selectCourse: (_id: string | null) => {} }
-  const workspace = { activeCourseId: 'source', hydration: 'ready', surface: 'course' }
+  const workspace = { activeCourseId: 'source', activeWorkspaceKey: 'source', hydration: 'ready', surface: 'course', showWorkspace: (_ref: any) => {} }
   return { state, workspace, courseListeners, workspaceListeners, move: vi.fn(), toast: vi.fn(), api: { activeGroup: { id: 'target-group', panels: [{ id: 'one' }, { id: 'two' }] } } }
 })
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: {
@@ -15,7 +15,7 @@ vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStor
   subscribe: (listener: (state: any, previous: any) => void) => { fixture.courseListeners.add(listener); return () => fixture.courseListeners.delete(listener) }
 } }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
-  useWorkspaceStore: { getState: () => fixture.workspace, subscribe: (listener: () => void) => { fixture.workspaceListeners.add(listener); return () => fixture.workspaceListeners.delete(listener) } },
+  useWorkspaceStore: { getState: () => fixture.workspace, subscribe: (listener: (state: any, previous: any) => void) => { fixture.workspaceListeners.add(listener); return () => fixture.workspaceListeners.delete(listener) } },
   workspaceApiForCourse: () => fixture.api,
   moveWorkspacePanel: fixture.move
 }))
@@ -29,13 +29,14 @@ function select(courseId: string | null) {
   for (const listener of fixture.courseListeners) listener(fixture.state, previous)
 }
 function hydrate(hydration: string) {
-  Object.assign(fixture.workspace, { activeCourseId: 'target', hydration })
-  for (const listener of fixture.workspaceListeners) listener()
+  const previous = { ...fixture.workspace }
+  Object.assign(fixture.workspace, { activeCourseId: 'target', activeWorkspaceKey: 'target', hydration })
+  for (const listener of fixture.workspaceListeners) listener(fixture.workspace, previous)
 }
 beforeEach(() => {
   vi.useFakeTimers()
   Object.assign(fixture.state, { selectedCourseId: 'source', courses: [{ id: 'source' }, { id: 'target' }, { id: 'other' }], selectCourse: select })
-  Object.assign(fixture.workspace, { activeCourseId: 'source', hydration: 'ready', surface: 'course' })
+  Object.assign(fixture.workspace, { activeCourseId: 'source', activeWorkspaceKey: 'source', hydration: 'ready', surface: 'course', showWorkspace: (ref: any) => { const previous = { ...fixture.workspace }; Object.assign(fixture.workspace, {activeCourseId: ref?.courseId ?? null, activeWorkspaceKey: ref?.courseId ?? null, hydration: 'loading'}); for(const listener of fixture.workspaceListeners) listener(fixture.workspace, previous) } })
   fixture.move.mockReset().mockResolvedValue(true); fixture.toast.mockClear()
   dispose = installWorkspaceCourseMoveNavigation()
   tabDragSession.beginTab(source)

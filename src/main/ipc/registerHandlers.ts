@@ -1,4 +1,11 @@
+import { referenceImages } from '../../shared/chatReferenceImages'
+import { selectChatContextMaterial } from '../features/agent/chatContextSelection'
+import { validateStudyConversation, recordStudyConversation } from '../features/agent/chatStudyRecords'
+import { workspaceFromKey } from '../../shared/types/workspace'
+import { sanitizeAnnotationReferences } from '../../shared/types/chatAnnotation'
+import { createProjectNavigationRepo } from '../db/projectNavigationRepo'
 import { createShareInbox } from '../features/share/shareInbox'
+import { registerAnnotationHandlers } from './annotationHandlers'
 import { exportMaterial, shareGeneratedMaterial } from '../features/materials/exportMaterial'
 import { createShareRootResolver } from '../features/share/shareRuntime'
 import { createMainWindow, revealMainWindow } from '../windows/mainWindow'
@@ -57,7 +64,7 @@ import { traceIpc } from '../performanceTrace'
 import { createFolderAvailability } from '../features/courses/folderAvailability'
 import { createBackgroundClient } from '../background/client'
 import { startBackgroundCheckpoints } from '../db/backgroundCheckpoint'
-import { createMaterialPathLock } from '../features/materials/materialPathLock'
+import { createMaterialPathLock, withMaterialPathLockWait } from '../features/materials/materialPathLock'
 import { createBackgroundMaterialsWatcher } from '../background/materialsWatcher'
 import { createAppleCalendar } from '../features/calendar/appleCalendar'
 /**
@@ -601,6 +608,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const courseLinksRepo = createCourseLinksRepo(db)
   const materialLinksRepo = createMaterialLinksRepo(db)
   const boardRepo = createBoardRepo(db)
+  const projectNavigationRepo = createProjectNavigationRepo(db)
+  handle('projects:navigation', () => projectNavigationRepo.get())
+  handle('projects:saveNavigation', input => projectNavigationRepo.save(input))
   const layoutRepo = createLayoutRepo(db)
   const deadlineScheduler = createDeadlineScheduler({
     db,
@@ -838,7 +848,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       return { dataUrl: thumbnail.isEmpty() ? null : thumbnail.toDataURL() }
     } catch { return { dataUrl: null } }
   })
-  handle('externalSources:import', req => materialsRepo.import(req.courseId, [externalSources.pathFor(req.id)]))
+  handle('externalSources:import', req => materialsRepo.import(req.courseId, [externalSources.pathFor(req.id)], req.dirRelPath))
   ipcMain.on('externalSources:startDrag', (event, req: unknown) => {
     try {
       assertAppRendererSender(event)
@@ -1018,7 +1028,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('pdfNotes:create', req => withMaterialLock(() => pdfNotes.create(req)))
   handle('pdfNotes:info', async req => { const info = await pdfNotes.info(req); pdfBindings.check({ ...req, documentRevision: info.documentRevision }); return info })
   handle('pdf:restructure', req => withMaterialLock(() => pdfNotes.restructure(req)))
-  handle('pdfNotes:migrateLegacy', req => withMaterialLock(() => pdfNotes.migrateLegacy(req)))
+  handle('pdfNotes:migrateLegacy', req => withMaterialPathLockWait(materialPathLock, () => pdfNotes.migrateLegacy(req)))
   handle('pdfNotes:migrationStatus', req => pdfNotes.migrationStatus(req))
 
   // -- media progress (M18: 영상 이어보기) ----------------------------------
@@ -1788,8 +1798,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   }
   const snapshotContext = async (courseId: string, sourcePanelId?: string): Promise<MessageContextSnapshot> => {
     const fresh = await refreshWorkspace()
-    const candidate = sourcePanelId ? panelMaterials.get(sourcePanelId) : lastMaterials.get(courseId)
-    let material = candidate?.courseId === courseId && !candidate.unavailable && (!sourcePanelId || fresh) ? { ...candidate } : undefined
+    // Explicit visible panel identity can belong to an original course while
+    // the conversation is placed in a separate project workspace.
+    let material = selectChatContextMaterial(courseId, sourcePanelId, fresh, panelMaterials, lastMaterials)
     let failed = !!sourcePanelId && !material
     if (material?.browserTabId) {
       const guest = guestRegistry.resolve(material.browserTabId)
@@ -2352,8 +2363,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       return JSON.stringify({ relPath: source.relPath, pathScope: 'course', ...(source.sourceCourseId ? { sourceCourseId: source.sourceCourseId } : {}), ...(source.page === undefined ? {} : { page: source.page }), contentHash: material.contentHash,
         text: source.selection ?? material.text, truncated: material.truncated })
     },
-    send: async (courseId, sessionId, provider, prompt, ai) => {
-      return sendLearningWithSession(managerFor(provider), courseId, sessionId, prompt, ai, validateLearningAi)
+    send: async (courseId, sessionId, provider, prompt, ai, attachments) => {
+      return sendLearningWithSession(managerFor(provider), courseId, sessionId, prompt, ai, validateLearningAi, attachments)
     },
     cancel: (courseId, sessionId, provider) => {
       agentConfirmer.cancelConversation(sessionId)
@@ -2361,6 +2372,14 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
   })
   registerLearningHandlers(handle, {
+    validateConversation: (courseId, request) => { assertChatIdle(request.sessionId); validateStudyConversation(chatRepo, courseId, request); for (const file of request.context?.files ?? []) materialsRepo.absolutePathFor(courseId, file.relPath) },
+    recordConversationRun: (courseId, request, result, ai, name) => {
+      const manager = resolveManager(request.sessionId)
+      manager.close(courseId, request.sessionId)
+      recordStudyConversation(chatRepo, courseId, request, { courseId: result.binding.courseId, relPath: result.binding.rootRelPath, name, kind: 'other', learning: result }, ai?.provider ?? getSettings().agentProvider,
+        message => broadcast('chat:message', { sessionId: request.sessionId, message }))
+      if (ai) chatRepo.setModel(request.sessionId, ai.model, ai.effort ?? null)
+    },
     repo: learningRepo, runtime: learningRuntime, extractor: articleExtractor, cache: learningCache, dictionary,
     validateAi: ai => validateConnectedLearningAi(ai, provider => agentAvailability.check(provider), validateLearningAi),
     courses: coursesRepo,
@@ -2406,6 +2425,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         console.error('[context] rebuild failed', error)
       }
     })
+    const boundWorkspace = chatRepo.workspaceForSession(req.sessionId)
+    if (req.workspaceKey && (workspaceFromKey(req.workspaceKey).courseId !== req.courseId || boundWorkspace && boundWorkspace !== req.workspaceKey)) throw new Error('이 대화는 다른 공간에 속해 있어요.')
     const manager = await resolveConnectedManager(req.courseId, req.sessionId)
     return manager.open(
       req.courseId,
@@ -2439,10 +2460,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       const opened = await manager.open(req.courseId, req.sessionId)
       if (opened.sessionInfo?.status === 'running') throw new Error('진행 중인 응답이 끝난 뒤 보내 주세요.')
       const context = { ...req.context, snapshot: await snapshotContext(req.courseId, req.context?.sourcePanelId) }
+      delete context.displayContent
+      if (context.workspaceKey && workspaceFromKey(context.workspaceKey).courseId !== req.courseId) throw new Error('대화의 공간이 일치하지 않아요.')
+      const boundWorkspace = chatRepo.workspaceForSession(req.sessionId)
+      if (context.workspaceKey && boundWorkspace && boundWorkspace !== context.workspaceKey) throw new Error('이 대화는 다른 공간에 속해 있어요.')
+      context.references = sanitizeAnnotationReferences(context.references ?? [])
       if (req.context?.excludeCurrentMaterial) delete context.snapshot.material
       try { contextWriter.rebuild(req.courseId, true) } catch { context.snapshot.refresh = 'failed' }
       // Only the attached page/selection is inline. The rest remains in the course file.
-      if (context.snapshot.material?.relPath) materialsRepo.absolutePathFor(req.courseId, context.snapshot.material.relPath)
+      if (context.snapshot.material?.relPath) materialsRepo.absolutePathFor(context.snapshot.material.courseId, context.snapshot.material.relPath)
       if (context) delete context.outputDir
       if (context?.files && context.files.length > 20) throw new Error('파일은 한 번에 20개까지 첨부할 수 있어요.')
       for (const file of context?.files ?? []) materialsRepo.absolutePathFor(req.courseId, file.relPath)
@@ -2462,7 +2488,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         createdArtifactJob = true
         artifactJobs.set(req.sessionId, { courseId: req.courseId, dir, creation: context.creation })
       }
-      return await manager.send(req.courseId, req.sessionId, req.content, req.attachments, context, skills.map((skill) => skill.path))
+      return await manager.send(req.courseId, req.sessionId, req.content, [...(req.attachments ?? []), ...referenceImages(context.references)], context, skills.map((skill) => skill.path))
     } catch (error) {
       if (createdArtifactJob) artifactJobs.delete(req.sessionId)
       throw error
@@ -2475,7 +2501,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('chat:conversations', (req) => ({
-    conversations: [...chatRepo.listConversations(req.courseId, 'app'), ...chatRepo.listConversations(req.courseId, 'desktop')].sort((a, b) => (b.lastUsedAt ?? b.createdAt).localeCompare(a.lastUsedAt ?? a.createdAt))
+    conversations: [...chatRepo.listConversations(req.courseId, 'app', req.workspaceKey), ...chatRepo.listConversations(req.courseId, 'desktop', req.workspaceKey)].sort((a, b) => (b.lastUsedAt ?? b.createdAt).localeCompare(a.lastUsedAt ?? a.createdAt))
   }))
   handle('chat:grants', (req) => ({
     grants: chatRepo.listGrantDetails(req.courseId)
@@ -2731,7 +2757,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       name: coursesRepo.getById(courseId).name,
       folder: coursesRepo.getFolder(courseId)
     }),
-    ask: async (courseId, prompt) => {
+    ask: async (courseId, prompt, input, result) => {
       // Study tools ride the course's newest conversation so their answer
       // lands where the student is already talking; a course with no
       // conversations yet gets a fresh one.
@@ -2743,7 +2769,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       const timer = setTimeout(() => { manager.cancel(courseId, sessionId); legacyPackSettlers.get(sessionId)?.reject(new Error('학습 작업 시간이 초과되었습니다.')) }, 15 * 60 * 1000)
       timer.unref()
       try {
-        await manager.send(courseId, sessionId, prompt)
+        await manager.send(courseId, sessionId, prompt, referenceImages(input?.conversation?.context?.references), input?.conversation ? { ...input.conversation.context, workspaceKey: input.conversation.workspaceKey, displayContent: input.conversation.content } : undefined)
+        if (input?.conversation && result) recordStudyConversation(chatRepo, courseId, input.conversation,
+          { courseId, relPath: result.relPath, name: result.name, kind: 'note', pending: true, workflow: { sessionId, workspaceKey: input.conversation.workspaceKey, content: input.conversation.content, ...(input.conversation.context ? { context: input.conversation.context } : {}) } }, getSettings().agentProvider,
+          message => broadcast('chat:message', { sessionId, message }), false)
         await completed
       } finally {
         clearTimeout(timer)
@@ -2809,11 +2838,26 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         : { followUp: { ...pack.followUp } })
     }))
   }))
-  handle('study:run', (req) => {
+  handle('study:run', async (req) => {
+    if (req.conversation) {
+      validateStudyConversation(chatRepo, req.courseId, req.conversation)
+      if (workflowSessionIds.has(req.courseId)) throw new Error('앞선 학습 작업이 끝난 뒤 실행하세요.')
+      workflowSessionIds.set(req.courseId, req.conversation.sessionId)
+    }
+    try {
+    const sourceCourseId = req.sourceCourseId ?? req.courseId
+    if (sourceCourseId !== req.courseId) {
+      const workspace = req.conversation ? workspaceFromKey(req.conversation.workspaceKey) : null
+      if (workspace?.kind !== 'project') throw new Error('원본 과목과 연결된 프로젝트에서 실행해 주세요.')
+      const project = await learningRepo.read({ courseId: workspace.courseId, rootRelPath: workspace.rootRelPath })
+      if (project.linkedCourseId !== sourceCourseId) throw new Error('이 프로젝트와 연결되지 않은 원본 과목이에요.')
+    }
     const sourceGuest = req.browserTabId ? guestRegistry.resolve(req.browserTabId) : null
-    assertLiveStudyBrowserSource(req, sourceGuest, browsingContext(sourceGuest?.id ?? null))
-    return packRunner.run({
+    assertLiveStudyBrowserSource({ ...req, courseId: sourceCourseId }, sourceGuest, browsingContext(sourceGuest?.id ?? null))
+    const result = await packRunner.run({
+      ...(req.conversation ? { conversation: req.conversation } : {}),
       courseId: req.courseId,
+      ...(sourceCourseId !== req.courseId ? { sourceCourseId } : {}),
       packId: req.tool,
       ...(req.relPath === null ? {} : { targetRelPath: req.relPath }),
       ...(req.selection === undefined
@@ -2824,6 +2868,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         ? {}
         : { followUpOf: req.followUpOf })
     })
+    return result
+    } catch (error) {
+      if (req.conversation) releaseWorkflowSession(req.courseId, req.conversation.sessionId)
+      throw error
+    }
   })
 
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
@@ -3676,8 +3725,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
 
   // -- layout ---------------------------------------------------------------
-  handle('layout:get', (req) => layoutRepo.get(req.courseId))
-  handle('layout:save', (req) => layoutRepo.save(req.courseId, req.layout))
+  handle('layout:get', (req) => layoutRepo.get(req.courseId, req.projectRootRelPath))
+  handle('layout:save', (req) => layoutRepo.save(req.courseId, req.layout, req.projectRootRelPath))
   handle('layout:saveMany', (req) => layoutRepo.saveMany(req.layouts))
 
   const transitions = createWorkspaceTransitions(() => BrowserWindow.getAllWindows().flatMap(win => {
@@ -3857,6 +3906,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   handle('feedback:send', (req) => feedback.send(req))
 
+  registerAnnotationHandlers(handle)
   assertEveryChannelHandled()
   try {
     deadlineScheduler.start()

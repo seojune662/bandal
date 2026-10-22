@@ -74,7 +74,7 @@ vi.mock('../../../src/renderer/src/features/materials/useMaterialsPaste', () => 
 vi.mock('../../../src/renderer/src/features/workspace/openMaterial', () => ({ openMaterialInWorkspace: vi.fn(), openMaterialInCourse: vi.fn() }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   closeResourceTabs: vi.fn(), reconcileWorkspaceMaterialRename: vi.fn(() => 1),
-  useWorkspaceStore: { getState: () => ({ openTabs: {} }) }
+  useWorkspaceStore: Object.assign((selector: (state: any) => unknown) => selector({ activeWorkspace: null, openTabs: {} }), { getState: () => ({ activeWorkspace: null, openTabs: {} }) })
 }))
 vi.mock('../../../src/renderer/src/features/materials/MaterialTree', async () => {
   const ReactModule = await import('react')

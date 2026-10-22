@@ -9,7 +9,8 @@ import { TabContextMenu } from './TabContextMenu'
 import { isTabDescriptor } from './tabIdentity'
 import { setWorkspaceTabDragImage, writeWorkspaceTabDragData } from './tabDrag'
 import { WorkspaceTabIcon } from './workspaceIcons'
-import { WorkspaceCourseContext } from './placementContext'
+import { WorkspaceCourseContext, WorkspaceRefContext } from './placementContext'
+import { workspaceKey } from '../../../../shared/types/workspace'
 import { tabDragSession } from './tabDragSession'
 import { layoutAdaptiveTabs } from './adaptiveTabs'
 import './adaptive-tabs.css'
@@ -17,6 +18,7 @@ import './adaptive-tabs.css'
 export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const t = useT()
   const workspaceCourseId = useContext(WorkspaceCourseContext)
+  const workspace = useContext(WorkspaceRefContext)
   const [title, setTitle] = useState(props.api.title ?? '')
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -47,7 +49,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
     const handleDragStart = (event: DragEvent): void => {
       if (event.dataTransfer === null || dockviewTab === null) return
       const source = {
-        courseId: workspaceCourseId, panelId: props.api.id, nonce: crypto.randomUUID()
+        courseId: workspace === null ? workspaceCourseId : workspaceKey(workspace), panelId: props.api.id, nonce: crypto.randomUUID()
       }
       tabDragSession.beginTab(source)
       writeWorkspaceTabDragData(event.dataTransfer, descriptor, title, source)

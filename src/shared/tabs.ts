@@ -20,6 +20,7 @@ export type TabKind =
   | 'file'
   | 'plugin-panel'
   | 'learning'
+  | 'learning-resource'
 
 export interface PdfTabPayload {
   courseId: string
@@ -86,6 +87,14 @@ export interface TabPayloadMap {
   file: FileTabPayload
   'plugin-panel': PluginPanelTabPayload
   learning: LearningTabPayload
+  'learning-resource': LearningResourcePayload
+}
+
+export interface LearningResourcePayload {
+  courseId: string
+  rootRelPath: string
+  projectId?: string
+  resource: { kind: 'article'; id: string } | { kind: 'vocabulary' } | { kind: 'artifact'; id: string }
 }
 
 export type LearningView = 'home' | 'reader' | 'vocabulary' | 'articles' | 'review'
@@ -151,7 +160,8 @@ export const TAB_KINDS = [
   'image',
   'file',
   'plugin-panel',
-  'learning'
+  'learning',
+  'learning-resource'
 ] as const satisfies readonly TabKind[]
 
 type MissingTabKind = Exclude<TabKind, (typeof TAB_KINDS)[number]>
@@ -226,6 +236,12 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
         (payload['projectId'] === undefined || isNonEmptyString(payload['projectId'])) &&
         (payload['view'] === undefined || (typeof payload['view'] === 'string' && ['home', 'reader', 'vocabulary', 'articles', 'review'].includes(payload['view']))) &&
         (payload['itemId'] === undefined || isNonEmptyString(payload['itemId']))
+    case 'learning-resource': {
+      const resource = payload['resource']
+      return isNonEmptyString(payload['courseId']) && typeof payload['rootRelPath'] === 'string' &&
+        (payload['projectId'] === undefined || isNonEmptyString(payload['projectId'])) && isRecord(resource) &&
+        (resource['kind'] === 'vocabulary' || (['article', 'artifact'].includes(String(resource['kind'])) && isNonEmptyString(resource['id'])))
+    }
 
   }
 }

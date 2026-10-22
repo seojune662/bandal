@@ -93,7 +93,7 @@ test('multi-tab drags cancel without splitting, enter and drop into a cold cours
       await page.mouse.move(content.x + 16, content.y + content.height / 2, { steps: 8 })
       await page.mouse.move(content.x + 17, content.y + content.height / 2)
       await expect(page.locator('.course-tab-move-preview')).toBeVisible()
-      const heading = (await page.getByRole('complementary', { name: '과목 목록' }).locator('.rail-heading h2').boundingBox())!
+      const heading = (await page.getByRole('complementary', { name: '과목 목록' }).locator('.rail-heading .home-tabs').boundingBox())!
       await page.mouse.move(heading.x + heading.width / 2, heading.y + heading.height / 2, { steps: 8 })
       await expect(page.locator('.course-tab-move-preview:visible')).toHaveCount(0)
       if (cancelWithEscape) await page.keyboard.press('Escape')
@@ -281,7 +281,7 @@ test('a whole-group merge keeps inactive tabs accessible and draggable to anothe
     const source = all.find(course => course.name === '그룹 합치기 원본')!
     const destination = all.find(course => course.name === '그룹 합치기 도착')!
     await openNotes(page, source, 'group', 4)
-    await page.getByRole('button', { name: '자료 사이드바 접기', exact: true }).click()
+    await page.getByRole('button', { name: '오른쪽 사이드바 접기', exact: true }).click()
 
     // Put one note below the other three so the source header has usable blank
     // space for Dockview's native whole-group drag handle.

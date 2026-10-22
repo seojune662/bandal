@@ -21,6 +21,13 @@ interface UiState {
   courseRailOpen: boolean
   leftRailPanel: 'courses' | 'learning' | 'plugins'
   rightRailOpen: boolean
+  rightRailTab: 'materials' | 'ai'
+  rightRailScope: string | null
+  setRightRailScope: (scope: string | null) => void
+  moveRightRailScope: (from: string, to: string) => void
+  setRightRailTab: (tab: 'materials' | 'ai') => void
+  showAssistant: () => void
+  setHomeTab: (tab: 'courses' | 'learning') => void
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
   isBoardOverlayOpen: boolean
   /** 과목 연결 그래프 오버레이. */
@@ -47,6 +54,24 @@ interface UiState {
   closeSettings: () => void
 }
 
+type RightRailPreference = { open: boolean; tab: 'materials' | 'ai' }
+const RIGHT_RAIL_KEY = 'bandal:right-panels:v1'
+function readRightRails(): Record<string, RightRailPreference> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(RIGHT_RAIL_KEY) ?? '{}')
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    return Object.fromEntries(Object.entries(value).filter(([, item]) => item && typeof item.open === 'boolean' && ['materials', 'ai'].includes(item.tab)))
+  } catch { return {} }
+}
+const rightRails = readRightRails()
+/** Includes spaces that have not mounted a Dockview in this app session. */
+export function rememberedRightRailScopes(): string[] { return Object.keys(rightRails) }
+function saveRightRail(scope: string | null, preference: RightRailPreference): void {
+  if (!scope) return
+  rightRails[scope] = preference
+  try { localStorage.setItem(RIGHT_RAIL_KEY, JSON.stringify(rightRails)) } catch { /* In-memory restoration remains available. */ }
+}
+
 let themeInitialization: Promise<void> | null = null
 
 /** The last appearance painted, so a single-axis change can re-apply the rest. */
@@ -62,8 +87,37 @@ export const useUiStore = create<UiState>()((set, get) => ({
   resolvedTheme: resolveRendererTheme(DEFAULT_SETTINGS.theme),
   leftRailOpen: true,
   courseRailOpen: true,
-  leftRailPanel: 'courses',
+  leftRailPanel: (() => { try { return localStorage.getItem('bandal:home-tab') === 'learning' ? 'learning' : 'courses' } catch { return 'courses' } })(),
   rightRailOpen: true,
+  rightRailTab: 'materials',
+  rightRailScope: null,
+  moveRightRailScope: (from, to) => {
+    if (from === to) return
+    const current = get()
+    const preference = from === current.rightRailScope ? { open: current.rightRailOpen, tab: current.rightRailTab } : rightRails[from]
+    delete rightRails[from]
+    if (preference) saveRightRail(to, preference)
+    if (current.rightRailScope === from) set({ rightRailScope: to })
+  },
+  setRightRailScope: scope => {
+    const current = get()
+    if (scope === current.rightRailScope) return
+    saveRightRail(current.rightRailScope, { open: current.rightRailOpen, tab: current.rightRailTab })
+    const saved = scope ? rightRails[scope] : undefined
+    set({ rightRailScope: scope, rightRailOpen: saved?.open ?? true, rightRailTab: saved?.tab ?? 'materials' })
+  },
+  setRightRailTab: tab => {
+    saveRightRail(get().rightRailScope, { open: true, tab })
+    set({ rightRailTab: tab, rightRailOpen: true })
+  },
+  showAssistant: () => {
+    saveRightRail(get().rightRailScope, { open: true, tab: 'ai' })
+    set({ rightRailTab: 'ai', rightRailOpen: true, isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false })
+  },
+  setHomeTab: tab => {
+    try { localStorage.setItem('bandal:home-tab', tab) } catch { /* Optional UI preference. */ }
+    set({ leftRailPanel: tab, leftRailOpen: true, courseRailOpen: true })
+  },
   isBoardOverlayOpen: false,
   isLinkGraphOpen: false,
   isSettingsOpen: false,
@@ -144,7 +198,9 @@ export const useUiStore = create<UiState>()((set, get) => ({
   })),
 
   toggleRightRail: () => {
-    set((state) => ({ rightRailOpen: !state.rightRailOpen }))
+    const state = get()
+    saveRightRail(state.rightRailScope, { open: !state.rightRailOpen, tab: state.rightRailTab })
+    set({ rightRailOpen: !state.rightRailOpen })
   },
 
   toggleBoardOverlay: () => {

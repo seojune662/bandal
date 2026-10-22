@@ -14,7 +14,7 @@ export function openAiShortcut(service: AiWebService): void {
   const browser = useBrowserGuests.getState()
   const existing = findAiShortcutPanel(service, workspace.openTabs, browser.nav, workspace.activePanelId, browser.liveGuests.map(guest => guest.tabId))
   if (existing !== null) {
-    workspace.showCourseWorkspace(workspace.activeCourseId)
+    workspace.showWorkspace(workspace.activeWorkspace)
     workspace.activatePanel(existing)
     const descriptor = workspace.openTabs[existing]
     if (descriptor?.kind === 'browser') browser.touchGuest(descriptor.payload.tabId)
