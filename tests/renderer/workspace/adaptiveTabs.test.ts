@@ -93,6 +93,18 @@ test('corner minimums include native controls while ordinary panes remain compac
   expect(strip.parentElement!.hasAttribute('data-tab-header-compact')).toBe(true)
 })
 
+test('fixed control padding is included in both pane minimums and available tab width', () => {
+  const { root, strip } = header(400)
+  const container = strip.parentElement!
+  container.style.paddingLeft = '52px'
+  container.style.paddingRight = '116px'
+  expect(headerChromeInset(container)).toBe(208)
+  expect(minimumHeaderWidth(headerChromeInset(container), 1000)).toBe(284)
+  layoutAdaptiveTabs(root)
+  expect(container.hasAttribute('data-tab-header-compact')).toBe(true)
+  expect(strip.style.width).toBe('112px')
+})
+
 test('header replacement restores keyboard focus to a selected tab or an empty pane list', () => {
   const old = document.createElement('button'); document.body.append(old); old.focus(); old.remove()
   const group = document.createElement('div')

@@ -7,6 +7,7 @@ import { tabDragSession } from './tabDragSession'
 import { workspaceKey, workspaceFromKey } from '../../../../shared/types/workspace'
 
 import { workspaceWindowKey, workspaceWindowFromKey } from '../../../../shared/workspaceWindows'
+import { workspaceContentTopInset } from './windowChromeInsets'
 
 type PanelProps = IDockviewPanelProps
 type Bounds = { x: number; y: number; width: number; height: number }
@@ -55,7 +56,10 @@ function measure(): void {
     if (!entry.props.api.isVisible) continue
     const outer = root.getBoundingClientRect(), rect = (content ?? entry.slot).getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) continue
-    const next = { x: rect.x - outer.x, y: rect.y - outer.y, width: rect.width, height: rect.height }
+    // A hidden tab strip can expose a native page at the window's top edge.
+    // Only a pane intersecting fixed corner controls needs vertical clearance.
+    const topInset = workspaceContentTopInset(rect)
+    const next = { x: rect.x - outer.x, y: rect.y - outer.y + topInset, width: rect.width, height: Math.max(0, rect.height - topInset) }
     if (Object.keys(next).some(key => next[key as keyof Bounds] !== entry.bounds[key as keyof Bounds])) {
       entry.bounds = next
       changed = true

@@ -40,6 +40,70 @@ async function openBrowser(app: BandalApp, url: string): Promise<void> {
   }, url)
 }
 
+/** Assert rendered hit areas, including clipping of horizontally scrolled tabs. */
+async function expectFlushHeaders(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => {
+    const issues: string[] = []
+    const host = document.querySelector('.workspace-host')!.getBoundingClientRect()
+    const headers = [...document.querySelectorAll<HTMLElement>('.workspace-course:not([hidden]) .dv-tabs-and-actions-container')]
+    const boxes = ['.shell-chrome', '.workspace-controls'].map(selector => document.querySelector(selector)!.getBoundingClientRect())
+    const chromeHeight = document.querySelector('.shell-chrome')!.getBoundingClientRect().height
+    if (document.documentElement.dataset.platform === 'win32') boxes.push(new DOMRect(innerWidth - 138, 0, 138, chromeHeight))
+    const overlaps = (a: DOMRect, b: DOMRect): boolean => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1
+    if (Math.abs(host.top) > 1) issues.push(`workspace top ${host.top}`)
+    if (headers.filter(header => Math.abs(header.getBoundingClientRect().top) <= 1).length !== 2) issues.push('both top panes must start at the window edge')
+    headers.forEach((header, index) => {
+      const bounds = header.getBoundingClientRect(), style = getComputedStyle(header)
+      if (!boxes.some(box => overlaps(bounds, box)) && (parseFloat(style.paddingLeft) > 1 || parseFloat(style.paddingRight) > 1)) issues.push(`pane ${index} reserves space outside the corners`)
+      for (const item of header.querySelectorAll<HTMLElement>('.dv-tab:not([data-tab-overflow]), button')) {
+        if (!item.getClientRects().length || getComputedStyle(item).visibility !== 'visible' || item.closest('[data-tab-overflow]')) continue
+        const rect = item.getBoundingClientRect()
+        let left = rect.left, right = rect.right, top = rect.top, bottom = rect.bottom
+        for (let parent = item.parentElement; parent && parent !== header.parentElement; parent = parent.parentElement) {
+          const clip = parent.getBoundingClientRect(), css = getComputedStyle(parent)
+          if (css.overflowX !== 'visible') { left = Math.max(left, clip.left); right = Math.min(right, clip.right) }
+          if (css.overflowY !== 'visible') { top = Math.max(top, clip.top); bottom = Math.min(bottom, clip.bottom) }
+        }
+        if (right <= left || bottom <= top) continue
+        const visible = new DOMRect(left, top, right - left, bottom - top)
+        if (left < bounds.left - 1 || right > bounds.right + 1) issues.push(`pane ${index} action outside its header`)
+        if (boxes.some(box => overlaps(visible, box))) issues.push(`pane ${index} ${item.getAttribute('aria-label') ?? item.className} overlaps fixed controls`)
+      }
+    })
+    return issues
+  })).toEqual([])
+}
+
+async function expectRetainedContentBounds(app: BandalApp, browserId: number): Promise<void> {
+  await expect.poll(() => app.page.evaluate(() => {
+    const host = document.querySelector('.workspace-host')!.getBoundingClientRect(), issues: string[] = []
+    const boxes = ['.shell-chrome', '.workspace-controls'].map(selector => document.querySelector(selector)!.getBoundingClientRect())
+    const chromeHeight = boxes[0]!.height
+    if (document.documentElement.dataset.platform === 'win32') boxes.push(new DOMRect(innerWidth - 138, 0, 138, chromeHeight))
+    const overlaps = (a: DOMRect, b: DOMRect): boolean => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1
+    for (const content of document.querySelectorAll<HTMLElement>('.workspace-panel-content:not([hidden])')) {
+      const rect = content.getBoundingClientRect()
+      const slot = document.querySelector(`[data-panel-slot="${CSS.escape(content.dataset.contentPanel!)}"]`)!.getBoundingClientRect()
+      if (rect.left < host.left - 1 || rect.right > host.right + 1 || rect.top < host.top - 1 || rect.bottom > host.bottom + 1) issues.push('content outside workspace')
+      if (boxes.some(box => overlaps(rect, box))) issues.push('content overlaps fixed controls')
+      if (!boxes.some(box => overlaps(slot, box)) && Math.abs(rect.top - slot.top) > 1) issues.push('unobstructed pane has an extra top gap')
+      if (rect.top - slot.top > chromeHeight + 1) issues.push('pane reserves more than the corner control height')
+    }
+    return issues
+  })).toEqual([])
+  await expect.poll(async () => {
+    const anchor = await app.page.locator('.browser-panel:visible .browser-anchor').boundingBox()
+    const native = await app.app.evaluate(({ BrowserWindow }, id) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      const view = host.contentView.children.find((child: any) => child.webContents?.id === id) as any
+      return view?.getVisible() ? view.getBounds() : null
+    }, browserId)
+    return !!anchor && !!native && native.width > 0 && native.height > 0 &&
+      Math.abs(native.x - anchor.x) <= 2 && Math.abs(native.y - anchor.y) <= 2 &&
+      Math.abs(native.width - anchor.width) <= 2 && Math.abs(native.height - anchor.height) <= 2
+  }).toBe(true)
+}
+
 test('fixed workspace controls collapse pane chrome, preserve live pages, and keep shortcuts in projects', async ({}, info) => {
   test.setTimeout(150_000)
   const site = await startFileServer({ '/canvas': { fileName: 'canvas.html', attachment: false, contentType: 'text/html; charset=utf-8', body: '<html><head><title>Private title fixture</title></head><body style="margin:0;background:#36a4de;min-height:2000px"><input id="draft" value="live browser draft"><h1>Browser content fixture</h1><script>window.instanceToken=Math.random()</script></body></html>' } })
@@ -52,8 +116,6 @@ test('fixed workspace controls collapse pane chrome, preserve live pages, and ke
     writeFileSync(join(course.folderPath, 'draft.md'), '# Window draft\n\nPreserved editor content.\n')
     await pdfFixture(join(course.folderPath, 'pages.pdf'))
     await page.getByRole('button', { name: '자료 새로고침', exact: true }).click()
-    await page.locator('[data-material-path="draft.md"]').click()
-    await expect(page.locator('.note-tab:visible .ProseMirror')).toBeVisible()
     await page.locator('[data-material-path="pages.pdf"]').click()
     await expect(activePdf(page).locator('.pdf-toolbar__page-input')).toBeVisible()
     await openBrowser(bandal, `${site.origin}/canvas`)
@@ -61,6 +123,10 @@ test('fixed workspace controls collapse pane chrome, preserve live pages, and ke
     const browserId = (await browserPages(bandal, site.origin))[0]!.id
     await expect.poll(() => bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('document.readyState === "complete" && !!document.querySelector("#draft")'), browserId)).toBe(true)
     const instance = await bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('window.instanceToken'), browserId)
+    // PDF/browser occupy the top row, so the live native view exercises the
+    // right corner's overlap when both sidebars and the pane chrome are hidden.
+    await page.locator('[data-material-path="draft.md"]').click()
+    await expect(page.locator('.note-tab:visible .ProseMirror')).toBeVisible()
     await page.getByRole('button', { name: '작업 공간 배치', exact: true }).first().click()
     await page.getByRole('menuitem', { name: '2×2 4분할', exact: true }).click()
     await expect(page.locator('.workspace-course:not([hidden]) .dv-groupview')).toHaveCount(4)
@@ -68,52 +134,98 @@ test('fixed workspace controls collapse pane chrome, preserve live pages, and ke
     await page.locator('.note-tab:visible').evaluate(element => element.setAttribute('data-window-instance', 'retained-original-editor'))
     const controls = page.getByRole('group', { name: '작업 공간 보기', exact: true })
     const fixed = (await controls.boundingBox())!
+    const expandedWorkspace = (await page.locator('.workspace-host').boundingBox())!
     const fixedAtCorner = async (): Promise<void> => {
       await expect(controls).toBeVisible()
-      expect(await controls.boundingBox()).toEqual(fixed)
+      await expect.poll(async () => {
+        const bounds = (await controls.boundingBox())!
+        return Math.max(...(['x', 'y', 'width', 'height'] as const).map(key => Math.abs(bounds[key] - fixed[key])))
+      }).toBeLessThanOrEqual(1)
       expect(await controls.getByRole('button').count()).toBe(3)
     }
+    await expectFlushHeaders(page)
+    const rightResize = page.locator('.rail-resizer--right')
+    await rightResize.focus(); await page.keyboard.press('Home')
+    await expect(rightResize).toHaveAttribute('aria-valuenow', '220')
+    await expect.poll(async () => Math.round((await page.locator('#right-sidebar').boundingBox())!.width)).toBe(220)
+    await expectFlushHeaders(page); await fixedAtCorner()
+    const sidebar = (await page.locator('#right-sidebar').boundingBox())!
+    expect(sidebar.y).toBeGreaterThanOrEqual(fixed.y + fixed.height)
+    await page.getByRole('button', { name: '과목 사이드바 접기', exact: true }).click()
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-left-rail', 'closed')
+    await expect.poll(() => page.locator('.workspace-host').evaluate(element => Math.round(element.getBoundingClientRect().left))).toBe(0)
+    await expectFlushHeaders(page); await fixedAtCorner()
+    await page.getByRole('button', { name: '오른쪽 사이드바 접기', exact: true }).click()
+    await expect.poll(() => page.locator('.workspace-host').evaluate(element => Math.round(innerWidth - element.getBoundingClientRect().right))).toBe(0)
+    await expectFlushHeaders(page); await fixedAtCorner()
+    await page.screenshot({ path: info.outputPath('workspace-flush-top-sidebars-closed.png'), animations: 'disabled' })
     // Windows keeps the same reserved caption-button area when fullscreen
     // changes. Exercise the CSS contract on every host platform.
     const nativeAttributes = await page.locator('html').evaluate(element => ({
       platform: element.getAttribute('data-platform'), fullscreen: element.getAttribute('data-fullscreen')
     }))
     await page.locator('html').evaluate(element => { element.setAttribute('data-platform', 'win32'); element.setAttribute('data-fullscreen', 'false') })
-    const windowsControls = await controls.boundingBox()
+    await expectFlushHeaders(page)
+    await expect.poll(() => controls.evaluate(element => innerWidth - element.getBoundingClientRect().right)).toBeGreaterThanOrEqual(138)
+    const windowsControls = (await controls.boundingBox())!
     await page.locator('html').evaluate(element => element.setAttribute('data-fullscreen', 'true'))
-    expect(await controls.boundingBox()).toEqual(windowsControls)
+    await expectFlushHeaders(page)
+    await expect.poll(async () => {
+      const bounds = (await controls.boundingBox())!
+      return Math.max(Math.abs(bounds.x - windowsControls.x), Math.abs(bounds.y - windowsControls.y))
+    }).toBeLessThanOrEqual(1)
+    // At 220px the Windows caption reservation and fixed control box extend
+    // into the center; the top-right header must reserve only that overlap.
+    await page.getByRole('button', { name: '오른쪽 사이드바 펼치기', exact: true }).click()
+    await expect.poll(() => page.locator('.workspace-host').evaluate(element => Math.round(innerWidth - element.getBoundingClientRect().right))).toBe(220)
+    await expectFlushHeaders(page)
+    await page.locator('html').evaluate(element => element.setAttribute('data-fullscreen', 'false'))
+    await expectFlushHeaders(page)
+    await page.getByRole('button', { name: '오른쪽 사이드바 접기', exact: true }).click()
+    await expect.poll(() => page.locator('.workspace-host').evaluate(element => Math.round(innerWidth - element.getBoundingClientRect().right))).toBe(0)
     await page.locator('html').evaluate((element, attributes) => {
       for (const [key, value] of Object.entries(attributes)) {
         if (value === null) element.removeAttribute(`data-${key}`)
         else element.setAttribute(`data-${key}`, value)
       }
     }, nativeAttributes)
-    await fixedAtCorner()
-    await page.getByRole('button', { name: '오른쪽 사이드바 접기', exact: true }).click()
-    await fixedAtCorner()
-    await page.getByRole('button', { name: '오른쪽 사이드바 펼치기', exact: true }).click()
-    await fixedAtCorner()
-    const sidebar = (await page.locator('#right-sidebar').boundingBox())!
-    expect(sidebar.y).toBeGreaterThanOrEqual(fixed.y + fixed.height)
+    await expectFlushHeaders(page); await fixedAtCorner()
     await chrome(page, '탭 바만 숨기기')
     await expect(page.locator('.workspace-host')).toHaveAttribute('data-workspace-chrome', 'tabs-hidden')
     await expect(page.locator('.workspace-course:not([hidden]) .dv-tabs-and-actions-container:visible')).toHaveCount(0)
     await expect(activePdf(page).locator('.pdf-toolbar')).toBeVisible()
     await expect(page.locator('.browser-panel:visible .browser-toolbar')).toBeVisible()
     await fixedAtCorner()
+    await expectRetainedContentBounds(bandal, browserId)
     const before = (await activePdf(page).locator('.pdf-scroller').boundingBox())!
     await chrome(page, '탭 바와 도구 모음 숨기기')
     await expect(page.locator('.workspace-host')).toHaveAttribute('data-workspace-chrome', 'all-hidden')
     await expect(page.locator('.workspace-host [data-workspace-toolbar]:visible')).toHaveCount(0)
     await expect.poll(async () => (await activePdf(page).locator('.pdf-scroller').boundingBox())!.height).toBeGreaterThan(before.height)
     await fixedAtCorner()
+    await expectRetainedContentBounds(bandal, browserId)
     await page.screenshot({ path: info.outputPath('workspace-focus-hidden.png') })
     await chrome(page, '모두 표시')
     await expect(page.locator('.workspace-course:not([hidden]) .dv-tabs-and-actions-container:visible')).toHaveCount(4)
+    await expectFlushHeaders(page)
     await expect(page.locator('.note-tab:visible .ProseMirror')).toContainText('Preserved editor content.')
     expect(await bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('window.instanceToken'), browserId)).toBe(instance)
     expect(await browserPages(bandal, site.origin)).toEqual([{ id: browserId, url: `${site.origin}/canvas`, visible: true }])
     await page.screenshot({ path: info.outputPath('workspace-controls-all.png') })
+    await page.getByRole('button', { name: '과목 사이드바 펼치기', exact: true }).click()
+    await page.getByRole('button', { name: '오른쪽 사이드바 펼치기', exact: true }).click()
+    await rightResize.dblclick()
+    await expect(rightResize).toHaveAttribute('aria-valuenow', '288')
+    // Header collision checks can pass during a width transition. Preview
+    // capture intentionally rejects changing rectangles, so wait for the
+    // restored canvas and native page to settle before sampling its pixels.
+    await expect.poll(() => page.locator('.app-shell').evaluate(element => element.getAnimations().some(animation => animation.playState === 'running'))).toBe(false)
+    await expect.poll(async () => {
+      const bounds = (await page.locator('.workspace-host').boundingBox())!
+      return Math.max(...(['x', 'y', 'width', 'height'] as const).map(key => Math.abs(bounds[key] - expandedWorkspace[key])))
+    }).toBeLessThanOrEqual(1)
+    await expectFlushHeaders(page); await fixedAtCorner()
+    await expectRetainedContentBounds(bandal, browserId)
     const publicPoint = await page.locator('.browser-panel:visible').evaluate(node => {
       const host = document.querySelector('.workspace-host')!.getBoundingClientRect(), rect = node.getBoundingClientRect()
       return { x: (rect.x - host.x + rect.width * .75) / host.width, y: (rect.y - host.y + rect.height * .75) / host.height }

@@ -172,7 +172,7 @@ test.describe('sidebars', () => {
     await expect(course).toBeVisible()
   })
 
-  test('native fullscreen keeps the workspace below the common title row and controls in the corner', async ({}, info) => {
+  test('native fullscreen keeps tabs at the window top and controls in the corner', async ({}, info) => {
     const { page, app } = bandal
     if (await page.locator('.workspace-course .dv-tab').count() === 0) {
       await createPdfNote(page)
@@ -185,20 +185,32 @@ test.describe('sidebars', () => {
       const rect = element.getBoundingClientRect()
       return { top: rect.top, right: innerWidth - rect.right, height: rect.height }
     })
+    const expectTopEdge = async (): Promise<void> => {
+      await expect.poll(() => page.locator('.workspace-host').evaluate(element => Math.abs(element.getBoundingClientRect().top))).toBeLessThanOrEqual(1)
+      await expect.poll(() => page.locator('.workspace-course:not([hidden]) .dv-tabs-and-actions-container').evaluateAll(headers => {
+        const top = Math.min(...headers.map(header => header.getBoundingClientRect().top))
+        return Math.abs(top)
+      })).toBeLessThanOrEqual(1)
+      await expect.poll(() => page.locator('.shell-chrome button').evaluate(button => {
+        const rect = button.getBoundingClientRect()
+        return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))
+      })).toBe(true)
+    }
+    await expectTopEdge()
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setFullScreen(true))
     try {
       await expect(page.locator('html')).toHaveAttribute('data-fullscreen', 'true')
       await expect(chrome).toHaveCSS('width', '48px')
-      const titleBottom = await chrome.evaluate(element => element.getBoundingClientRect().bottom)
-      expect(await page.locator('.workspace-host').evaluate(element => element.getBoundingClientRect().top)).toBe(titleBottom)
-      expect(await controls.evaluate(element => {
+      await expectTopEdge()
+      await expect.poll(() => controls.evaluate((element, previous) => {
         const rect = element.getBoundingClientRect()
-        return { top: rect.top, right: innerWidth - rect.right, height: rect.height }
-      })).toEqual(corner)
+        return Math.max(Math.abs(rect.top - previous.top), Math.abs(innerWidth - rect.right - previous.right), Math.abs(rect.height - previous.height))
+      }, corner)).toBeLessThanOrEqual(1)
       await expect(page.locator('.workspace-chrome-spacer')).toHaveCount(0)
       await page.screenshot({ path: info.outputPath('fullscreen-collapsed.png') })
       await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
       await expect(page.locator('.shell-home-sidebar')).toHaveCSS('transform', 'none')
+      await expectTopEdge()
       const school = page.getByRole('button', { name: /서울대학교 바로가기/ })
       const bounds = await school.boundingBox()
       const aiBounds = await page.getByRole('button', { name: /AI 바로가기/ }).boundingBox()
@@ -216,7 +228,9 @@ test.describe('sidebars', () => {
     }
     await expect(page.locator('html')).toHaveAttribute('data-fullscreen', 'false')
     await expect(chrome).toHaveCSS('width', `${normalWidth}px`)
+    await expectTopEdge()
     await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
+    await expectTopEdge()
   })
 
   test('rapid sidebar reversal preserves state and reduced motion settles immediately', async () => {

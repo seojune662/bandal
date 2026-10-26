@@ -37,6 +37,7 @@ import { WorkspaceContentLayer, schedulePanelContentLayout } from './panelConten
 import { CourseTabMoveOverlay } from './CourseTabMoveOverlay'
 import { installWorkspaceCourseMoveNavigation, workspaceCourseMoveRetention } from './courseTabMoveNavigation'
 import { focusWorkspaceHeader, headerChromeInset, installAdaptiveTabs, minimumHeaderWidth } from './adaptiveTabs'
+import { installWorkspaceChromeInsets, updateWorkspaceHeaderChromeInsets } from './windowChromeInsets'
 import { OpenTabsAction } from './OpenTabsMenu'
 import { WorkspaceLayoutMenu } from './WorkspaceLayoutMenu'
 import { applyWorkspaceLayout, removeEmptyWorkspaceGroup, splitWorkspaceGroup, type WorkspaceLayoutPreset } from './workspaceLayout'
@@ -201,6 +202,7 @@ function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
       frame = 0
       const width = root.getBoundingClientRect().width
       if (!width || header.closest('.workspace-course[hidden]')) return
+      updateWorkspaceHeaderChromeInsets(props.group.element)
       const minimumWidth = minimumHeaderWidth(headerChromeInset(header), width)
       if (minimumWidth !== previous) { previous = minimumWidth; props.api.setConstraints({ minimumWidth }) }
     }
@@ -403,6 +405,12 @@ export function WorkspaceHost(): JSX.Element {
     return () => { cancelled = true }
   }, [courseId, courses, dragSource, pendingMoves])
 
+  useLayoutEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    return installWorkspaceChromeInsets(host, () => { schedulePanelContentLayout(); scheduleBrowserAnchorLayout() })
+  }, [])
+
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -419,7 +427,7 @@ export function WorkspaceHost(): JSX.Element {
     return () => { stopTabs(); stopSession(); stopNavigation(); window.removeEventListener('beforeunload', flush); flush() }
   }, [])
 
-  return <div ref={hostRef} className="workspace-host" tabIndex={-1} data-tour="tab-strip" data-workspace-chrome={chromeMode} data-windows-overview={overviewOpen || undefined}>
+  return <div ref={hostRef} className="workspace-host" tabIndex={-1} data-tour="tab-strip" data-workspace-surface={surface} data-workspace-chrome={chromeMode} data-windows-overview={overviewOpen || undefined}>
     {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={surface === 'course' && id === courseId && !overviewOpen} chromeMode={chromeMode} />)}
     {(retainEmpty || courseId === null || dragSource?.courseId === null || pendingMoves.some(source => source.courseId === null)) && <CourseWorkspace key="empty" courseId={null} active={surface === 'course' && courseId === null && !overviewOpen} chromeMode={chromeMode} />}
     <WorkspaceContentLayer components={workspacePanelContents} activeCourseId={courseId} active={surface === 'course' && hydration !== 'error' && !overviewOpen} />

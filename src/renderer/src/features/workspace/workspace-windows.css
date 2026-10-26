@@ -1,4 +1,4 @@
-.workspace-windows-overview { position:absolute; inset:0; z-index:12; overflow:auto; padding:clamp(20px,4vw,48px); background:var(--bg-app); }
+.workspace-windows-overview { position:absolute; inset:var(--chrome-height) 0 0; z-index:12; overflow:auto; padding:clamp(20px,4vw,48px); background:var(--bg-app); }
 .workspace-windows-overview__heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1400px; margin:0 auto 28px; }
 .workspace-windows-overview h1 { margin:0 0 8px; font-size:24px; font-weight:650; letter-spacing:-.6px; }
 .workspace-windows-overview h1:focus { outline:none; }

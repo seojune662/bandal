@@ -6,7 +6,9 @@
   --shell-course-width: var(--rail-left-width);
   --shell-materials-width: var(--rail-right-width);
   grid-template-columns: var(--shell-navigation-width) var(--shell-course-width) minmax(0, 1fr) var(--shell-materials-width);
-  grid-template-areas: 'chrome chrome chrome chrome' 'navigation left center right';
+  /* Tabs share the window's top edge. Only the sidebars start below the
+     independent corner controls; the workspace has no extra titlebar row. */
+  grid-template-areas: 'chrome chrome center .' 'navigation left center right';
   transition: grid-template-columns var(--dur-base) var(--ease-out);
   width: 100%;
   height: 100%;
@@ -490,6 +492,11 @@
   min-height: 0;
 }
 
+/* Screens without pane tabs keep their own heading below the corner controls. */
+.app-workspace:has(> .workspace-host[data-workspace-surface]:not([data-workspace-surface='course'])) {
+  grid-row: 2;
+}
+
 /* Toasts (import results, background failures). Above the board overlay. */
 
 .toast-host {
@@ -583,7 +590,7 @@ div.toast {
   position: absolute;
   top: 0;
   left: var(--window-controls-width);
-  right: 0;
+  width: max(0px, calc(var(--shell-navigation-width) + var(--shell-course-width) - var(--window-controls-width)));
   height: var(--chrome-height);
   -webkit-app-region: drag;
   pointer-events: none;
@@ -615,7 +622,7 @@ div.toast {
 .materials-create-menu > .context-menu { position:absolute; z-index:60; right:0; top:calc(100% + 4px); min-width:160px; }
 .materials-import-menu > .context-menu { left:0; right:auto; min-width:150px; }
 
-/* One permanent titlebar row owns OS controls and workspace controls. */
+/* Permanent corner controls are independent of the workspace tab strips. */
 .shell-home-sidebar { display:flex; flex-direction:column; min-height:0; background:var(--bg-surface); border-right:1px solid var(--shell-divider); }
 .shell-home-sidebar[hidden], .shell-home-sidebar__lists > .app-rail[hidden] { display:none; }
 .shell-home-sidebar__shortcuts { flex:none; max-height:50%; overflow:auto; }

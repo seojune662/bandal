@@ -1,3 +1,5 @@
+import { updateWorkspaceHeaderChromeInsets } from './windowChromeInsets'
+
 export type TabDensity = 'regular' | 'compact' | 'icon'
 
 export interface AdaptiveTabLayout {
@@ -23,11 +25,13 @@ function setStyle(element: HTMLElement, name: string, value: string): void {
 
 /** macOS leading clearance and Windows caption inset are never compressible. */
 export function headerChromeInset(header: HTMLElement): number {
+  const headerStyle = getComputedStyle(header)
+  const padding = (parseFloat(headerStyle.paddingLeft) || 0) + (parseFloat(headerStyle.paddingRight) || 0)
   const prefix = header.querySelector<HTMLElement>(':scope > .dv-pre-actions-container')?.getBoundingClientRect().width ?? 0
   const actions = header.querySelector<HTMLElement>('.workspace-group-actions')
-  if (!actions) return prefix
+  if (!actions) return prefix + padding
   const style = getComputedStyle(actions)
-  return prefix + (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0)
+  return prefix + padding + (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0)
 }
 
 export function minimumHeaderWidth(chromeInset: number, workspaceWidth: number): number {
@@ -46,6 +50,7 @@ export function focusWorkspaceHeader(group: HTMLElement | null | undefined): boo
 
 /** Also called synchronously before keyboard focus enters a formerly hidden tab. */
 export function layoutAdaptiveTabs(root: ParentNode): void {
+  updateWorkspaceHeaderChromeInsets(root)
   for (const strip of root.querySelectorAll<HTMLElement>('.dv-tabs-container.dv-horizontal')) {
     const header = strip.parentElement
     if (!header || header.closest('.workspace-course[hidden]')) continue

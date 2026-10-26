@@ -157,6 +157,45 @@ test('visible content follows its actual group when Dockview retains a zero or s
   expect(observer.targets.size).toBe(0)
 })
 
+test('only content beneath fixed corner controls moves down when its tab strip is hidden', async () => {
+  const controls = document.createElement('div'); controls.className = 'workspace-controls'; document.body.append(controls)
+  rect(controls, () => new DOMRect(1326, 5, 106, 34))
+  vi.spyOn(controls, 'getClientRects').mockReturnValue([new DOMRect(1326, 5, 106, 34)] as unknown as DOMRectList)
+  const panel = api(), container = {} as DockviewApi
+  const host = document.createElement('div'); host.className = 'workspace-host'; document.body.append(host)
+  const root = createRoot(host)
+  await act(async () => root.render(<>
+    <div className="dv-groupview"><div className="dv-content-container" /></div>
+    <WorkspacePanelSlot api={panel} containerApi={container} params={{}} />
+    <WorkspaceContentLayer components={{ note: () => <input defaultValue="draft" /> }} activeCourseId={null} active />
+  </>))
+  const group = host.querySelector<HTMLElement>('.dv-groupview')!
+  const content = group.firstElementChild!
+  Object.assign(panel, { group: { element: group } })
+  rect(host, () => new DOMRect(0, 0, 1440, 600))
+  let bounds = new DOMRect(900, 0, 540, 600)
+  rect(content, () => bounds)
+  await measureFrame()
+  const live = host.querySelector<HTMLElement>('.workspace-panel-content')!, editor = live.querySelector('input')!
+  editor.value = 'kept while changing chrome'
+  expect([live.style.top, live.style.height]).toEqual(['44px', '556px'])
+  const observer = [...observers].find(observer => observer.targets.has(content))!
+  // Opening the right sidebar removes the overlap without remounting content.
+  bounds = new DOMRect(900, 0, 300, 600)
+  observer.callback(); await measureFrame()
+  expect([live.style.top, live.style.height]).toEqual(['0px', '600px'])
+  // A visible tab bar already supplies clearance; do not reserve it twice.
+  bounds = new DOMRect(900, 44, 540, 556)
+  observer.callback(); await measureFrame()
+  expect([live.style.top, live.style.height]).toEqual(['44px', '556px'])
+  bounds = new DOMRect(900, 300, 540, 300)
+  observer.callback(); await measureFrame()
+  expect([live.style.top, live.style.height]).toEqual(['300px', '300px'])
+  expect(live.querySelector('input')).toBe(editor)
+  expect(editor.value).toBe('kept while changing chrome')
+  await act(async () => root.unmount())
+})
+
 test('moving and reparenting a live panel switches its group observer without losing the editor', async () => {
   const source = api(), target = api(), container = {} as DockviewApi
   const host = document.createElement('div'); host.className = 'workspace-host'; document.body.append(host)

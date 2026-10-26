@@ -80,6 +80,9 @@
 }
 
 .bandal-dockview .dv-tabs-and-actions-container {
+  box-sizing: border-box;
+  padding-left: var(--workspace-chrome-left, 0px);
+  padding-right: var(--workspace-chrome-right, 0px);
   -webkit-app-region: drag;
 }
 
@@ -830,7 +833,7 @@
 
 .workspace-panel-slot { width: 100%; height: 100%; }
 .workspace-content-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-.workspace-panel-content { position: absolute; overflow: hidden; pointer-events: auto; }
+.workspace-panel-content { position: absolute; overflow: hidden; pointer-events: auto; -webkit-app-region: no-drag; }
 .workspace-panel-content > * { width: 100%; height: 100%; }
 .workspace-panel-content[hidden] { display: block; visibility: hidden; pointer-events: none; }
 .workspace-content-layer[data-content-dragging] .workspace-panel-content { pointer-events: none; }
