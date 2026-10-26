@@ -20,10 +20,15 @@ async function resizeAt(page: Page, sash: Locator, direction: 'x' | 'y', fractio
     ? { x: box.x + box.width / 2, y: box.y + box.height * fraction }
     : { x: box.x + box.width * fraction, y: box.y + box.height / 2 }
   expect(await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.dv-sash'), point)).toBe(true)
+  // Dockview keeps a sash draggable at its minimum/maximum; reaching an
+  // endpoint changes its class instead of disabling it. Exercise the return
+  // direction once the fixed corner clearance reaches a pane's minimum.
+  const sign = await sash.evaluate(element => element.classList.contains('dv-maximum') ? -1 : 1)
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
-  await page.mouse.move(point.x + (direction === 'x' ? 36 : 0), point.y + (direction === 'y' ? 28 : 0), { steps: 8 })
+  await page.mouse.move(point.x + (direction === 'x' ? 36 * sign : 0), point.y + (direction === 'y' ? 28 * sign : 0), { steps: 8 })
   await page.mouse.up()
+  await expect.poll(async () => Math.abs((await sash.boundingBox())![direction] - box[direction])).toBeGreaterThan(1)
 }
 
 for (const scenario of [{ theme: 'dark', width: 1440, height: 900, zoom: 1 }, { theme: 'light', width: 1024, height: 640, zoom: 1.25 }] as const) {
@@ -59,10 +64,10 @@ for (const scenario of [{ theme: 'dark', width: 1440, height: 900, zoom: 1 }, { 
       expect(await workspace.locator('.workspace-chrome-spacer').count()).toBeLessThanOrEqual(1)
       await expect(page.getByRole('button', { name: '오른쪽 사이드바 펼치기', exact: true })).toHaveCount(1)
       const before = await groups.first().boundingBox()
-      const vertical = workspace.locator('.dv-horizontal > .dv-sash-container > .dv-sash.dv-enabled').first()
+      const vertical = workspace.locator('.dv-horizontal > .dv-sash-container > .dv-sash:not(.dv-disabled)').first()
       for (const fraction of [0.05, 0.5, 0.94]) await resizeAt(page, vertical, 'x', fraction)
       await expect.poll(async () => (await groups.first().boundingBox())!.width).not.toBe(before!.width)
-      const horizontal = workspace.locator('.dv-vertical > .dv-sash-container > .dv-sash.dv-enabled').first()
+      const horizontal = workspace.locator('.dv-vertical > .dv-sash-container > .dv-sash:not(.dv-disabled)').first()
       await resizeAt(page, horizontal, 'y', 0.6)
       // The last pane is focused; opening from the first pane must honor its +.
       const first = groups.first()
