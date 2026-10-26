@@ -166,6 +166,11 @@ test('real folder drag moves a live browser into an empty course without replaci
     await page.evaluate(() => { (window as any).__movingBrowserDom = document.querySelector('.browser-panel') })
     await expect.poll(async () => Object.keys((await persistedPanels(page, source.id, target.id))[0]).length).toBe(1)
     await dragOverFolder(page, visibleTab(page, 'Move browser fixture'), target.name)
+    // The selected row updates before preview capture finishes. Wait for the
+    // actual destination and the outgoing title save before freezing the
+    // baseline: the native page may have first persisted as gemini.google.com.
+    await expect(page.locator(`.workspace-course[data-workspace-key="${target.id}"]:not([hidden]) .workspace-welcome h1`)).toHaveText(target.name)
+    await expect.poll(async () => Object.values((await persistedPanels(page, source.id, target.id))[0]).map((panel: any) => panel.title)).toEqual(['Move browser fixture'])
     const beforeMove = await persistedPanels(page, source.id, target.id)
     await bandal.app.evaluate(({ ipcMain }, { sourceId, targetId }) => {
       const original = (ipcMain as any)._invokeHandlers.get('layout:saveMany')
