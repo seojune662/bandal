@@ -244,6 +244,12 @@ test('fixed workspace controls collapse pane chrome, preserve live pages, and ke
     await overview(page).getByRole('button', { name: '윈도우 관리 닫기', exact: true }).click()
     await clickBrowserToolbarAction(page, '시크릿 모드 켜기')
     await expect(page.locator('.browser-panel:visible')).toHaveAttribute('data-private', 'true')
+    // Closing the narrow toolbar menu restores focus to its trigger. Its
+    // delayed tooltip deliberately occludes the native page; dismiss both
+    // hover and focus tooltips before asserting the new private view is live.
+    await page.mouse.move(2, 2)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[role="tooltip"]')).toHaveCount(0)
     await expect.poll(async () => (await browserPages(bandal, site.origin)).filter(item => item.visible).length).toBe(1)
     const privatePage = (await browserPages(bandal, site.origin)).find(item => item.visible)!
     await expect.poll(() => bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('typeof window.instanceToken'), privatePage.id)).toBe('number')
