@@ -33,10 +33,16 @@ test.describe('sidebars', () => {
     await bandal.close()
   })
 
+  test.beforeEach(async () => {
+    const { page } = bandal
+    const expand = page.getByRole('button', { name: '과목 사이드바 펼치기', exact: true })
+    if (await expand.isVisible()) await expand.click()
+    if ((await page.evaluate(() => window.bandal.invoke('courses:list', {}))).length === 0) await createCourse(page, '알고리즘')
+    await expect(page.locator('.shell-home-sidebar')).toHaveCSS('transform', 'none')
+  })
+
   test('the course sidebar can be reopened with no tabs open', async () => {
     const { page } = bandal
-    await createCourse(page, '알고리즘')
-
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     await expect(page.locator('aside.app-rail--left')).toBeHidden()
     await expect(page.locator('.global-navigation')).toBeHidden()
@@ -117,6 +123,8 @@ test.describe('sidebars', () => {
   })
   test('Cmd/Ctrl+S toggles the entire rail once and widgets keep independent cards', async ({}, info) => {
     const { page } = bandal
+    await page.getByRole('button', { name: '과목 사이드바 접기', exact: true }).click()
+    await expect(page.locator('.global-navigation')).toBeHidden()
     await page.keyboard.press('ControlOrMeta+s')
     await expect(page.locator('.global-navigation')).toBeVisible()
     await page.keyboard.press('ControlOrMeta+s')
@@ -167,7 +175,6 @@ test.describe('sidebars', () => {
   test('native fullscreen keeps the workspace below the common title row and controls in the corner', async ({}, info) => {
     const { page, app } = bandal
     if (await page.locator('.workspace-course .dv-tab').count() === 0) {
-      await createCourse(page, '전체화면')
       await createPdfNote(page)
     }
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
@@ -191,7 +198,7 @@ test.describe('sidebars', () => {
       await expect(page.locator('.workspace-chrome-spacer')).toHaveCount(0)
       await page.screenshot({ path: info.outputPath('fullscreen-collapsed.png') })
       await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
-      await expect(page.locator('aside.app-rail--left')).toHaveCSS('transform', 'none')
+      await expect(page.locator('.shell-home-sidebar')).toHaveCSS('transform', 'none')
       const school = page.getByRole('button', { name: /서울대학교 바로가기/ })
       const bounds = await school.boundingBox()
       const aiBounds = await page.getByRole('button', { name: /AI 바로가기/ }).boundingBox()
@@ -270,7 +277,7 @@ test('shell controls remain reachable over the academic board and retained tab c
     await expect(page.locator('.ink-layer')).toBeVisible()
     await createCourse(page, '두 번째 과목')
     const inactiveHeaders = page.locator('.workspace-course[hidden] .dv-tabs-and-actions-container')
-    expect(await inactiveHeaders.count()).toBeGreaterThan(0)
+    await expect.poll(() => inactiveHeaders.count()).toBeGreaterThan(0)
     expect(await inactiveHeaders.evaluateAll(elements => elements.every(element => getComputedStyle(element).getPropertyValue('-webkit-app-region') !== 'drag'))).toBe(true)
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')

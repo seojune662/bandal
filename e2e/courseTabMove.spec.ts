@@ -378,10 +378,16 @@ test('an identical persisted panel in the destination rejects a real drag and pr
     await page.evaluate(() => { (window as any).__collisionSourceEditor = document.querySelector('.workspace-panel-content:not([hidden]) .ProseMirror') })
     const beforeMove = await persistedPanels(page, source.id, target.id)
     await dragOverFolder(page, visibleTab(page, 'shared'), target.name)
+    // Restoring two old canonical placements now repairs their editor identity
+    // collision. They must still refer to the same document and reject the move.
+    await expect.poll(async () => Object.keys((await persistedPanels(page, source.id, target.id))[1])[0]).not.toBe(Object.keys(beforeMove[0])[0])
+    const beforeDrop = await persistedPanels(page, source.id, target.id)
+    expect(beforeDrop[0]).toEqual(beforeMove[0])
+    expect(Object.values(beforeDrop[1]).map((panel: any) => panel.params.descriptor)).toEqual(Object.values(beforeMove[1]).map((panel: any) => panel.params.descriptor))
     await dropInCanvas(page)
     await expect(page.getByText('이 과목에 같은 창이 이미 열려 있어요. 출발 과목에 창을 그대로 두었어요. 도착 과목의 같은 창을 닫은 후 다시 옮겨 주세요.', { exact: true })).toBeVisible()
     await expect(selected(page, source.name)).toBeVisible()
-    expect(await persistedPanels(page, source.id, target.id)).toEqual(beforeMove)
+    expect(await persistedPanels(page, source.id, target.id)).toEqual(beforeDrop)
     expect(await page.evaluate(() => (window as any).__collisionSourceEditor?.isConnected)).toBe(true)
     await folder(page, source.name).locator('.course-row__select').click()
     await expect(visibleTab(page, 'shared')).toBeVisible()

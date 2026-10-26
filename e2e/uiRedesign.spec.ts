@@ -232,7 +232,7 @@ test('global menus, course drag, resizing and enlarged text remain reachable', a
     await expect(rows.first().locator('.course-row__name')).toHaveText(
       names[1]!
     )
-    const rail = page.locator('.app-rail--left')
+    const rail = page.locator('.shell-home-sidebar')
     const before = (await rail.boundingBox())!.width
     const handle = page.getByRole('separator', {
       name: '과목 사이드바 폭 조절'

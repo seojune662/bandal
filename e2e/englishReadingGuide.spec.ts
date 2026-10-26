@@ -5,7 +5,10 @@ import { ENGLISH_FIXTURE_SETTINGS, installLearningAiFixture } from './helpers/le
 const GUIDE_KEY = 'bandal:english-reading-guide:v1'
 const guide = (page: Page) => page.getByRole('dialog', { name: '영어 읽기 사용 방법', exact: true })
 const setup = (page: Page) => page.getByRole('dialog', { name: '영어 이어읽기 시작하기', exact: true })
-const rail = (page: Page) => page.getByRole('navigation', { name: '앱 메뉴' })
+const projects = (page: Page) => page.getByRole('complementary', { name: '프로젝트 목록', exact: true })
+async function projectList(page: Page): Promise<void> {
+  await page.locator('.app-rail:not([hidden])').getByRole('tab', { name: '프로젝트', exact: true }).click()
+}
 
 async function guardAi(bandal: BandalApp): Promise<void> {
   await installLearningAiFixture(bandal)
@@ -24,8 +27,9 @@ async function expectNoAi(bandal: BandalApp): Promise<void> {
 }
 
 async function openNewEnglish(page: Page): Promise<void> {
-  await rail(page).getByRole('button', { name: '학습', exact: true }).click()
-  await page.getByRole('complementary', { name: '학습 공간 목록', exact: true }).getByRole('button', { name: '새 학습', exact: true }).click()
+  await projectList(page)
+  await projects(page).getByRole('button', { name: '프로젝트 추가', exact: true }).click()
+  await projects(page).getByRole('menuitem', { name: '새 프로젝트', exact: true }).click()
   await page.getByRole('dialog', { name: '새 학습', exact: true }).getByRole('button', { name: '영어 글 읽기', exact: false }).click()
 }
 
@@ -172,10 +176,10 @@ test('existing English spaces introduce reading once and can replay it while rev
       await window.bandal.invoke('learning:create', { placement: 'standalone', name: '기존 영어 읽기', topic: '과학', ...settings })
       await window.bandal.invoke('learning:create', { placement: 'standalone', name: '개념 복습', topic: '과목 자료', purpose: 'course-review', linkedCourseId: source.id, ai: settings.ai })
     }, ENGLISH_FIXTURE_SETTINGS)
-    await rail(page).getByRole('button', { name: '학습', exact: true }).click()
-    const spaces = page.getByRole('complementary', { name: '학습 공간 목록', exact: true })
+    await projectList(page)
+    const spaces = projects(page)
     await spaces.getByRole('button').filter({ has: page.locator('strong').filter({ hasText: /^개념 복습$/ }) }).click()
-    await expect(page.locator('.learning-topbar:visible')).toContainText('개념 복습')
+    await expect(page.locator('.workspace-course:not([hidden]) .workspace-welcome h1')).toHaveText('개념 복습')
     await expect(guide(page)).toHaveCount(0)
     await expect(page.getByRole('button', { name: '영어 읽기 사용 방법', exact: true })).toHaveCount(0)
     expect(await page.evaluate(key => localStorage.getItem(key), GUIDE_KEY)).toBeNull()
@@ -185,7 +189,7 @@ test('existing English spaces introduce reading once and can replay it while rev
     await guide(page).getByRole('button', { name: '3. 이어 읽기', exact: true }).click()
     await guide(page).getByRole('button', { name: '읽기 시작하기', exact: true }).click()
     await expect(guide(page)).toHaveCount(0)
-    await expect(page.locator('.learning-topbar:visible')).toContainText('기존 영어 읽기')
+    await expect(page.locator('.workspace-course:not([hidden]) .workspace-welcome h1')).toHaveText('기존 영어 읽기')
     expect(await page.evaluate(key => localStorage.getItem(key), GUIDE_KEY)).toBe('seen')
     const replay = page.getByRole('button', { name: '영어 읽기 사용 방법', exact: true })
     await replay.click()
@@ -193,9 +197,9 @@ test('existing English spaces introduce reading once and can replay it while rev
     await page.keyboard.press('Escape')
     await expect(guide(page)).toHaveCount(0)
     await expect(replay).toBeFocused()
-    await rail(page).getByRole('button', { name: '학습', exact: true }).click()
+    await projectList(page)
     await spaces.getByRole('button').filter({ has: page.locator('strong').filter({ hasText: /^기존 영어 읽기$/ }) }).click()
-    await expect(page.locator('.learning-topbar:visible')).toContainText('기존 영어 읽기')
+    await expect(page.locator('.workspace-course:not([hidden]) .workspace-welcome h1')).toHaveText('기존 영어 읽기')
     await expect(guide(page)).toHaveCount(0)
     await expectNoAi(bandal)
   } finally { await bandal.close() }

@@ -157,9 +157,9 @@ test('multi-tab drags cancel without splitting, enter and drop into a cold cours
     await hoverFolder(page, source.name)
     await page.keyboard.press('Escape'); await page.mouse.up()
     await expect(folder(page, split.name)).toHaveAttribute('data-selected', 'true')
-    expect(await groupTitles(page)).toEqual(afterInsert)
+    await expect.poll(() => groupTitles(page)).toEqual(afterInsert)
     await folder(page, source.name).locator('.course-row__select').click()
-    expect(await groupTitles(page)).toEqual([['source-2']])
+    await expect.poll(() => groupTitles(page)).toEqual([['source-2']])
     await expect(page.locator('.note-tab:visible .ProseMirror')).toContainText('이동해도 보존하는 본문')
   } finally { await bandal.close() }
 })

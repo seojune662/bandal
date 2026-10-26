@@ -1174,8 +1174,8 @@ function PdfViewer({
         drawingsApi={drawingsApi}
         flushAnnotations={annotationsApi.flush}
         onJumpToPage={jumpToPage}
-        onZoomIn={() => applyZoom(zoom * ZOOM_STEP)}
-        onZoomOut={() => applyZoom(zoom / ZOOM_STEP)}
+        onZoomIn={() => applyZoom(zoomRef.current * ZOOM_STEP)}
+        onZoomOut={() => applyZoom(zoomRef.current / ZOOM_STEP)}
         onZoomFit={() => applyZoom(1)}
         onTogglePreview={() => setIsPreviewOpen((open) => !open)}
         onToggleRail={() => setIsRailOpen((open) => !open)}

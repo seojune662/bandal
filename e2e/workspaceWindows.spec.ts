@@ -198,9 +198,13 @@ test('window names, order, chrome and independent PDF positions survive switchin
       const input = activePdf(page).locator('.pdf-toolbar__page-input')
       await input.fill(String(number)); await input.press('Enter'); await expect(input).toHaveValue(String(number))
     }
-    await activePdf(page).getByRole('button', { name: '확대', exact: true }).click()
-    await activePdf(page).getByRole('button', { name: '확대', exact: true }).click()
-    const readingZoom = await activePdf(page).locator('.pdf-toolbar__zoom-value').textContent()
+    await expect(activePdf(page).locator('.pdf-toolbar__page-total')).toHaveText('/ 5')
+    await activePdf(page).locator('.pdf-toolbar__zoom-value').click()
+    await expect(activePdf(page).locator('.pdf-toolbar__zoom-value')).toHaveText('100%')
+    // Both fast clicks must apply even when React paints them in one frame.
+    await activePdf(page).getByRole('button', { name: '확대', exact: true }).dblclick()
+    const readingZoom = '132%'
+    await expect(activePdf(page).locator('.pdf-toolbar__zoom-value')).toHaveText(readingZoom)
     await jump(2)
     await chrome(page, '탭 바만 숨기기')
     await manage(page); await renameWindow(page, '윈도우 1', '읽기')
@@ -210,8 +214,14 @@ test('window names, order, chrome and independent PDF positions survive switchin
     await expect(page.locator('.workspace-host')).toHaveAttribute('data-workspace-chrome', 'all')
     await expect(page.locator('.workspace-course:not([hidden]) .dv-tab')).toHaveCount(0)
     await page.locator('[data-material-path="positions.pdf"]').click()
+    await expect(activePdf(page).locator('.pdf-toolbar__page-total')).toHaveText('/ 5')
+    // A fresh panel may inherit the file's previous zoom. Set an independent
+    // value explicitly and wait for the animation-frame update before reading.
+    await activePdf(page).locator('.pdf-toolbar__zoom-value').click()
+    await expect(activePdf(page).locator('.pdf-toolbar__zoom-value')).toHaveText('100%')
     await activePdf(page).getByRole('button', { name: '축소', exact: true }).click()
-    const solvingZoom = await activePdf(page).locator('.pdf-toolbar__zoom-value').textContent()
+    const solvingZoom = '87%'
+    await expect(activePdf(page).locator('.pdf-toolbar__zoom-value')).toHaveText(solvingZoom)
     expect(solvingZoom).not.toBe(readingZoom)
     await jump(4)
     await chrome(page, '탭 바와 도구 모음 숨기기')

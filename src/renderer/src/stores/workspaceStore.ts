@@ -87,6 +87,7 @@ interface WorkspaceState {
   /** Physical owner retained for resource APIs. Never an encoded workspace key. */
   activeCourseId: string | null
   setActiveWorkspace: (workspace: WorkspaceRef | null) => void
+  afterWorkspaceTransition: (action: () => void) => void
   showWorkspace: (workspace: WorkspaceRef | null) => void
   showWorkspaceWindow: (workspace: WorkspaceRef, windowId: string) => void
   /** Actual Dockview identity, including duplicate instances. */
@@ -201,6 +202,8 @@ const windowCollections = new Map<string, WorkspaceWindows>()
 const envelopeWorkspaces = new Set<string>()
 const requestedWindowSelections = new Map<string, string>()
 const closingWindows = new Set<string>()
+interface OwnedBrowserOpen { key: string; descriptor: TabDescriptor; background: boolean; followSavedSelection: boolean; shouldOpen?: () => boolean }
+const ownedBrowserOpens = new Map<string, OwnedBrowserOpen>()
 let suppressWorkspacePublish = false
 const windowRemovedListeners = new Set<(workspaceKey: string, windowId: string) => void>()
 export function onWorkspaceWindowRemoved(listener: (workspaceKey: string, windowId: string) => void): () => void {
@@ -233,6 +236,26 @@ function emptyWindowLayout(): ReturnType<DockviewApi['toJSON']> {
 }
 function windowInfo(collection: WorkspaceWindows): WorkspaceWindowInfo[] {
   return collection.windows.map(({ id, name, chromeMode }) => ({ id, name, chromeMode }))
+}
+function loadedWindowCollection(base: string): WorkspaceWindows | undefined {
+  const collection = windowCollections.get(base)
+  return collection?.windows.some(window => runtimeLayouts.has(workspaceWindowKey(base, window.id))) ? collection : undefined
+}
+async function convertStoredWindows(base: string, raw: unknown): Promise<{ collection: WorkspaceWindows; changed: boolean }> {
+  const collection = readWorkspaceWindows(raw)
+  let changed = false
+  const occupied = new Set([...runtimeLayouts].filter(([key]) => workspaceWindowFromKey(key).workspaceKey !== base).flatMap(([, layout]) => Object.keys(tabsFromLayout(layout))))
+  for (const [key, target] of courseApis) if (key === null || workspaceWindowFromKey(key).workspaceKey !== base) for (const panel of target.panels) occupied.add(panel.id)
+  for (const window of collection.windows) {
+    const converted = await migrateLearningLayout(window.layout)
+    const unique = remapWorkspacePanelIds(converted.layout, (id, panel) => {
+      const descriptor = panel.params?.descriptor
+      const next = occupied.has(id) && isTabDescriptor(descriptor) && descriptor.kind !== 'browser' ? createDuplicatePanelId(descriptor) : id
+      occupied.add(next); return next
+    })
+    window.layout = unique.layout; changed ||= converted.changed || unique.changed
+  }
+  return { collection, changed }
 }
 function findLogicalPanel(target: DockviewApi, descriptor: TabDescriptor): IDockviewPanel | undefined {
   return target.getPanel(tabPanelId(descriptor)) ?? target.panels.find(panel => isTabDescriptor(panel.params?.descriptor) && tabPanelId(panel.params.descriptor) === tabPanelId(descriptor))
@@ -477,6 +500,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     const intent = ++transitionIntent
     if (requestedTransitionKey && requestedTransitionKey !== key) pendingOpens.delete(requestedTransitionKey)
     requestedTransitionKey = key
+    // Sidebar commands belong to the selection the user just made, even while
+    // the outgoing canvas finishes its bounded preview capture.
+    useUiStore.getState().setRightRailScope(workspace === null ? null : workspaceKey(workspace))
     if (key === get().activeWindowKey) { requestedTransitionKey = undefined; set({ windowsOverviewOpen: false }); syncActivePanel(); return }
     const apply = (): void => { if (intent === transitionIntent) { requestedTransitionKey = undefined; activateWorkspace(workspace, windowId) } }
     const outgoing = get().activeWindowKey
@@ -535,22 +561,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         const saved = await invoke('layout:get', workspaceLayoutScope(workspaceFromKey(courseId)))
         if (serial !== switchSerial || api === null) return
         const base = workspaceWindowFromKey(courseId).workspaceKey
-        const collection = readWorkspaceWindows(saved.layout)
-        migrated = saved.legacyProjectLayout === true
-        const occupied = new Set([...runtimeLayouts].filter(([key]) => workspaceWindowFromKey(key).workspaceKey !== base)
-          .flatMap(([, layout]) => Object.keys(tabsFromLayout(layout))))
-        for (const [key, target] of courseApis) if (key === null || workspaceWindowFromKey(key).workspaceKey !== base) for (const panel of target.panels) occupied.add(panel.id)
-        for (const window of collection.windows) {
-          const converted = await migrateLearningLayout(window.layout)
-          const unique = remapWorkspacePanelIds(converted.layout, (id, panel) => {
-            const descriptor = panel.params?.descriptor
-            const next = occupied.has(id) && isTabDescriptor(descriptor) && descriptor.kind !== 'browser' ? createDuplicatePanelId(descriptor) : id
-            occupied.add(next)
-            return next
-          })
-          window.layout = unique.layout
-          migrated ||= converted.changed || unique.changed
-        }
+        const converted = await convertStoredWindows(base, saved.layout)
+        // An owned native request may have staged a newer retained snapshot
+        // while this read/conversion was in flight. Never overwrite its tab.
+        const collection = loadedWindowCollection(base) ?? converted.collection
+        migrated = saved.legacyProjectLayout === true || converted.changed
         if (serial !== switchSerial || api === null) return
         windowCollections.set(base, collection)
         if (isWorkspaceWindows(saved.layout)) envelopeWorkspaces.add(base)
@@ -707,6 +722,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       get().setActiveWorkspace(courseId === null ? null : { kind: 'course', courseId })
     },
     setActiveWorkspace: (workspace) => requestTransition(workspace),
+    afterWorkspaceTransition: action => {
+      if (requestedTransitionKey && requestedTransitionKey !== get().activeWindowKey) {
+        const queued = pendingOpens.get(requestedTransitionKey) ?? []
+        queued.push(action); pendingOpens.set(requestedTransitionKey, queued)
+      } else action()
+    },
     selectWindow: (windowId) => {
       const workspace = get().activeWorkspace
       if (!workspace || !collectionFor(workspaceKey(workspace)).windows.some(window => window.id === windowId)) return
@@ -1231,6 +1252,7 @@ export function resetWorkspaceStoreForTests(): void {
   envelopeWorkspaces.clear()
   requestedWindowSelections.clear()
   closingWindows.clear()
+  ownedBrowserOpens.clear()
   suppressWorkspacePublish = false
   windowRemovedListeners.clear()
   beforeWindowLeave = null
@@ -1271,13 +1293,16 @@ export function retainedTabDescriptors(courseId?: string): TabDescriptor[] {
   const descriptors = activeIsRetained && (courseId === undefined || state.activeWindowKey === courseId) ? Object.values(state.openTabs) : []
   // Native browser pages outlive the small cache of mounted course Dockviews.
   for (const [id, layout] of runtimeLayouts) {
-    if (id === state.activeWindowKey || (courseId !== undefined && id !== courseId)) continue
+    if (id === state.activeWindowKey && state.hydration === 'ready' || (courseId !== undefined && id !== courseId)) continue
     descriptors.push(...Object.values(tabsFromLayout(layout)))
   }
   // The temporary no-course canvas has no persisted row, but its pages are live.
   const temporary = courseApis.get(null)
   if (temporary && state.activeWindowKey !== null && courseId === undefined) {
     descriptors.push(...temporary.panels.flatMap(panel => isTabDescriptor(panel.params?.descriptor) ? [panel.params.descriptor] : []))
+  }
+  for (const open of ownedBrowserOpens.values()) if ((courseId === undefined || courseId === open.key) && !discardedCourses.has(open.key) && (!open.shouldOpen || open.shouldOpen())) {
+    if (!descriptors.some(tab => tabPanelId(tab) === tabPanelId(open.descriptor))) descriptors.push(open.descriptor)
   }
   return descriptors
 }
@@ -1297,6 +1322,8 @@ export function isWorkspaceDiscarded(key: string): boolean { return discardedCou
 export function workspaceCourseForPanel(panelId: string): string | null {
   for (const [courseId, target] of courseApis) if (target.getPanel(panelId)) return courseId
   for (const [courseId, layout] of runtimeLayouts) if (tabsFromLayout(layout)[panelId]) return courseId
+  const staged = ownedBrowserOpens.get(panelId)
+  if (staged && !discardedCourses.has(staged.key)) return staged.key
   return null
 }
 
@@ -1486,7 +1513,9 @@ export async function moveWorkspacePanel(input: {
   const source = workspaceApiForWindow(input.sourceCourseId), target = workspaceApiForWindow(input.targetCourseId)
   const panel = source?.getPanel(input.panelId)
   if (!source || !target || !panel || !hydratedCourses.has(input.targetCourseId) || !isTabDescriptor(panel.params?.descriptor)) return unavailable()
-  if (target.getPanel(input.panelId)) {
+  // Hydration gives colliding saved views unique editor IDs; the original
+  // canonical view must still reject a duplicate document in the destination.
+  if (target.getPanel(input.panelId) || panel.id === tabPanelId(panel.params.descriptor) && findLogicalPanel(target, panel.params.descriptor)) {
     showToast('이 과목에 같은 창이 이미 열려 있어요. 출발 과목에 창을 그대로 두었어요. 도착 과목의 같은 창을 닫은 후 다시 옮겨 주세요.')
     return false
   }
@@ -1542,6 +1571,8 @@ export function browserTabWorkspace(tabId: string): WorkspaceRef | null {
   for (const [courseId, layout] of runtimeLayouts) {
     if (!discardedCourses.has(courseId) && Object.values(tabsFromLayout(layout)).some(ownsTab)) return workspaceFromKey(courseId)
   }
+  const staged = ownedBrowserOpens.get(`browser:${tabId}`)
+  if (staged && !discardedCourses.has(staged.key)) return workspaceFromKey(staged.key)
   return null
 }
 
@@ -1552,8 +1583,17 @@ export function openBrowserTabInCourse(descriptor: TabDescriptor, ownerId: strin
   if (shouldOpen && !shouldOpen()) return false
   const state = useWorkspaceStore.getState()
   const openerKey = openerTabId ? workspaceCourseForPanel(`browser:${openerTabId}`) : null
-  const courseId = openerKey ?? (ownerId !== undefined && ownerId !== null && state.activeCourseId === ownerId ? state.activeWindowKey : ownerId === null || ownerId === undefined ? ownerId : selectedWindowKey(ownerId))
+  const pendingOwner = requestedTransitionKey && ownerId && workspaceFromKey(requestedTransitionKey).courseId === ownerId ? requestedTransitionKey : null
+  const courseId = openerKey ?? pendingOwner ?? (ownerId !== undefined && ownerId !== null && state.activeCourseId === ownerId ? state.activeWindowKey : ownerId === null || ownerId === undefined ? ownerId : selectedWindowKey(ownerId))
   if (courseId !== undefined && courseId !== null && discardedCourses.has(courseId)) return false
+  if (courseId && courseId === requestedTransitionKey && courseId !== state.activeWindowKey) {
+    const staged: OwnedBrowserOpen = { key: courseId, descriptor, background,
+      followSavedSelection: !openerKey && workspaceWindowFromKey(courseId).windowId === DEFAULT_WORKSPACE_WINDOW_ID && !runtimeLayouts.has(courseId),
+      ...(shouldOpen ? { shouldOpen } : {}) }
+    ownedBrowserOpens.set(tabPanelId(descriptor), staged)
+    void materializeOwnedBrowserOpen(staged)
+    return true
+  }
   const target = courseId === undefined ? undefined : courseApis.get(courseId)
   if (courseId === undefined || courseId === state.activeWindowKey) {
     state.openTab(descriptor, { background, ...(shouldOpen ? { shouldOpen } : {}) })
@@ -1575,10 +1615,52 @@ export function openBrowserTabInCourse(descriptor: TabDescriptor, ownerId: strin
   return true
 }
 
+/** Explicit native requests survive a canceled navigation and stay visible to guest reaping. */
+async function materializeOwnedBrowserOpen(open: OwnedBrowserOpen): Promise<void> {
+  const id = tabPanelId(open.descriptor), base = workspaceWindowFromKey(open.key).workspaceKey
+  try {
+    if (!runtimeLayouts.has(open.key)) {
+      const saved = await invoke('layout:get', workspaceLayoutScope(workspaceFromKey(base)))
+      const converted = await convertStoredWindows(base, saved.layout)
+      if (ownedBrowserOpens.get(id) !== open || discardedCourses.has(base) || discardedCourses.has(open.key)) return
+      if (!loadedWindowCollection(base)) {
+        windowCollections.set(base, converted.collection)
+        if (isWorkspaceWindows(saved.layout)) envelopeWorkspaces.add(base)
+        for (const window of converted.collection.windows) runtimeLayouts.set(workspaceWindowKey(base, window.id), window.layout)
+      }
+      if (open.followSavedSelection) open.key = workspaceWindowKey(base, collectionFor(base).activeWindowId)
+    }
+    if (ownedBrowserOpens.get(id) !== open || discardedCourses.has(open.key) || open.shouldOpen && !open.shouldOpen()) return
+    const state = useWorkspaceStore.getState(), target = courseApis.get(open.key)
+    if (target && hydratedCourses.has(open.key)) {
+      if (!target.getPanel(id)) {
+        const previous = target.activePanel
+        target.addPanel({ id, component: open.descriptor.kind, title: tabTitle(open.descriptor), params: { descriptor: open.descriptor }, inactive: open.background })
+        if (open.background) previous?.api.setActive()
+      }
+      state.saveRetainedLayout(open.key, target.toJSON())
+      if (state.activeWindowKey === open.key) state.notifyLayoutChanged()
+    } else {
+      const layout = appendRetainedTab(runtimeLayouts.get(open.key) ?? emptyWindowLayout(), open.descriptor, id,
+        { groupId: undefined, background: open.background, newInstance: false })
+      if (!layout) throw new Error('원래 작업 영역을 읽지 못했습니다.')
+      state.saveRetainedLayout(open.key, layout)
+    }
+  } catch (error) {
+    console.error('[workspace] 브라우저 탭을 원래 공간에 열지 못했습니다.', error)
+    showToast('브라우저 탭을 열지 못했어요. 원래 공간에서 다시 시도해 주세요.', 'danger')
+  } finally {
+    if (ownedBrowserOpens.get(id) === open) ownedBrowserOpens.delete(id)
+    const state = useWorkspaceStore.getState()
+    useWorkspaceStore.setState({ openTabs: { ...state.openTabs } })
+  }
+}
+
 type RetainedLayout = ReturnType<DockviewApi['toJSON']>
 /** Async work can finish after LRU eviction; keep the captured canvas without mounting it. */
 function appendRetainedTab(raw: unknown, descriptor: TabDescriptor, id: string, options: { groupId: string | undefined; background: boolean | undefined; newInstance: boolean | undefined }): RetainedLayout | null {
-  const restored = validateLayout(raw)?.layout
+  const empty = typeof raw === 'object' && raw !== null && 'panels' in raw && typeof raw.panels === 'object' && raw.panels !== null && Object.keys(raw.panels).length === 0 && 'grid' in raw
+  const restored = validateLayout(raw)?.layout ?? (empty ? emptyWindowLayout() : null)
   if (!restored) return null
   const layout = structuredClone(restored)
   const groups: Array<{ id: string; views: string[]; activeView?: string }> = []

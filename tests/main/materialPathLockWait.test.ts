@@ -24,3 +24,11 @@ test('real migration errors are preserved and never retried', async () => {
   expect(action).toHaveBeenCalledOnce()
   expect(release).toHaveBeenCalledOnce()
 })
+
+test('a timed-out user mutation keeps its conflict error without running the operation', async () => {
+  const error = new Error('자료 경로 변경 대기 시간 초과')
+  const action = vi.fn(async () => undefined)
+  await expect(withMaterialPathLockWait({ tryAcquire: () => undefined }, action,
+    { attempts: 1, delayMs: 0, timeoutError: () => error })).rejects.toBe(error)
+  expect(action).not.toHaveBeenCalled()
+})

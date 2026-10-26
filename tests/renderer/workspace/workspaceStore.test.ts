@@ -446,6 +446,101 @@ describe('independent internal windows', () => {
     stop()
   })
 
+  test('an owned browser push during preview capture opens in its pending course after hydration', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    let release!: () => void
+    const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => { release = resolve }))
+    state.setActiveCourse('c2')
+    const browser = descriptorFor('browser', { tabId: 'pending-owned', initialUrl: 'https://example.test' })
+    expect(openBrowserTabInCourse(browser, 'c2', false)).toBe(true)
+    expect(first.panels).toHaveLength(0)
+    release(); await settle(); state.attachWindowApi('c2', second.asApi()); await settle(); await settle()
+    await vi.waitFor(() => expect(second.panels.map(panel => panel.params?.descriptor)).toEqual([browser]))
+    expect(first.panels).toHaveLength(0)
+    stop()
+  })
+
+  test('an owned native request survives canceled navigation and is retained before its cold layout read finishes', async () => {
+    const first = liveDock(), third = liveDock(), revisit = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    let load!: (value: { layout: unknown }) => void
+    invokeMock.mockImplementation((channel, request) => channel === 'layout:get' && (request as { courseId: string }).courseId === 'c2'
+      ? new Promise(resolve => { load = resolve }) as never : Promise.resolve(channel === 'layout:get' ? { layout: null } : { ok: true }) as never)
+    const releases: Array<() => void> = []
+    const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => releases.push(resolve)))
+    state.setActiveCourse('c2')
+    const browser = descriptorFor('browser', { tabId: 'adopted-before-read', initialUrl: 'https://example.test' })
+    expect(openBrowserTabInCourse(browser, 'c2', false)).toBe(true)
+    expect(retainedTabDescriptors('c2')).toContainEqual(browser)
+    expect(browserTabCourseId('adopted-before-read')).toBe('c2')
+    state.setActiveCourse('c3')
+    releases.forEach(release => release()); await settle(); state.attachWindowApi('c3', third.asApi()); await settle()
+    load({ layout: singleLeafLayout([pdfA]) }); await settle(); await settle()
+    expect(useWorkspaceStore.getState().activeWindowKey).toBe('c3')
+    expect(first.panels).toHaveLength(0); expect(third.panels).toHaveLength(0)
+    expect(retainedTabDescriptors('c2')).toEqual([pdfA, browser])
+    await state.flushPendingSave()
+    expect(Object.values((savesFor('c2').at(-1) as { panels: Record<string, { params: { descriptor: TabDescriptor } }> }).panels).map(panel => panel.params.descriptor)).toEqual([pdfA, browser])
+    stop(); state.setActiveCourse('c2'); state.attachWindowApi('c2', revisit.asApi()); await settle()
+    expect(revisit.panels.map(panel => panel.params?.descriptor)).toEqual([pdfA, browser])
+  })
+
+  test('a cold hydration cannot overwrite a staged browser and guest retention includes its active loading canvas', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const reads: Array<(value: { layout: unknown }) => void> = []
+    invokeMock.mockImplementation(channel => channel === 'layout:get' ? new Promise(resolve => reads.push(resolve)) as never : Promise.resolve({ ok: true }) as never)
+    let release!: () => void
+    const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => { release = resolve }))
+    state.setActiveCourse('c2')
+    const browser = descriptorFor('browser', { tabId: 'staged-race', initialUrl: 'https://example.test' })
+    expect(openBrowserTabInCourse(browser, 'c2', false)).toBe(true)
+    release(); await settle(); state.attachWindowApi('c2', second.asApi())
+    expect(reads).toHaveLength(2)
+    reads[0]!({ layout: singleLeafLayout([pdfA]) }); await vi.runAllTimersAsync()
+    expect(useWorkspaceStore.getState()).toMatchObject({ activeWindowKey: 'c2', hydration: 'loading', openTabs: {} })
+    expect(retainedTabDescriptors()).toContainEqual(browser)
+    reads[1]!({ layout: singleLeafLayout([pdfA]) }); await settle(); await settle()
+    expect(second.panels.map(panel => panel.params?.descriptor)).toEqual([pdfA, browser])
+    stop()
+  })
+
+  test('canceling an internal-window selection preserves its owned browser without opening it in the newer selection', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    let release!: () => void
+    const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => { release = resolve }))
+    const id = state.createWindow()!, key = workspaceWindowKey('c1', id)
+    const browser = descriptorFor('browser', { tabId: 'pending-second', initialUrl: 'https://example.test' })
+    expect(openBrowserTabInCourse(browser, 'c1', false)).toBe(true)
+    state.selectWindow('main'); release(); await settle()
+    expect(useWorkspaceStore.getState().activeWindowId).toBe('main')
+    expect(first.panels).toHaveLength(0)
+    expect(retainedTabDescriptors(key)).toContainEqual(browser)
+    stop(); state.selectWindow(id); state.attachWindowApi(key, second.asApi()); await settle()
+    expect(second.panels.map(panel => panel.params?.descriptor)).toEqual([browser])
+  })
+
+  test('sidebar actions wait for the selected canvas and keep its own preference through capture', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState(), ui = useUiStore.getState()
+    state.setActiveCourse('rail-source'); state.attachWindowApi('rail-source', first.asApi()); await settle()
+    ui.showAssistant()
+    let release!: () => void
+    const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => { release = resolve }))
+    state.setActiveCourse('rail-target')
+    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-target', rightRailTab: 'materials' })
+    const opened: Array<string | null> = []
+    state.afterWorkspaceTransition(() => { opened.push(useWorkspaceStore.getState().activeWorkspaceKey); ui.showAssistant() })
+    expect(opened).toEqual([])
+    release(); await settle(); state.attachWindowApi('rail-target', second.asApi()); await settle()
+    expect(opened).toEqual(['rail-target'])
+    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-target', rightRailTab: 'ai' })
+    stop()
+    state.setActiveCourse('rail-source')
+    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-source', rightRailTab: 'ai' })
+  })
+
   test('renaming and removing a project traverse every window including ownerless browser tabs', async () => {
     const workspace = { kind: 'project' as const, courseId: 'c1', rootRelPath: 'old' }
     const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState(), base = workspaceKey(workspace)
@@ -694,6 +789,17 @@ describe('cross-course placement transfer', () => {
     expect(await moveWorkspacePanel({ sourceCourseId: 'c1', targetCourseId: 'c2', panelId: panel.id })).toBe(false)
     expect(source.getPanel(panel.id)).toBe(panel)
     expect(target.panels).toHaveLength(1)
+  })
+
+  test('a canonical document collision remains rejected after destination hydration remaps its view ID', async () => {
+    const { source, target, panel } = await ready()
+    source.removePanel(panel)
+    const original = source.addPanel({ id: tabPanelId(pdfA), params: { descriptor: pdfA } } as { id: string })
+    const retained = target.addPanel({ id: `${tabPanelId(pdfA)}::duplicate::restored`, params: { descriptor: pdfA } } as { id: string })
+    expect(await moveWorkspacePanel({ sourceCourseId: 'c1', targetCourseId: 'c2', panelId: original.id })).toBe(false)
+    expect(source.getPanel(original.id)).toBe(original)
+    expect(target.panels).toEqual([retained])
+    expect(showToastMock).toHaveBeenCalledWith(expect.stringContaining('같은 창이 이미 열려'))
   })
 
   test('a source-only edit after exhausted atomic persistence wakes the entire unacknowledged pair', async () => {

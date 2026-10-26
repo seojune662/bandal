@@ -1,17 +1,41 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createDefaultNoteTab, createMarkdownTab, createStudyTab } from '../../../src/renderer/src/app/tabCommands'
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), load: vi.fn(), toast: vi.fn(), paper: vi.fn(), courseId: 'first' as string | null, surface: 'course', windowId: 'main', groupId: 'captured-group' as string | undefined, projectRoot: null as string | null }))
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), load: vi.fn(), toast: vi.fn(), paper: vi.fn(), assistant: vi.fn(), afterTransition: vi.fn<(action: () => void) => void>(), courseId: 'first' as string | null, surface: 'course', windowId: 'main', groupId: 'captured-group' as string | undefined, projectRoot: null as string | null }))
+vi.mock('../../../src/renderer/src/features/assistantPanel/assistantController', () => ({ openWorkspaceAssistant: mocks.assistant }))
 vi.mock('../../../src/renderer/src/features/pdfNotes/NewNoteSheet', () => ({ openNewNoteSheet: mocks.paper }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: mocks.invoke }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: mocks.toast }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => ({ selectedCourseId: mocks.courseId }) } }))
 vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({ useMaterialsStore: { getState: () => ({ loadTree: mocks.load }) } }))
-vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ workspaceApiForWindow: () => ({ activeGroup: mocks.groupId ? { id: mocks.groupId } : undefined }), useWorkspaceStore: { getState: () => ({ surface: mocks.surface, activeWindowId: mocks.windowId, activeWorkspace: mocks.courseId === null ? null : mocks.projectRoot === null ? { kind: 'course', courseId: mocks.courseId } : { kind: 'project', courseId: mocks.courseId, rootRelPath: mocks.projectRoot }, openTab: mocks.open }) } }))
+vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ workspaceApiForWindow: () => ({ activeGroup: mocks.groupId ? { id: mocks.groupId } : undefined }), useWorkspaceStore: { getState: () => ({ surface: mocks.surface, activeWindowId: mocks.windowId, activeWorkspace: mocks.courseId === null ? null : mocks.projectRoot === null ? { kind: 'course', courseId: mocks.courseId } : { kind: 'project', courseId: mocks.courseId, rootRelPath: mocks.projectRoot }, openTab: mocks.open, afterWorkspaceTransition: mocks.afterTransition }) } }))
 vi.mock('../../../src/renderer/src/stores/settingsSnapshot', () => ({ settingsSnapshot: () => ({ tabs: { markdownTitlePrefix: '필기', notePaper: 'grid', noteOrientation: 'landscape' } }) }))
-beforeEach(() => { vi.clearAllMocks(); mocks.courseId = 'first'; mocks.surface = 'course'; mocks.projectRoot = null; mocks.windowId = 'main'; mocks.groupId = 'captured-group' })
+beforeEach(() => { vi.clearAllMocks(); mocks.afterTransition.mockImplementation(action => action()); mocks.courseId = 'first'; mocks.surface = 'course'; mocks.projectRoot = null; mocks.windowId = 'main'; mocks.groupId = 'captured-group' })
 
 const originalTarget = { courseId: 'first', workspace: { kind: 'course', courseId: 'first' }, windowId: 'main', groupId: 'captured-group' }
+
+test('the AI shortcut waits for navigation before choosing its workspace and creating a conversation', async () => {
+  let finishTransition!: () => void
+  mocks.afterTransition.mockImplementation(action => { finishTransition = action })
+  await createStudyTab('chat')
+  expect(mocks.assistant).not.toHaveBeenCalled()
+  mocks.courseId = 'second'
+  mocks.projectRoot = 'Reading'
+  finishTransition()
+  expect(mocks.assistant).toHaveBeenCalledExactlyOnceWith(
+    { kind: 'project', courseId: 'second', rootRelPath: 'Reading' },
+    { conversationId: expect.any(String) }
+  )
+  expect(mocks.open).not.toHaveBeenCalled()
+})
+
+test('an explicitly targeted AI command keeps its project while another workspace is selected', async () => {
+  mocks.courseId = 'second'
+  const workspace = { kind: 'project' as const, courseId: 'first', rootRelPath: 'Original' }
+  await createStudyTab('chat', { courseId: 'first', workspace, windowId: 'original' })
+  expect(mocks.afterTransition).not.toHaveBeenCalled()
+  expect(mocks.assistant).toHaveBeenCalledExactlyOnceWith(workspace, { conversationId: expect.any(String) })
+})
 
 test('creating a note cannot attach the old course note to a newly selected workspace', async () => {
   let resolve!: (value: unknown) => void

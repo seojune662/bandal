@@ -88,6 +88,22 @@ export async function createStudyTab(
   kind: 'chat' | 'recording' | 'whiteboard' | 'board',
   target?: WorkspaceTarget
 ): Promise<void> {
+  if (kind === 'chat') {
+    const openAssistant = (): void => {
+      const courseId = target ? target.courseId : activeCourseId()
+      if (courseId === null) return
+      const workspace = target
+        ? target.workspace ?? { kind: 'course' as const, courseId }
+        : useWorkspaceStore.getState().activeWorkspace ?? { kind: 'course' as const, courseId }
+      openWorkspaceAssistant(workspace, { conversationId: uuidv4() })
+    }
+    // A keyboard command follows the requested navigation, whose capture may
+    // still be showing the previous canvas. Explicit document targets keep
+    // their original workspace instead.
+    if (target) openAssistant()
+    else useWorkspaceStore.getState().afterWorkspaceTransition(openAssistant)
+    return
+  }
   if (kind === 'whiteboard') target ??= captureActiveWorkspaceTarget()
   const courseId = target ? target.courseId : activeCourseId()
   const open = (descriptor: TabDescriptor): void => {
@@ -99,10 +115,7 @@ export async function createStudyTab(
     return
   }
   if (courseId === null) return
-  if (kind === 'chat') {
-    const workspace = target ? target.workspace ?? { kind: 'course' as const, courseId: target.courseId! } : useWorkspaceStore.getState().activeWorkspace ?? { kind: 'course' as const, courseId }
-    openWorkspaceAssistant(workspace, { conversationId: uuidv4() })
-  } else if (kind === 'recording') {
+  if (kind === 'recording') {
     open(descriptorFor('recording', { courseId }))
   } else {
     openNewNoteSheet(courseId, target)

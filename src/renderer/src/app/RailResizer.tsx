@@ -42,7 +42,7 @@ export function RailResizer({ side }: RailResizerProps): JSX.Element {
 
   const currentWidth = useCallback((): number => {
     // 리사이저는 그리드 경계에 절대배치된 형제라, 실제 폭은 rail 요소를 잰다.
-    const rail = document.querySelector(side === 'right' ? '.right-sidebar' : '.app-rail--left:not([hidden])')
+    const rail = document.querySelector(side === 'right' ? '.right-sidebar' : '.shell-course-rail > :not([hidden])')
     return rail instanceof HTMLElement
       ? rail.getBoundingClientRect().width
       : RAIL_WIDTH_LIMITS[side].default

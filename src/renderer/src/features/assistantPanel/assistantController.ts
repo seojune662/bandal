@@ -25,9 +25,11 @@ export function openWorkspaceAssistant(workspace: WorkspaceRef, options: { conve
   return conversationId
 }
 export function openActiveAssistant(): void {
-  const workspace = activeAssistantWorkspace()
-  if (workspace) openWorkspaceAssistant(workspace)
-  else useUiStore.getState().showAssistant()
+  useWorkspaceStore.getState().afterWorkspaceTransition(() => {
+    const workspace = activeAssistantWorkspace()
+    if (workspace) openWorkspaceAssistant(workspace)
+    else useUiStore.getState().showAssistant()
+  })
 }
 export function useActiveAssistantOpen(): boolean {
   return useUiStore(state => state.rightRailOpen && state.rightRailTab === 'ai')

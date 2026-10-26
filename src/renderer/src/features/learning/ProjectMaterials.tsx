@@ -16,6 +16,8 @@ import { LearningCreateDialog } from './LearningCreateDialog'
 import { learningNeedsSettings } from './learningPurpose'
 import { useLearningProject, refreshLearningProject } from './useLearningProject'
 import { sameWorkspace } from '../../../../shared/types/workspace'
+import { EnglishReadingGuide } from './EnglishReadingGuide'
+import { dismissEnglishReadingGuide, useEnglishReadingGuideSeen } from './englishReadingGuideState'
 
 export const PROJECT_IMPORT_EVENT = 'bandal:project-import'
 export function requestProjectImport(kind: 'url' | 'markdown'): void { window.dispatchEvent(new CustomEvent(PROJECT_IMPORT_EVENT, { detail: kind })) }
@@ -29,6 +31,11 @@ export function ProjectMaterials({ binding, query, onTitle }: { binding: Learnin
   const [files, setFiles] = useState<MaterialNode[]>([])
   const [path, setPath] = useState('')
   const [pending, setPending] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
+  const guideSeen = useEnglishReadingGuideSeen()
+  const appSettingsOpen = useUiStore(state => state.isSettingsOpen)
+  const activeWorkspace = useWorkspaceStore(state => state.activeWorkspace)
+  const workspaceVisible = useWorkspaceStore(state => state.surface === 'course' && !state.windowsOverviewOpen)
   const refresh = (): Promise<void> => refreshLearningProject(binding)
   useEffect(() => { if (project) onTitle?.(project.name) }, [project?.name, onTitle])
   const revealAssistant = (): void => {
@@ -51,13 +58,19 @@ export function ProjectMaterials({ binding, query, onTitle }: { binding: Learnin
   if (!project) return <p className="project-group__empty" role="status">프로젝트 자료 불러오는 중…</p>
   const resources = project.artifacts.filter(artifact => matches(artifact.title))
   const articles = project.articles.filter(article => matches(article.title))
+  const english = project.purpose === 'english-reading'
+  const guideActive = english && workspaceVisible && !appSettingsOpen && !settingsOpen && !urlOpen && !importOpen &&
+    sameWorkspace(activeWorkspace, { kind: 'project', ...binding })
+  const closeGuide = (): void => { dismissEnglishReadingGuide(); setShowGuide(false) }
   return <div className="project-materials">
+    {english && <button type="button" className="project-materials__action" aria-label="영어 읽기 사용 방법" onClick={() => setShowGuide(true)}><Icon name="help" /> 사용 방법</button>}
     {project.purpose === 'english-reading' && <details open><summary>글 <small>{project.articles.length}</small></summary><ul>{articles.map(article => <li key={article.id}><button data-selected={selected('article', article.id) || undefined} onClick={() => openLearningResource(binding, { kind: 'article', id: article.id })}><Icon name="fileText" /><span>{article.title}</span>{article.status === 'completed' && <small>✓</small>}</button></li>)}</ul><button className="project-materials__action" disabled={pending} onClick={() => { if (learningNeedsSettings(project)) { setSettingsOpen(true); return }; void perform(async () => { await startLearningRun({ binding, kind: 'find-articles', ...(project.packId ? { packId: project.packId } : {}) }); revealAssistant() }) }}>다음 글 찾기</button></details>}
     {project.purpose === 'english-reading' && matches('단어장') && <button className="project-materials__resource" data-selected={selected('vocabulary') || undefined} onClick={() => openLearningResource(binding, { kind: 'vocabulary' })}><Icon name="fileText" /><span>단어장</span><small>{project.words.length}</small></button>}
     {(['quiz', 'cards', 'summary'] as const).map(kind => <details open key={kind}><summary>{kind === 'quiz' ? '퀴즈' : kind === 'cards' ? '플래시카드' : '요약'} <small>{project.artifacts.filter(item => item.kind === kind).length}</small></summary><ul>{resources.filter(item => item.kind === kind).map(artifact => <li key={artifact.id}><button data-selected={selected('artifact', artifact.id) || undefined} onClick={() => openLearningResource(binding, { kind: 'artifact', id: artifact.id })}><Icon name="fileText" /><span>{artifact.title}</span></button></li>)}</ul>{!resources.some(item => item.kind === kind) && <p className="project-group__empty">아직 자료가 없어요.</p>}</details>)}
     {urlOpen && <ProjectUrlDialog pending={pending} onClose={() => setUrlOpen(false)} onAdd={url => void perform(async () => { await invoke('learning:addArticle', { binding, url }); setUrlOpen(false) })} />}
     {importOpen && <LearningMaterialImportDialog files={files} relPath={path} pending={pending} onSelect={setPath} onClose={() => setImportOpen(false)} onPreview={() => void perform(async () => { await invoke('learning:importPreview', { binding, relPath: path, sourceCourseId: project.linkedCourseId ?? binding.courseId }); setImportOpen(false); revealAssistant() })} />}
     {settingsOpen && <LearningCreateDialog project={project} onClose={() => setSettingsOpen(false)} onCreated={() => { setSettingsOpen(false); void refresh() }} />}
+    {guideActive && (showGuide || !guideSeen) && <EnglishReadingGuide onClose={closeGuide} onContinue={closeGuide} />}
   </div>
 }
 function ProjectUrlDialog({ pending, onClose, onAdd }: { pending: boolean; onClose(): void; onAdd(url: string): void }): JSX.Element {

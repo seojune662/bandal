@@ -892,6 +892,7 @@ function NoteSession({
   const viewModeRef = useRef(viewMode)
   viewModeRef.current = viewMode
   const panelVisible = usePanelVisible(panelApi)
+  const toolbarHidden = useWorkspaceStore(state => state.workspaceChromeMode === 'all-hidden')
   const [currentRelPath, setCurrentRelPath] = useState(relPath)
   const [fontScale, setFontScale] = useState<NoteFontScale>(() => {
     if (initialViewRef.current) return parseNoteFontScale(String(initialViewRef.current.fontScale))
@@ -1687,6 +1688,15 @@ function NoteSession({
           <MaterialExportButton courseId={courseId} relPath={currentRelPath} disabled={editorSeed === null || damagedPageNote} title="공유 · 마크다운 내보내기" />
           <AssistantPanelToggle />
         </header>
+      )}
+
+      {status === 'error' && toolbarHidden && (
+        <div className="note-conflict note-save-error" role="alert" aria-label="필기 저장 오류">
+          <div>
+            <strong>{STATUS_LABEL.error}</strong>
+            <span>{statusDetail}</span>
+          </div>
+        </div>
       )}
 
       {status === 'conflict' && (

@@ -38,7 +38,7 @@ test.describe('eraser', () => {
     await page.locator('.workspace-tab', { hasText: '지우개 검증' })
       .getByRole('button', { name: /탭 닫기/ }).click()
     await page.waitForTimeout(500)
-    await page.locator('[data-material-path="노트/지우개 검증.pdf"]').click()
+    await page.locator('[data-material-path$="지우개 검증.pdf"]').click()
     await expect(page.locator('.ink-layer')).toBeVisible()
     await page.waitForTimeout(1500)
 

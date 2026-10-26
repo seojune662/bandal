@@ -38,7 +38,7 @@ test('a submitted account waits through Google verification and opens a compact 
     if (await add.isVisible()) await add.click()
     else await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
     await page.getByLabel('새 탭 검색').fill(loginUrl)
-    await page.getByRole('option', { name: `${loginUrl} 열기` }).click()
+    await page.getByRole('option', { name: `브라우저 ${loginUrl}`, exact: true }).click()
     await expect.poll(() => bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(view => view.getURL() === url)?.id ?? null, loginUrl)).not.toBeNull()
     const guestId = await bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(view => view.getURL() === url)!.id, loginUrl)
     await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('window.__bandalLoginReporterInstalledV2__ === true'), guestId)).toBe(true)

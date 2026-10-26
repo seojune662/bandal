@@ -19,6 +19,7 @@ import type { ImportResult, MaterialFileContent, MaterialKind,
 import { scanMaterialTree, type MaterialWalk, type ScanTruncation } from './scanMaterialTree'
 import { renameWithRetry } from './renameWithRetry'
 import { assertMaterialPathAvailable, createMaterialPathJournal, type MaterialPathLock } from './materialPathJournal'
+import { withMaterialPathLockWait } from './materialPathLock'
 import { createMaterialAddedState } from './materialAddedState'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, nowIso, requireId, requireNonEmptyString,
@@ -323,19 +324,17 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const gate = new Promise<void>(resolve => { release = resolve })
       scanGates.set(id, gate)
       let resume: (() => Promise<void>) | undefined
-      let unlock: (() => void) | undefined
       try {
         resume = await deps.pauseWatching?.(id)
         // Drain the real walk/index work, not scans' invalidation continuation:
         // that continuation may need to rescan and therefore await our gate.
         await scanWork.get(id)?.catch(() => undefined)
-        unlock = pathLock.tryAcquire()
-        if (!unlock) throw new ConflictError('다른 반달 작업에서 자료 경로를 변경 중입니다. 잠시 후 다시 시도해 주세요.')
-        if (deps.pathLock) recoverLocked()
-        assertMaterialPathAvailable(db, id)
-        return await operation()
+        return await withMaterialPathLockWait(pathLock, async () => {
+          if (deps.pathLock) recoverLocked()
+          assertMaterialPathAvailable(db, id)
+          return operation()
+        }, { timeoutError: () => new ConflictError('다른 반달 작업에서 자료 경로를 변경 중입니다. 잠시 후 다시 시도해 주세요.') })
       } finally {
-        unlock?.()
         try { await resume?.() } catch (error) {
           console.error(`[materials] watcher restoration failed for ${id}:`, error)
         }

@@ -9,7 +9,7 @@ import type { NoteRenameResponse } from '../../../src/renderer/src/features/note
 // Keep the real NoteSession state, registry and save logic. Only replace the
 // Milkdown surface so edits and canonical reseeds can be observed in jsdom.
 const milkdown = vi.hoisted(() => ({ entry: null as any }))
-const sidebarWorkspace = vi.hoisted(() => ({ activeWorkspace: null, activeWindowKey: undefined as string | undefined, openTabs: {} }))
+const sidebarWorkspace = vi.hoisted(() => ({ activeWorkspace: null, activeWindowKey: undefined as string | undefined, workspaceChromeMode: 'all', openTabs: {} }))
 vi.mock('../../../src/renderer/src/features/workspace/captureWorkspaceTarget', () => ({ captureActiveWorkspaceTarget: () => ({
   courseId: 'rename-source', workspace: { kind: 'course', courseId: 'rename-source' }, windowId: sidebarWorkspace.activeWindowKey, groupId: 'source-pane'
 }) }))
@@ -71,7 +71,7 @@ vi.mock('@milkdown/react', async () => {
 })
 vi.mock('../../../src/renderer/src/features/notes/noteEditorPlugins', () => ({ loadNoteEditorPlugins: async () => [], NOTE_EDITOR_PLUGINS: [] }))
 vi.mock('../../../src/renderer/src/features/notes/noteFormatting', () => ({ EMPTY_NOTE_FORMAT_STATE: {}, getNoteFormatState: () => ({}) }))
-vi.mock('../../../src/renderer/src/features/notes/NoteToolbar', () => ({ NoteToolbar: () => null }))
+vi.mock('../../../src/renderer/src/features/notes/NoteToolbar', () => ({ NoteToolbar: ({ documentActions }: { documentActions: React.ReactNode }) => <div data-workspace-toolbar>{documentActions}</div> }))
 vi.mock('../../../src/renderer/src/features/materials/MaterialAffordances', () => ({ MaterialAffordancesProvider: ({ children }: { children: React.ReactNode }) => children }))
 vi.mock('../../../src/renderer/src/features/widgets/WidgetDock', () => ({ WidgetDock: () => null }))
 vi.mock('../../../src/renderer/src/features/materials/useMaterialsPaste', () => ({ useMaterialsPaste: () => ({ pasteNotice: null, isPasting: false, onPaste: () => {} }) }))
@@ -110,9 +110,10 @@ afterEach(async () => {
   setIpcAdapter(null)
   milkdown.entry = null
   sidebarWorkspace.activeWindowKey = undefined
+  sidebarWorkspace.workspaceChromeMode = 'all'
 })
 
-async function renderFixture(markdown: string, rename: () => Promise<NoteRenameResponse>) {
+async function renderFixture(markdown: string, rename: () => Promise<NoteRenameResponse>, hide = true) {
   let stored = { markdown, mtime: 1, relPath: ref.relPath }
   const writes: any[] = []
   const invoke = vi.fn(async (channel: string, input: any) => {
@@ -144,9 +145,11 @@ async function renderFixture(markdown: string, rename: () => Promise<NoteRenameR
   await vi.waitFor(() => expect(host.querySelector<HTMLTextAreaElement>('[aria-label="fixture note document"]')?.value).toBe(markdown))
   await vi.waitFor(() => expect(button('rename source note')).toBeDefined())
   const note = host.querySelector('.note-tab')!
-  await act(async () => button('move and hide retained note').click())
-  expect(note.closest('[hidden]')).not.toBeNull()
-  return { invoke, writes, note, stored: () => stored }
+  if (hide) {
+    await act(async () => button('move and hide retained note').click())
+    expect(note.closest('[hidden]')).not.toBeNull()
+  }
+  return { invoke, writes, note, stored: () => stored, render: () => root!.render(<Fixture />) }
 }
 function button(text: string): HTMLButtonElement { return [...host.querySelectorAll<HTMLButtonElement>('button')].find(element => element.textContent === text)! }
 function edit(markdown: string): void {
@@ -203,4 +206,33 @@ test('a delayed file creation opens in its original window without following the
   expect(openMaterialInCourse).toHaveBeenCalledWith(source.id, 'note', 'created.md', {
     target: { courseId: source.id, workspace: { kind: 'course', courseId: source.id }, windowId: 'source-window', groupId: 'source-pane' }
   })
+})
+
+test('a write failure remains an alert outside hidden toolbars and avoids a duplicate when tools are visible', async () => {
+  const fixture = await renderFixture('# moving\n\nOriginal body', async () => ({ relPath: ref.relPath, title: 'moving', markdown: '# moving', mtime: 2 }), false)
+  const original = fixture.invoke.getMockImplementation()!
+  fixture.invoke.mockImplementation((channel, input) => channel === 'notes:write' ? Promise.reject(new Error('disk full')) : original(channel, input))
+  await act(async () => edit('# moving\n\nUnsaved body'))
+  await act(async () => { expect((await flushOpenNoteSession(ref))?.result.status).toBe('error') })
+  expect(fixture.note.querySelector('.note-save-status[data-status="error"]')).not.toBeNull()
+  expect(fixture.note.querySelector('[aria-label="필기 저장 오류"]')).toBeNull()
+
+  sidebarWorkspace.workspaceChromeMode = 'all-hidden'
+  await act(async () => fixture.render())
+  const alert = fixture.note.querySelector('[role="alert"][aria-label="필기 저장 오류"]')!
+  expect(alert).not.toBeNull()
+  expect(alert.textContent).toContain('disk full')
+  expect(alert.closest('[data-workspace-toolbar]')).toBeNull()
+  expect(alert.closest('[hidden], [inert]')).toBeNull()
+
+  sidebarWorkspace.workspaceChromeMode = 'tabs-hidden'
+  await act(async () => fixture.render())
+  expect(fixture.note.querySelector('[aria-label="필기 저장 오류"]')).toBeNull()
+  expect(fixture.note.querySelector('.note-save-status[data-status="error"]')).not.toBeNull()
+
+  fixture.invoke.mockImplementation(original)
+  await act(async () => { expect((await flushOpenNoteSession(ref))?.result.status).toBe('saved') })
+  sidebarWorkspace.workspaceChromeMode = 'all-hidden'
+  await act(async () => fixture.render())
+  expect(fixture.note.querySelector('[aria-label="필기 저장 오류"]')).toBeNull()
 })

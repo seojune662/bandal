@@ -91,6 +91,27 @@ describe('material rename durable intent and process ownership', () => {
     expect(JSON.parse(result.stdout).drawings[0].rel_path).toBe('new/lecture.pdf'); expect(count()).toBe(0)
     expect(binding().check({ courseId, relPath: 'new/lecture.pdf' }).materialID).toBe(originalID)
   })
+  test('a user rename waits for a background project read before mutating once', async () => {
+    seed()
+    const openLock = (path: string) => new SQLite(path, { timeout: 0 })
+    const background = createMaterialPathLock(spec.lockPath, openLock)
+    const releaseBackground = background.tryAcquire()!
+    const pathChanged = vi.fn()
+    const acquired = vi.fn(() => createMaterialPathLock(spec.lockPath, openLock).tryAcquire())
+    const repo = createMaterialsRepo({ db: ctx.db, getCourseFolder: () => folder,
+      revealItem: () => {}, trashItem: async () => {}, pathLock: { tryAcquire: acquired }, onPathChanged: pathChanged })
+    const pending = repo.rename({ courseId, relPath: 'lecture.pdf', newName: 'renamed.pdf' })
+    try {
+      await vi.waitFor(() => expect(acquired).toHaveBeenCalled())
+      expect(existsSync(file('lecture.pdf'))).toBe(true)
+      expect(existsSync(file('renamed.pdf'))).toBe(false)
+      expect(pathChanged).not.toHaveBeenCalled()
+    } finally { releaseBackground() }
+    await expect(pending).resolves.toEqual({ relPath: 'renamed.pdf' })
+    expect(pathChanged).toHaveBeenCalledOnce()
+    expect(existsSync(file('lecture.pdf'))).toBe(false)
+    expect(existsSync(file('renamed.pdf'))).toBe(true)
+  })
   test('a live owner is not recovered by another process; termination releases its lock', async () => {
     seed(); writeFileSync(spec.config, JSON.stringify({ ...spec, stage: 'live' })); child = spawn(process.execPath, [workerPath, spec.config], { stdio: 'ignore' })
     await vi.waitFor(() => expect(existsSync(spec.marker)).toBe(true))
