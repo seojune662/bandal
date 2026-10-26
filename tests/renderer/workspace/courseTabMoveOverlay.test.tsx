@@ -7,14 +7,14 @@ import { BANDAL_TAB_DRAG_MIME } from '../../../src/renderer/src/features/workspa
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
 
 const workspace = vi.hoisted(() => ({
-  state: { activeCourseId: 'source', surface: 'course', hydration: 'ready' }, api: { groups: [] as unknown[] },
+  state: { activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', windowsOverviewOpen: false, surface: 'course', hydration: 'ready' }, api: { groups: [] as unknown[] },
   listeners: new Set<(state: { activeCourseId: string; surface: string; hydration: string }) => void>()
 }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: { getState: () => workspace.state, subscribe: (listener: (state: typeof workspace.state) => void) => {
     workspace.listeners.add(listener); return () => workspace.listeners.delete(listener)
   } },
-  workspaceApiForCourse: () => workspace.api
+  workspaceApiForWindow: () => workspace.api
 }))
 vi.mock('../../../src/renderer/src/features/workspace/workspaceTabDrop', () => ({ dropWorkspaceTabOnCourse: vi.fn() }))
 
@@ -35,7 +35,7 @@ beforeEach(() => {
   sidebar = document.createElement('aside'); box(sidebar, 0, 40, 200, 600)
   const overlay = document.createElement('div'); host.append(overlay); document.body.append(sidebar, host)
   workspace.api.groups = []
-  Object.assign(workspace.state, { activeCourseId: 'source', surface: 'course', hydration: 'ready' })
+  Object.assign(workspace.state, { activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', windowsOverviewOpen: false, surface: 'course', hydration: 'ready' })
   reactRoot = createRoot(overlay)
   act(() => { reactRoot.render(<CourseTabMoveOverlay />) })
   act(() => tabDragSession.beginTab({ courseId: 'source', panelId: 'panel', nonce: 'held' }))

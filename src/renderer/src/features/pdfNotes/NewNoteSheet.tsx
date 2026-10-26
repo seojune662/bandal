@@ -20,6 +20,7 @@ let creating = false
  * the page panel instead of a separate canvas with its own tools. */
 function NewNoteSheet({ courseId, target, dirRelPath, onClose, onCreated }: { dirRelPath?: string | undefined; courseId: string; target?: WorkspaceTarget; onClose(): void; onCreated?: (relPath: string) => Promise<void> }): JSX.Element {
   const capturedWorkspace = useRef(target ? target.workspace ?? { kind: 'course' as const, courseId } : useWorkspaceStore.getState().activeWorkspace).current
+  const capturedWindowId = useRef(useWorkspaceStore.getState().activeWindowId).current
   const dialog = useRef<HTMLDivElement>(null)
   const [title, setTitle] = useState(defaultTitle)
   const [paper, setPaper] = useState<Paper>(settingsSnapshot().tabs.notePaper)
@@ -39,7 +40,7 @@ function NewNoteSheet({ courseId, target, dirRelPath, onClose, onCreated }: { di
       const workspace = useWorkspaceStore.getState()
       const descriptor = descriptorFor('pdf', { courseId, relPath })
       if (target) workspace.openTab(descriptor, { target })
-      else if (workspace.surface === 'course' && sameWorkspace(workspace.activeWorkspace, capturedWorkspace)) workspace.openTab(descriptor)
+      else if (workspace.surface === 'course' && sameWorkspace(workspace.activeWorkspace, capturedWorkspace) && workspace.activeWindowId === capturedWindowId) workspace.openTab(descriptor)
       else showToast('원래 공간에 새 노트를 만들었어요.')
       void useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
       onClose()

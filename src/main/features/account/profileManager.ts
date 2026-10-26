@@ -21,7 +21,7 @@ export function resolveActiveProfile(base: string): string {
 // SQLite journal may disappear even while app edits and sync are paused. Omit
 // the database and its exact sidecars together, at the profile root only;
 // never suppress missing user files or skip journal suffixes in course folders.
-const excluded = new Set(['auth', 'Cache', 'Code Cache', 'GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'Session Storage', 'Local Storage', 'IndexedDB', 'Service Worker', 'Partitions', 'Network', 'DIPS', 'DIPS-journal', 'DIPS-wal', 'DIPS-shm', 'logs', 'Crashpad', 'profiles', 'SingletonLock', 'SingletonSocket', 'SingletonCookie', POINTER])
+const excluded = new Set(['auth', 'Cache', 'Code Cache', 'GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'Session Storage', 'Local Storage', 'IndexedDB', 'Service Worker', 'Partitions', 'Network', 'DIPS', 'DIPS-journal', 'DIPS-wal', 'DIPS-shm', 'workspace-previews', 'logs', 'Crashpad', 'profiles', 'SingletonLock', 'SingletonSocket', 'SingletonCookie', POINTER])
 interface Entry { source: string; target: string; sha256: string; size: number }
 async function digest(file: string): Promise<string> { return createHash('sha256').update(await readFile(file)).digest('hex') }
 export function createProfileManager(deps: { db: Database; baseRoot: string; root: string; chooseDestination(): Promise<string | null>; pause(): void | Promise<void>; resume(): void; relaunch(): void }) {

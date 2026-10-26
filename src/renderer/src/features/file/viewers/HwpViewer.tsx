@@ -112,7 +112,7 @@ export function HwpViewer({
   )
   return (
     <div className="file-hwp">
-      <header className="file-hwp__header">
+      <header className="file-hwp__header" data-workspace-toolbar>
         <strong>{fileName}</strong>
         <span className="file-hwp__notice">
           텍스트 미리보기 — 서식은 표시되지 않습니다

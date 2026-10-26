@@ -92,7 +92,7 @@ test('split placeholders become the course welcome when the other empty pane is 
 test('welcome actions use the retained pane placement even when a different course is selected', async () => {
   const { api, host } = await workspace()
   await act(async () => applyWorkspaceLayout(api, 'single'))
-  const target = { courseId: 'placed', workspace: null, groupId: api.groups[0]!.id }
+  const target = { courseId: 'placed', workspace: null, windowId: 'main', groupId: api.groups[0]!.id }
   const assistant = vi.spyOn(useUiStore.getState(), 'showAssistant').mockImplementation(() => {})
   const buttons = [...host.querySelectorAll<HTMLButtonElement>('.workspace-start-actions button')]
   expect(buttons).toHaveLength(3)

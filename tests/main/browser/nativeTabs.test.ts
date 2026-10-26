@@ -64,6 +64,20 @@ async function fixture() {
   return { native, event, page: mocks.view.webContents as Page, view: mocks.view as View }
 }
 
+test('workspace previews include only visible same-host main-owned page bounds', async () => {
+  const { native, event, page } = await fixture()
+  expect(native.workspaceBrowserPreviewTargets(event)).toEqual([])
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  const [target] = native.workspaceBrowserPreviewTargets(event)
+  expect(target).toMatchObject({ contents: page, bounds, isPrivate: false })
+  expect(target?.isCurrent()).toBe(true)
+  expect(() => native.workspaceBrowserPreviewTargets({ ...event, senderFrame: {} } as Electron.IpcMainInvokeEvent)).toThrow('Invalid browser host')
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds: { ...bounds, x: 21 } })
+  expect(target?.isCurrent()).toBe(false)
+  mocks.host = new Host()
+  expect(native.workspaceBrowserPreviewTargets(event)).toEqual([])
+})
+
 test('native focus is forwarded only for a visible page', async () => {
   const { native, event, page } = await fixture()
   mocks.host.webContents.send.mockClear()

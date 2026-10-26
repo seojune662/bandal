@@ -9,6 +9,10 @@ import type { NoteRenameResponse } from '../../../src/renderer/src/features/note
 // Keep the real NoteSession state, registry and save logic. Only replace the
 // Milkdown surface so edits and canonical reseeds can be observed in jsdom.
 const milkdown = vi.hoisted(() => ({ entry: null as any }))
+const sidebarWorkspace = vi.hoisted(() => ({ activeWorkspace: null, activeWindowKey: undefined as string | undefined, openTabs: {} }))
+vi.mock('../../../src/renderer/src/features/workspace/captureWorkspaceTarget', () => ({ captureActiveWorkspaceTarget: () => ({
+  courseId: 'rename-source', workspace: { kind: 'course', courseId: 'rename-source' }, windowId: sidebarWorkspace.activeWindowKey, groupId: 'source-pane'
+}) }))
 vi.mock('@milkdown/core', async () => {
   const core = await vi.importActual<typeof import('@milkdown/core')>('@milkdown/core')
   return { ...core, Editor: { make: () => {
@@ -74,7 +78,7 @@ vi.mock('../../../src/renderer/src/features/materials/useMaterialsPaste', () => 
 vi.mock('../../../src/renderer/src/features/workspace/openMaterial', () => ({ openMaterialInWorkspace: vi.fn(), openMaterialInCourse: vi.fn() }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   closeResourceTabs: vi.fn(), reconcileWorkspaceMaterialRename: vi.fn(() => 1),
-  useWorkspaceStore: Object.assign((selector: (state: any) => unknown) => selector({ activeWorkspace: null, openTabs: {} }), { getState: () => ({ activeWorkspace: null, openTabs: {} }) })
+  useWorkspaceStore: Object.assign((selector: (state: any) => unknown) => selector(sidebarWorkspace), { getState: () => sidebarWorkspace })
 }))
 vi.mock('../../../src/renderer/src/features/materials/MaterialTree', async () => {
   const ReactModule = await import('react')
@@ -87,6 +91,7 @@ vi.mock('../../../src/renderer/src/features/materials/MaterialTree', async () =>
 })
 
 import NoteTab from '../../../src/renderer/src/features/notes/NoteTab'
+import { openMaterialInCourse, openMaterialInWorkspace } from '../../../src/renderer/src/features/workspace/openMaterial'
 import { MaterialsSidebar } from '../../../src/renderer/src/features/materials/MaterialsSidebar'
 import { flushOpenNoteSession, openNoteRefForPanel } from '../../../src/renderer/src/features/notes/noteSessionRegistry'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
@@ -104,6 +109,7 @@ afterEach(async () => {
   document.body.replaceChildren()
   setIpcAdapter(null)
   milkdown.entry = null
+  sidebarWorkspace.activeWindowKey = undefined
 })
 
 async function renderFixture(markdown: string, rename: () => Promise<NoteRenameResponse>) {
@@ -126,7 +132,8 @@ async function renderFixture(markdown: string, rename: () => Promise<NoteRenameR
     const [hidden, setHidden] = useState(false)
     const [descriptor, setDescriptor] = useState({ kind: 'note', payload: ref })
     const [api] = useState(() => ({
-      id: 'retained-note-panel', updateParameters: (parameters: any) => setDescriptor(parameters.descriptor), setTitle: vi.fn(),
+      id: 'retained-note-panel', updateParameters: (parameters: any) => { if (parameters.descriptor) setDescriptor(parameters.descriptor) }, setTitle: vi.fn(),
+      isVisible: true, onDidVisibilityChange: () => ({ dispose: () => {} }),
       onDidActiveChange: () => ({ dispose: () => {} })
     }))
     return <><button onClick={() => setHidden(true)}>move and hide retained note</button>
@@ -175,4 +182,25 @@ test('sidebar rename retains a body edit made during the request and advances a 
   expect(host.querySelector('.note-tab')).toBe(fixture.note)
   await act(async () => { await flushOpenNoteSession({ courseId: source.id, relPath: 'renamed-2.md' }) })
   expect(fixture.writes).toEqual([{ courseId: source.id, relPath: 'renamed-2.md', expectedMtime: 2, markdown: '# renamed-2\n\nConcurrent body' }])
+})
+
+
+test('a delayed file creation opens in its original window without following the visible window', async () => {
+  sidebarWorkspace.activeWindowKey = 'source-window'
+  const fixture = await renderFixture('# moving\n\nOriginal body', async () => ({ relPath: 'renamed.md', title: 'renamed', markdown: '# renamed', mtime: 2 }))
+  let resolveCreate!: (value: { courseId: string; relPath: string }) => void
+  const pending = new Promise<{ courseId: string; relPath: string }>(resolve => { resolveCreate = resolve })
+  const original = fixture.invoke.getMockImplementation()!
+  fixture.invoke.mockImplementation((channel, input) => channel === 'notes:create' ? pending : original(channel, input))
+  vi.mocked(openMaterialInWorkspace).mockClear()
+  vi.mocked(openMaterialInCourse).mockClear()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="생성하기"]')!.click())
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role=menuitem]')].find(item => item.textContent?.trim() === '새 마크다운')!.click())
+  await vi.waitFor(() => expect(fixture.invoke).toHaveBeenCalledWith('notes:create', expect.anything()))
+  sidebarWorkspace.activeWindowKey = 'other-window'
+  await act(async () => { resolveCreate({ courseId: source.id, relPath: 'created.md' }); await pending })
+  expect(openMaterialInWorkspace).not.toHaveBeenCalled()
+  expect(openMaterialInCourse).toHaveBeenCalledWith(source.id, 'note', 'created.md', {
+    target: { courseId: source.id, workspace: { kind: 'course', courseId: source.id }, windowId: 'source-window', groupId: 'source-pane' }
+  })
 })

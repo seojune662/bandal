@@ -100,7 +100,7 @@ function ImageViewer({
 
   return (
     <div className="image-viewer" data-state="ready">
-      <div className="image-viewer__toolbar" role="toolbar" aria-label="이미지 보기 도구">
+      <div className="image-viewer__toolbar" data-workspace-toolbar role="toolbar" aria-label="이미지 보기 도구">
         <button
           type="button"
           className="image-viewer__button"

@@ -1039,7 +1039,7 @@ test('launcher entries select context and rail checks without unrelated appearan
   const feature = planChecks(['src/renderer/src/features/launcher/featureActions.ts', 'src/renderer/src/stores/workflowPacksStore.ts'])
   assert.deepEqual(feature.e2e, ['e2e/featureLauncher.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts'])
   const shell = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/app/AppShell.tsx'])
-  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts', 'e2e/railUx.spec.ts']))
+  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts', 'e2e/railUx.spec.ts', 'e2e/workspaceWindows.spec.ts']))
   assert.ok(!shell.scriptTests.includes('scripts/check-contrast.mjs'))
   assert.deepEqual(planChecks(['src/renderer/src/features/settings/PacksPanel.tsx']).e2e, ['e2e/featureLauncher.spec.ts', 'e2e/pluginCenter.spec.ts'])
   const mixed = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/styles/tokens.css'])
@@ -1114,6 +1114,7 @@ test('workspace styles, state and tab types cover dragging across app surfaces',
   for (const file of ['src/renderer/src/features/workspace/workspace.css', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/stores/workspaceStore.ts', 'src/shared/tabs.ts']) {
     const plan = planChecks([file])
     const specs = ['tabs', 'tabDrag', 'workspaceLayout', 'workspaceNarrowTabs', 'workspaceCourseDrop', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance', 'courseTabMove', 'tabMoveSessions', 'courseMovePreview']
+    if (file !== 'src/shared/tabs.ts') specs.push('workspaceWindows')
     if (file.endsWith('workspaceStore.ts')) specs.push('learningManagement', 'learningNavigation')
     assert.deepEqual(new Set(plan.e2e), new Set(specs.map(spec => `e2e/${spec}.spec.ts`)), file)
     assert.equal(plan.full, false, file)
@@ -1245,4 +1246,22 @@ test('manual Windows package verification keeps focused checks', () => {
   assert.equal(plan.full, false)
   assert.deepEqual(plan.scriptTests, ['scripts/test-affected-checks.mjs'])
   assert.deepEqual(plan.e2e, ['e2e/startup.spec.ts'])
+})
+
+
+test('workspace windows, shared chrome and previews select their desktop regression', () => {
+  for (const input of [
+    'src/renderer/src/app/WorkspaceControls.tsx',
+    'src/renderer/src/app/HomeSidebar.tsx',
+    'src/renderer/src/features/workspace/WorkspaceWindowsOverview.tsx',
+    'src/renderer/src/features/workspace/captureWorkspaceTarget.ts',
+    'src/renderer/src/stores/workspaceStore.ts',
+    'src/shared/workspaceWindows.ts',
+    'src/shared/workspacePanelIds.ts',
+    'src/shared/ipc/workspacePreviewContract.ts'
+  ]) {
+    const plan = planChecks([input])
+    assert.equal(plan.full, false)
+    assert.ok(plan.e2e.includes('e2e/workspaceWindows.spec.ts'), input)
+  }
 })

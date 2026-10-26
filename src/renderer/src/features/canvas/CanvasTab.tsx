@@ -658,7 +658,7 @@ function CanvasSession({
       data-background={board.background}
       data-surface={board.surface}
     >
-      <header className="canvas-tab__header">
+      <header className="canvas-tab__header" data-workspace-toolbar>
         {editingTitle ? (
           <input
             ref={titleInputRef}

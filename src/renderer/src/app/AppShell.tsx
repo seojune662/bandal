@@ -21,7 +21,9 @@ import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { LearningDialogsHost } from '../features/learning/LearningDialogsHost'
 import { LearningSpacesPanel } from '../features/learning/LearningSpacesPanel'
 import { FeatureLauncherPanel } from '../features/launcher/FeatureLauncherPanel'
-import { RightSidebar, RightSidebarToggle } from './RightSidebar'
+import { RightSidebar } from './RightSidebar'
+import { WorkspaceControls } from './WorkspaceControls'
+import { HomeSidebar } from './HomeSidebar'
 import { AnnotationOverlay } from '../features/annotation/AnnotationOverlay'
 import { IpadAnnouncement } from '../features/announcements/IpadAnnouncement'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
@@ -428,8 +430,10 @@ export function AppShell(): JSX.Element {
       <GlobalNavigation />
       <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailVisible || settingsPresent}
         {...{ inert: !leftRailOpen || !courseRailVisible || settingsPresent ? '' : undefined }}>
-        <CourseSidebar hidden={leftRailPanel !== 'courses'} />
-        {learningMounted && <LearningSpacesPanel hidden={leftRailPanel !== 'learning'} />}
+        <HomeSidebar hidden={leftRailPanel === 'plugins'}>
+          <CourseSidebar hidden={leftRailPanel !== 'courses'} />
+          {learningMounted && <LearningSpacesPanel hidden={leftRailPanel !== 'learning'} />}
+        </HomeSidebar>
         {launcherMounted && <FeatureLauncherPanel hidden={leftRailPanel !== 'plugins'} />}
       </div>
       {leftRailOpen && courseRailVisible && !settingsPresent && <RailResizer side="left" />}
@@ -484,7 +488,7 @@ export function AppShell(): JSX.Element {
       )}
       <AnnotationOverlay />
       <ShellChrome />
-      <RightSidebarToggle />
+      <WorkspaceControls />
       <TourOverlay />
     </div>
   )

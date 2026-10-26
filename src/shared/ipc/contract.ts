@@ -1,5 +1,6 @@
 import { PROJECT_NAVIGATION_CHANNELS, type ProjectNavigationContract } from '../projectNavigation'
 import { ANNOTATION_CHANNELS, type AnnotationIpcContract } from './annotationContract'
+import { WORKSPACE_PREVIEW_CHANNELS, type WorkspacePreviewIpcContract } from './workspacePreviewContract'
 import type { SharedMaterialRequest } from '../types/share'
 import type { ExternalSourceLocation } from '../types/externalSources'
 import type { BillingState, RuntimeSyncState, RuntimeSyncConflict } from '../types/subscription'
@@ -182,7 +183,7 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
   followUpOf?: string
 }
 
-export interface IpcContract extends AnnotationIpcContract, ProjectNavigationContract, CommunityIpcContract, StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
+export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcContract, ProjectNavigationContract, CommunityIpcContract, StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
   'share:list': { req: Record<string, never>; res: SharedMaterialRequest[] }
   'share:import': { req: { id: string; courseId: string; dirRelPath: string }; res: { relPaths: string[] } }
   'share:dismiss': { req: { id: string }; res: { ok: true } }
@@ -1687,6 +1688,7 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
  * here actually got a handler.
  */
 export const IPC_CHANNELS = [
+  ...WORKSPACE_PREVIEW_CHANNELS,
   ...ANNOTATION_CHANNELS,
   'pdfNotes:create', 'pdfNotes:info', 'pdf:restructure', 'pdfNotes:migrateLegacy', 'pdfNotes:migrationStatus',
   ...STUDY_MARKET_CHANNELS,

@@ -23,7 +23,8 @@ import {
   openNoteRefForPanel,
   retargetOpenNoteSession
 } from '../notes/noteSessionRegistry'
-import { openMaterialInWorkspace } from '../workspace/openMaterial'
+import { openMaterialInCourse, openMaterialInWorkspace } from '../workspace/openMaterial'
+import { captureActiveWorkspaceTarget } from '../workspace/captureWorkspaceTarget'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { MaterialDeleteDialog } from './MaterialDeleteDialog'
 import { MaterialSearchResults, type MaterialTreeProps } from './MaterialTree'
@@ -193,6 +194,7 @@ function closeDeletedTabs(courseId: string, node: MaterialNode): void {
 
 export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element {
   const workspace = useWorkspaceStore(state => state.activeWorkspace)
+  const windowKey = useWorkspaceStore(state => state.activeWindowKey)
   const materialRoot = workspaceMaterialRoot(workspace)
   const scopeKey = workspace ? workspaceKey(workspace) : course?.id ?? 'empty'
   const allTree = useMaterialsStore((state) => state.tree)
@@ -266,6 +268,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const activeScopeRef = useRef(scopeKey)
   activeScopeRef.current = scopeKey
   useEffect(() => { activeScopeRef.current = scopeKey; return () => { activeScopeRef.current = 'detached' } }, [scopeKey])
+  const presentationIsCurrent = useCallback(() => activeScopeRef.current === scopeKey &&
+    useWorkspaceStore.getState().activeWindowKey === windowKey, [scopeKey, windowKey])
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
   const closeDeleteDialog = useCallback(() => {
@@ -384,14 +388,14 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
   const handleCreated = useCallback(
     (relPaths: string[]): void => {
-      if (activeScopeRef.current !== scopeKey) return
+      if (!presentationIsCurrent()) return
       const newest = relPaths.at(-1)
       if (newest === undefined) return
       ensureAncestorsExpanded(newest)
       setBrowserDirectory(materialParentPath(newest))
       setSelectedRelPath(newest)
     },
-    [ensureAncestorsExpanded, scopeKey]
+    [ensureAncestorsExpanded, presentationIsCurrent]
   )
 
   const browsedDirectory = view !== 'list' ? findMaterialNode(tree, browserDirectory) : null
@@ -453,11 +457,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         toDirRelPath
       })
       reconcileTabsAfterRename(course.id, node, moved.relPath, false)
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
       setQuery('')
       clearSearch()
       await refreshAfterMutation(course.id)
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
       ensureAncestorsExpanded(moved.relPath)
       setBrowserDirectory(materialParentPath(moved.relPath))
       setSelectedRelPath(moved.relPath)
@@ -474,7 +478,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     if (course === null || course.missing || files.length === 0) return
     const courseId = course.id
     void importDroppedFiles(courseId, files, dirRelPath ?? importDirRelPath).then(paths => {
-      if (activeCourseIdRef.current === courseId && activeScopeRef.current === scopeKey) handleCreated(paths)
+      if (activeCourseIdRef.current === courseId && presentationIsCurrent()) handleCreated(paths)
     })
   }
 
@@ -500,11 +504,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       showToast(
         `자료로 저장했어요: ${fileName ?? materialBaseName(downloaded.relPath)}`
       )
-      if (activeCourseIdRef.current !== courseId || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== courseId || !presentationIsCurrent()) return
       setQuery('')
       clearSearch()
       await refreshAfterMutation(courseId)
-      if (activeCourseIdRef.current !== courseId || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== courseId || !presentationIsCurrent()) return
       ensureAncestorsExpanded(downloaded.relPath)
       setSelectedRelPath(downloaded.relPath)
     } catch (downloadError) {
@@ -551,6 +555,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
   const createFile = async (target: MaterialNode | null): Promise<void> => {
     if (course === null) return
+    const destination = captureActiveWorkspaceTarget()
     setContextMenu(null)
     const dirRelPath = workspaceDestination(targetDirectory(target), materialRoot)
     try {
@@ -559,11 +564,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         dirRelPath,
         title: '새 파일'
       })
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) { showToast('원래 과목에 새 파일을 만들었어요.'); return }
-      ensureAncestorsExpanded(created.relPath)
-      openMaterialInWorkspace('note', created.relPath)
+      if (destination) openMaterialInCourse(course.id, 'note', created.relPath, { target: destination })
       await refreshAfterMutation(course.id)
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
+      ensureAncestorsExpanded(created.relPath)
       setBrowserDirectory(materialParentPath(created.relPath))
       setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: true })
@@ -584,10 +588,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         dirRelPath,
         name
       })
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
       ensureAncestorsExpanded(created.relPath)
       await refreshAfterMutation(course.id)
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
       setBrowserDirectory(materialParentPath(created.relPath))
       setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: false })
@@ -605,10 +609,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         courseId: course.id,
         relPath: target.relPath
       })
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
       ensureAncestorsExpanded(duplicated.relPath)
       await refreshAfterMutation(course.id)
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
       setBrowserDirectory(materialParentPath(duplicated.relPath))
       setSelectedRelPath(duplicated.relPath)
       showToast('자료를 복제했어요.')
@@ -699,10 +703,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         course.id,
         reconciledNode,
         renamedRelPath,
-        activeCourseIdRef.current === course.id && activeScopeRef.current === scopeKey && editing?.reopenAfterRename === true
+        activeCourseIdRef.current === course.id && presentationIsCurrent() && editing?.reopenAfterRename === true
       )
       await refreshAfterMutation(course.id)
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return null
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return null
       setBrowserDirectory(materialParentPath(renamedRelPath))
       setSelectedRelPath(renamedRelPath)
       setEditing(null)
@@ -726,7 +730,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       })
       closeDeletedTabs(course.id, deleteTarget)
       await refreshAfterMutation(course.id)
-      if (activeCourseIdRef.current !== course.id || activeScopeRef.current !== scopeKey) return
+      if (activeCourseIdRef.current !== course.id || !presentationIsCurrent()) return
       if (
         selectedRelPath !== null &&
         pathIsTargetOrChild(selectedRelPath, deleteTarget.relPath)
@@ -736,7 +740,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       setDeleteTarget(null)
       showToast('휴지통으로 이동했어요.')
     } catch (deleteFailure) {
-      if (activeCourseIdRef.current === course.id && activeScopeRef.current === scopeKey) setDeleteError(operationError(deleteFailure, '휴지통으로 이동하지 못했습니다.'))
+      if (activeCourseIdRef.current === course.id && presentationIsCurrent()) setDeleteError(operationError(deleteFailure, '휴지통으로 이동하지 못했습니다.'))
       else showToast(operationError(deleteFailure, '휴지통으로 이동하지 못했습니다.'), 'danger')
     } finally {
       setDeletePending(false)
@@ -938,13 +942,6 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           )}
         </div>
         <div className="materials-heading__actions">
-          <MaterialViewMenu value={view} onChange={next => {
-                  setView(next); rememberMaterialView(next)
-                  if (selectedRelPath !== null) {
-                    if (view === 'list') setBrowserDirectory(materialParentPath(selectedRelPath))
-                    if (next === 'list') ensureAncestorsExpanded(selectedRelPath)
-                  }
-                }} />
           <input
             ref={fileInputRef}
             type="file"
@@ -976,7 +973,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           {importOpen && <div className="context-menu" role="menu" aria-label="자료 가져오기"><button role="menuitem" onClick={() => { setImportOpen(false); fileInputRef.current?.click() }}>파일 가져오기</button><button role="menuitem" onClick={() => { setImportOpen(false); requestProjectImport('url') }}>글 URL 가져오기</button><button role="menuitem" onClick={() => { setImportOpen(false); requestProjectImport('markdown') }}>기존 학습 자료 변환</button></div>}</div>
           <div className="materials-create-menu" ref={createMenu}>
             <Tooltip label="생성하기"><button type="button" className="bare-icon-button" aria-label="생성하기" aria-haspopup="menu" aria-expanded={createOpen} disabled={course === null || course.missing || isPasting} onClick={() => setCreateOpen(value => !value)}><Icon name="plus" /></button></Tooltip>
-            {createOpen && <div className="context-menu" role="menu" aria-label="자료 생성"><button role="menuitem" onClick={() => { setCreateOpen(false); if (course) openNewNoteSheet(course.id, undefined, undefined, workspaceDestination(targetDirectory(selectedNode), materialRoot)) }}><TabKindIcon kind="whiteboard" /> 새 노트</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFile(selectedNode) }}><Icon name="fileText" /> 새 마크다운</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFolder(selectedNode) }}><Icon name="folder" /> 새 폴더</button></div>}
+            {createOpen && <div className="context-menu" role="menu" aria-label="자료 생성"><button role="menuitem" onClick={() => { setCreateOpen(false); if (course) openNewNoteSheet(course.id, captureActiveWorkspaceTarget(), undefined, workspaceDestination(targetDirectory(selectedNode), materialRoot)) }}><TabKindIcon kind="whiteboard" /> 새 노트</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFile(selectedNode) }}><Icon name="fileText" /> 새 마크다운</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFolder(selectedNode) }}><Icon name="folder" /> 새 폴더</button></div>}
           </div>
           <Tooltip label="자료 새로고침">
             <button
@@ -1115,6 +1112,13 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             >
               <div className="materials-group-heading">
                 <button className="materials-section-toggle" aria-expanded={filesOpen || searching} onClick={() => setFilesOpen(!filesOpen)}><span aria-hidden="true">{filesOpen || searching ? '⌄' : '›'}</span>파일</button>
+                <MaterialViewMenu value={view} onChange={next => {
+                  setView(next); rememberMaterialView(next)
+                  if (selectedRelPath !== null) {
+                    if (view === 'list') setBrowserDirectory(materialParentPath(selectedRelPath))
+                    if (next === 'list') ensureAncestorsExpanded(selectedRelPath)
+                  }
+                }} />
                 {downloadingDirRelPath === '' && (
                   <span className="materials-download-status" role="status">
                     <Icon name="refresh" className="is-spinning" />

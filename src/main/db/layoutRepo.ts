@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3'
 import { ValidationError } from './errors'
 import { nowIso, requireId } from './validate'
 import { workspaceKey } from '../../shared/types/workspace'
+import { isWorkspaceWindows, readWorkspaceWindows } from '../../shared/workspaceWindows'
 
 export interface LayoutEntry { courseId: string; projectRootRelPath?: string; layout: unknown }
 export interface LayoutRepo {
@@ -20,6 +21,14 @@ function record(value: unknown): value is Record<string, any> { return typeof va
 
 /** Old nested projects shared their course layout. Never steal unrelated panes. */
 export function selectLegacyProjectLayout(raw: unknown, courseId: string, rootRelPath: string): unknown {
+  if (isWorkspaceWindows(raw)) {
+    const collection = readWorkspaceWindows(raw)
+    const windows = collection.windows.map(window => ({ ...window, layout: selectLegacyProjectLayout(window.layout, courseId, rootRelPath) }))
+      .filter(window => record(window.layout) && record(window.layout.panels) && Object.keys(window.layout.panels).length > 0)
+    // A fresh project must not inherit unrelated course windows or their chrome.
+    if (!windows.length) return null
+    return { ...collection, windows, activeWindowId: windows.some(window => window.id === collection.activeWindowId) ? collection.activeWindowId : windows[0]!.id }
+  }
   if (!record(raw) || !record(raw.panels) || !record(raw.grid)) return raw
   const panels = Object.fromEntries(Object.entries(raw.panels).filter(([, panel]) => {
     if (!record(panel)) return false
@@ -50,6 +59,9 @@ export function createLayoutRepo(db: Database): LayoutRepo {
   function serialize(entry: LayoutEntry): LayoutEntry & { json: string } {
     const courseId = requireId(entry.courseId, 'courseId')
     validRoot(entry.projectRootRelPath); assertCourseExists(courseId)
+    if (isWorkspaceWindows(entry.layout)) {
+      try { readWorkspaceWindows(entry.layout) } catch { throw new ValidationError('Invalid workspace windows') }
+    }
     let json: string | undefined
     try { json = JSON.stringify(entry.layout) } catch { throw new ValidationError('layout must be JSON-serializable') }
     if (json === undefined) throw new ValidationError('layout must be JSON-serializable')
@@ -60,6 +72,14 @@ export function createLayoutRepo(db: Database): LayoutRepo {
     for (const entry of entries) {
       const old = read(entry.courseId, entry.projectRootRelPath) ?? read(entry.courseId)
       if (old) db.prepare('INSERT OR IGNORE INTO workspace_layout_backups(scope_key,layout_json,created_at) VALUES(?,?,?)').run(key(entry.courseId, entry.projectRootRelPath), old.layout_json, now)
+      if (old && isWorkspaceWindows(entry.layout)) {
+        let previous: unknown
+        try { previous = JSON.parse(old.layout_json) } catch { previous = null }
+        // The general backup may predate this migration by months. Preserve the
+        // immediate raw layout separately in the same transaction as the upgrade.
+        if (!isWorkspaceWindows(previous)) db.prepare('INSERT OR IGNORE INTO workspace_layout_backups(scope_key,layout_json,created_at) VALUES(?,?,?)')
+          .run(`windows-v1:${key(entry.courseId, entry.projectRootRelPath)}`, old.layout_json, now)
+      }
       if (entry.projectRootRelPath === undefined) {
         db.prepare(`INSERT INTO tabs_layout(course_id,layout_json,created_at,updated_at) VALUES(?,?,?,?)
           ON CONFLICT(course_id) DO UPDATE SET layout_json=excluded.layout_json,updated_at=excluded.updated_at`).run(entry.courseId, entry.json, now, now)

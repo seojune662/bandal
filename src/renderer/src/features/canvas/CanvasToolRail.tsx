@@ -126,7 +126,7 @@ export function CanvasToolRail({
   }, [enabled, onRedo, onUndo, setActiveTool])
 
   return (
-    <div className="canvas-tools" role="toolbar" aria-label="개인 화이트보드 도구">
+    <div className="canvas-tools" data-workspace-toolbar role="toolbar" aria-label="개인 화이트보드 도구">
       <div className="canvas-tools__group" role="group" aria-label="그리기 도구">
         {TOOLS.map((entry) => (
           <button

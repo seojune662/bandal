@@ -17,7 +17,7 @@ interface AnnotationState {
 }
 export const useAnnotationStore = create<AnnotationState>((set) => ({
   session: null, busy: false, error: null, pending: {}, captureErrors: {},
-  begin: (conversationId, courseId, mode = 'element') => set(state => ({ session: { id: crypto.randomUUID(), conversationId, courseId, workspaceKey: useWorkspaceStore.getState().activeWorkspaceKey, mode }, busy: false, error: null, captureErrors: { ...state.captureErrors, [conversationId]: '' } })),
+  begin: (conversationId, courseId, mode = 'element') => set(state => ({ session: { id: crypto.randomUUID(), conversationId, courseId, workspaceKey: useWorkspaceStore.getState().activeWindowKey ?? useWorkspaceStore.getState().activeWorkspaceKey, mode }, busy: false, error: null, captureErrors: { ...state.captureErrors, [conversationId]: '' } })),
   // Ending the picker does not revoke captures already accepted from its user clicks.
   stop: () => set({ session: null, busy: false, error: null }),
   mode: mode => set(state => ({ session: state.session ? { ...state.session, id: crypto.randomUUID(), mode } : null, busy: false, error: null }))

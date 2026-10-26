@@ -5,7 +5,8 @@
  * so the sidebar only needs a one-line call.
  */
 
-import type { WorkspaceRef } from '../../../../shared/types/workspace'
+import { sameWorkspace, workspaceKey, type WorkspaceRef } from '../../../../shared/types/workspace'
+import { DEFAULT_WORKSPACE_WINDOW_ID, workspaceWindowKey } from '../../../../shared/workspaceWindows'
 import type { TabDescriptor } from '../../../../shared/tabs'
 import type { MaterialKind } from '../../../../shared/types/materials'
 import { showToast } from '../../app/toast'
@@ -15,17 +16,21 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { descriptorFor } from './tabIdentity'
 import { isViewableFile } from '../file/fileFormats'
+import { captureActiveWorkspaceTarget } from './captureWorkspaceTarget'
+import type { WorkspaceTarget } from './placementContext'
 
 interface OpenMaterialOptions {
   newInstance?: boolean
   workspace?: WorkspaceRef | null
   navigateToOwner?: boolean
+  target?: WorkspaceTarget
 }
 
 export const MATERIAL_OPEN_DEDUPE_MS = 5 * 60 * 1000
 
 const materialOpenRecordedAt = new Map<string, number>()
 let latestOpenRequest = 0
+const latestOpenRequestsByWindow = new Map<string, number>()
 
 /** Pure duplicate decision used by the renderer-side activity throttle. */
 export function shouldRecordMaterialOpen(
@@ -59,7 +64,7 @@ export function openMaterialInWorkspace(
   relPath: string,
   options?: OpenMaterialOptions
 ): void {
-  const courseId = useMaterialsStore.getState().activeCourseId
+  const courseId = options?.target ? options.target.courseId : useMaterialsStore.getState().activeCourseId
   if (courseId === null) return
   openMaterialInCourse(courseId, kind, relPath, { ...options, workspace: options?.workspace ?? useWorkspaceStore.getState().activeWorkspace })
 }
@@ -78,11 +83,18 @@ export function openMaterialInCourse(
   const request = ++latestOpenRequest
   const initialWorkspace = useWorkspaceStore.getState()
   const initialCourse = useCoursesStore.getState().selectedCourseId
-  const destination = options?.navigateToOwner ? { kind: 'course' as const, courseId } : options?.workspace ?? initialWorkspace.activeWorkspace ?? { kind: 'course' as const, courseId }
+  const destination = options?.target?.workspace ?? (options?.navigateToOwner ? { kind: 'course' as const, courseId } : options?.workspace ?? initialWorkspace.activeWorkspace ?? { kind: 'course' as const, courseId })
+  const isRecording = relPath.toLowerCase().endsWith('.wav')
+  const target = options?.target ?? (isRecording && sameWorkspace(destination, initialWorkspace.activeWorkspace) ? captureActiveWorkspaceTarget() : undefined)
+  const requestWindow = workspaceWindowKey(workspaceKey(destination), target?.windowId ?? initialWorkspace.activeWindowId ?? DEFAULT_WORKSPACE_WINDOW_ID)
+  latestOpenRequestsByWindow.set(requestWindow, request)
   const stillRequested = (): boolean => {
+    if (latestOpenRequestsByWindow.get(requestWindow) !== request) return false
+    if (target) return true
     const current = useWorkspaceStore.getState()
-    return request === latestOpenRequest && current.surface === initialWorkspace.surface &&
+    return current.surface === initialWorkspace.surface &&
       current.activeWorkspaceKey === initialWorkspace.activeWorkspaceKey &&
+      current.activeWindowId === initialWorkspace.activeWindowId &&
       current.activePanelId === initialWorkspace.activePanelId &&
       useCoursesStore.getState().selectedCourseId === initialCourse
   }
@@ -90,6 +102,10 @@ export function openMaterialInCourse(
     const courses = useCoursesStore.getState()
     if (!courses.courses.some(course => course.id === courseId)) {
       showToast('원본 과목을 찾을 수 없어요.', 'danger')
+      return
+    }
+    if (target) {
+      useWorkspaceStore.getState().openTab(descriptor, { target, ...(options?.newInstance === true ? { newInstance: true } : {}) })
       return
     }
     if (courses.selectedCourseId !== destination.courseId) courses.selectCourse(destination.courseId, { preserveSurface: true })
@@ -101,7 +117,7 @@ export function openMaterialInCourse(
     useWorkspaceStore.getState().openTab(descriptor)
   }
 
-  if (relPath.toLowerCase().endsWith('.wav')) {
+  if (isRecording) {
     void invoke('recordings:resolve', { courseId, relPath }).then((recording) => {
       if (!stillRequested()) return
       if (recording) {

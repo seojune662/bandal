@@ -9,7 +9,8 @@ import { TabContextMenu } from './TabContextMenu'
 import { isTabDescriptor } from './tabIdentity'
 import { setWorkspaceTabDragImage, writeWorkspaceTabDragData } from './tabDrag'
 import { WorkspaceTabIcon } from './workspaceIcons'
-import { WorkspaceCourseContext, WorkspaceRefContext } from './placementContext'
+import { WorkspaceCourseContext, WorkspaceRefContext, WorkspaceWindowContext } from './placementContext'
+import { workspaceWindowKey } from '../../../../shared/workspaceWindows'
 import { workspaceKey } from '../../../../shared/types/workspace'
 import { tabDragSession } from './tabDragSession'
 import { layoutAdaptiveTabs } from './adaptiveTabs'
@@ -19,6 +20,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const t = useT()
   const workspaceCourseId = useContext(WorkspaceCourseContext)
   const workspace = useContext(WorkspaceRefContext)
+  const windowId = useContext(WorkspaceWindowContext)
   const [title, setTitle] = useState(props.api.title ?? '')
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -49,7 +51,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
     const handleDragStart = (event: DragEvent): void => {
       if (event.dataTransfer === null || dockviewTab === null) return
       const source = {
-        courseId: workspace === null ? workspaceCourseId : workspaceKey(workspace), panelId: props.api.id, nonce: crypto.randomUUID()
+        courseId: workspace === null ? workspaceCourseId : workspaceWindowKey(workspaceKey(workspace), windowId), panelId: props.api.id, nonce: crypto.randomUUID()
       }
       tabDragSession.beginTab(source)
       writeWorkspaceTabDragData(event.dataTransfer, descriptor, title, source)
@@ -129,7 +131,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
       selection.forEach(subscription => subscription.dispose())
       unbind()
     }
-  }, [descriptor, title, props.api, props.containerApi, workspaceCourseId])
+  }, [descriptor, title, props.api, props.containerApi, workspaceCourseId, workspace, windowId])
 
   return (
     <>
@@ -144,6 +146,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
         <div
           ref={tabRef}
           className="workspace-tab"
+          data-private-preview={descriptor?.kind === 'browser' && descriptor.payload.isPrivate === true || undefined}
           onContextMenu={(event) => {
             if (descriptor === null || course === null) return
             event.preventDefault()

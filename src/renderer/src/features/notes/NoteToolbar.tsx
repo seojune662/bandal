@@ -324,7 +324,7 @@ export function NoteToolbar({
   )
 
   return (
-    <div className="note-format-bar" role="toolbar" aria-label="마크다운 서식">
+    <div className="note-format-bar" data-workspace-toolbar role="toolbar" aria-label="마크다운 서식">
       <div className="note-format-bar__scroll">
         <div className="note-format-group">
           {commandButton('본문', '¶', formatState.paragraph, (editor) =>

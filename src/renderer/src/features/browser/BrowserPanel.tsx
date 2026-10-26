@@ -266,7 +266,7 @@ function BrowserToolbar({
 
   return (
     <div className="browser-chrome">
-      <header className="browser-toolbar" aria-label="브라우저 도구 모음">
+      <header className="browser-toolbar" data-workspace-toolbar aria-label="브라우저 도구 모음">
         <div className="browser-toolbar__nav">
           <Tooltip label="뒤로" placement="bottom">
             <button

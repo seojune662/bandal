@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DockviewApi } from 'dockview'
-import { useWorkspaceStore, workspaceApiForCourse, type WorkspacePanelMovePosition } from '../../stores/workspaceStore'
+import { useWorkspaceStore, workspaceApiForWindow, type WorkspacePanelMovePosition } from '../../stores/workspaceStore'
 import { BANDAL_TAB_DRAG_MIME, matchesWorkspaceMoveData } from './tabDrag'
 import { tabDragSession } from './tabDragSession'
 import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop } from './courseTabMoveNavigation'
@@ -67,13 +67,13 @@ export function CourseTabMoveOverlay(): JSX.Element {
     let inside = false
     let point: { x: number; y: number; target: Node | null } | null = null
     let previewFrame: number | null = null
-    let lastCourse = useWorkspaceStore.getState().activeWorkspaceKey
+    let lastCourse = useWorkspaceStore.getState().activeWindowKey
     let lastHydration = useWorkspaceStore.getState().hydration
     let lastSurface = useWorkspaceStore.getState().surface
     const reflectGuides = (): void => {
       const source = tabDragSession.getSource(), state = useWorkspaceStore.getState()
       const heldTab = !!source && tabDragSession.getSnapshot() === 'tab'
-      if (heldTab && state.activeWorkspaceKey !== source.courseId) root.dataset.courseTabMoving = 'true'
+      if (heldTab && state.activeWindowKey !== source.courseId) root.dataset.courseTabMoving = 'true'
       else delete root.dataset.courseTabMoving
       if (heldTab && !inside) root.dataset.tabDragOutside = 'true'
       else delete root.dataset.tabDragOutside
@@ -81,10 +81,10 @@ export function CourseTabMoveOverlay(): JSX.Element {
     const targetAtPoint = (x: number, y: number): { courseId: string | null; target: MoveTarget } | null => {
       const source = tabDragSession.getSource(), state = useWorkspaceStore.getState()
       if (!source || tabDragSession.getSnapshot() !== 'tab' ||
-        state.surface !== 'course' || state.hydration !== 'ready' || (state.activeWorkspaceKey === null && source.courseId !== null)) return null
-      const api = workspaceApiForCourse(state.activeWorkspaceKey)
+        state.surface !== 'course' || state.windowsOverviewOpen || state.hydration !== 'ready' || (state.activeWindowKey === null && source.courseId !== null)) return null
+      const api = workspaceApiForWindow(state.activeWindowKey)
       const target = api ? courseMoveTarget(api, root, x, y) : null
-      return target ? { courseId: state.activeWorkspaceKey, target } : null
+      return target ? { courseId: state.activeWindowKey, target } : null
     }
     const withinRoot = (x: number, y: number, target: Node | null): boolean => {
       const bounds = root.getBoundingClientRect()
@@ -136,7 +136,7 @@ export function CourseTabMoveOverlay(): JSX.Element {
       if (!beginWorkspaceCourseMoveDrop(source.nonce)) return
       let accepted = false
       try {
-        const api = workspaceApiForCourse(targetCourseId), panel = api?.getPanel(source.panelId)
+        const api = workspaceApiForWindow(targetCourseId), panel = api?.getPanel(source.panelId)
         if (api && panel && target.position?.groupId) {
           const withinOwnContent = target.position.direction === 'within' && target.position.index === undefined && panel.group.id === target.position.groupId
           accepted = withinOwnContent || movePanelWithinWorkspace(api, source.panelId, { ...target.position, groupId: target.position.groupId })
@@ -155,8 +155,8 @@ export function CourseTabMoveOverlay(): JSX.Element {
     }
     const unsubscribe = tabDragSession.subscribe(() => { inside = false; point = null; reflectGuides(); setPreview(null) })
     const stopCourse = useWorkspaceStore.subscribe(state => {
-      if (state.activeWorkspaceKey !== lastCourse || state.hydration !== lastHydration || state.surface !== lastSurface) {
-        lastCourse = state.activeWorkspaceKey; lastHydration = state.hydration; lastSurface = state.surface
+      if (state.activeWindowKey !== lastCourse || state.hydration !== lastHydration || state.surface !== lastSurface) {
+        lastCourse = state.activeWindowKey; lastHydration = state.hydration; lastSurface = state.surface
         setPreview(null)
         schedulePreview()
       }

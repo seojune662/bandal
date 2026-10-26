@@ -214,7 +214,7 @@ function LegacySlidesViewer({
   return (
     <div className="file-slides">
       {pageImageCopy.overlay}
-      <header className="file-slides__header">
+      <header className="file-slides__header" data-workspace-toolbar>
         <strong>{fileName}</strong>
         <span>{slides.length}슬라이드 · 읽기 전용 미리보기</span>
         <FileToolbarActions />

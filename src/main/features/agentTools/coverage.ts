@@ -19,7 +19,7 @@
  * Out of scope on purpose: identity (`auth:*`), secrets (`credentials:*`), the
  * assistant's own plumbing (`chat:*`, `agent:*`, `agentTools:*`,
  * `browserAgent:*`), and app/system surfaces (`settings:*`, `update:*`,
- * `window:*`, `shell:*`, `print:*`, `layout:*`, `media:*`, `context:*`). Those
+ * `window:*`, `workspacePreview:*`, `shell:*`, `print:*`, `layout:*`, `media:*`, `context:*`). Those
  * are not the study workspace. `mcp:*` manages external tool configuration,
  * so it does not belong in
  * WORKSPACE_PREFIXES either. An agent that could sign the student out or read
@@ -110,6 +110,10 @@ export const AGENT_MUTATING_TOOL_NAMES: ReadonlySet<string> = new Set(
  * let the test fail.
  */
 export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
+  'workspacePreview:capture': '윈도우 관리 화면의 로컬 축소본이며 사용자의 문서·브라우저 화면을 에이전트에 노출하지 않는다.',
+  'workspacePreview:read': '프로필 내부 윈도우 관리 UI 전용 이미지 캐시로 에이전트가 조회하지 않는다.',
+  'workspacePreview:save': '윈도우 관리 UI가 개인정보 영역을 가린 뒤 저장하는 로컬 이미지 캐시이다.',
+  'workspacePreview:remove': '윈도우를 닫을 때 UI가 정리하는 로컬 이미지 캐시로 에이전트 작업 대상이 아니다.',
   // -- irreversible or outside the app's own data ---------------------------
   'courses:purge':
     '휴지통 비우기는 되돌릴 수 없고 디스크의 실제 폴더를 지운다. 학생이 직접 누른다.',

@@ -256,7 +256,7 @@ export function SheetViewer({
 
   return (
     <div className="file-sheet">
-      <div className="file-sheet__toolbar">
+      <div className="file-sheet__toolbar" data-workspace-toolbar>
         <div className="file-sheet__tabs" role="tablist" aria-label="시트 선택">
           {loaded.workbook.SheetNames.map((sheetName, index) => {
             const tabId = `${tabIdPrefix}-tab-${index}`

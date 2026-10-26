@@ -1,3 +1,4 @@
+import { workspaceWindowFromKey } from '../../../../shared/workspaceWindows'
 import { workspaceFromKey } from '../../../../shared/types/workspace'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useCoursesStore } from '../../stores/coursesStore'
@@ -35,12 +36,18 @@ function retainSources(next: readonly WorkspaceTabDragSource[]): void {
 function finish(navigation: HoverNavigation): void {
   navigations.delete(navigation.nonce)
   const courses = useCoursesStore.getState()
+  const current = useWorkspaceStore.getState().activeWorkspaceKey
+  const expected = navigation.expected === null ? null : workspaceWindowFromKey(navigation.expected).workspaceKey
+  const original = navigation.origin === null ? null : workspaceWindowFromKey(navigation.origin)
   if (!navigation.navigated || navigation.accepted || navigation.externalSelection ||
-    tabDragSession.getSnapshot() !== null || useWorkspaceStore.getState().activeWorkspaceKey !== navigation.expected ||
+    tabDragSession.getSnapshot() !== null || (current !== expected && current !== (original?.workspaceKey ?? null)) ||
     (navigation.origin !== null && !courses.courses.some(course => course.id === workspaceFromKey(navigation.origin!).courseId))) return
   const origin = navigation.origin === null ? null : workspaceFromKey(navigation.origin)
   courses.selectCourse(origin?.courseId ?? null, { preserveSurface: true })
-  useWorkspaceStore.getState().showWorkspace(origin)
+  // Cancel even a hover transition still waiting for its preview capture, and
+  // restore the exact canvas where this drag began.
+  if (origin && original) useWorkspaceStore.getState().showWorkspaceWindow(origin, original.windowId)
+  else useWorkspaceStore.getState().showWorkspace(null)
 }
 
 /** Hover navigation belongs to one drag, not to the tab's resource binding. */
@@ -53,7 +60,7 @@ export function installWorkspaceCourseMoveNavigation(): () => void {
     activeNonce = source?.nonce ?? null
     if (previous) { previous.ended = true; if (!previous.pending) finish(previous) }
     if (source) {
-      const origin = useWorkspaceStore.getState().activeWorkspaceKey
+      const origin = useWorkspaceStore.getState().activeWindowKey
       navigations.set(source.nonce, { nonce: source.nonce, origin, expected: origin, navigated: false,
         externalSelection: false, pending: false, accepted: false, ended: false })
     }
@@ -62,7 +69,7 @@ export function installWorkspaceCourseMoveNavigation(): () => void {
   const stopCourse = useWorkspaceStore.subscribe((state, previous) => {
     if (selectingWorkspace || state.activeWorkspaceKey === previous.activeWorkspaceKey) return
     for (const navigation of navigations.values()) {
-      if ((navigation.nonce === activeNonce || navigation.pending) && state.activeWorkspaceKey !== navigation.expected)
+      if ((navigation.nonce === activeNonce || navigation.pending) && state.activeWorkspaceKey !== (navigation.expected === null ? null : workspaceWindowFromKey(navigation.expected).workspaceKey))
         navigation.externalSelection = true
     }
   })

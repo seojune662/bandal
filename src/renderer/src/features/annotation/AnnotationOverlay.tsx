@@ -95,7 +95,7 @@ export function AnnotationOverlay(): JSX.Element | null {
       if (event.key !== 'Escape') return
       event.preventDefault(); event.stopImmediatePropagation(); useAnnotationStore.getState().stop()
     }
-    const unsubscribe = useWorkspaceStore.subscribe(state => { if (state.activeWorkspaceKey !== session.workspaceKey || state.surface !== 'course') useAnnotationStore.getState().stop() })
+    const unsubscribe = useWorkspaceStore.subscribe(state => { if ((state.activeWindowKey ?? state.activeWorkspaceKey) !== session.workspaceKey || state.surface !== 'course' || state.windowsOverviewOpen) useAnnotationStore.getState().stop() })
     let draining = false
     const pollBrowsers = async (): Promise<void> => {
       if (!live || draining) return

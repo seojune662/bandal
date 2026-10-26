@@ -51,7 +51,7 @@ test.describe('sidebars', () => {
 
   test('aligns the school with AI in the sidebar below the window controls', async ({}, info) => {
     const { page } = bandal
-    const rail = page.locator('aside.app-rail--left')
+    const rail = page.locator('.shell-home-sidebar')
     const school = rail.getByRole('button', { name: /서울대학교 바로가기/ })
 
     await expect(rail.locator('.course-sidebar-chrome__name')).toHaveCount(0)
@@ -164,20 +164,31 @@ test.describe('sidebars', () => {
     await expect(course).toBeVisible()
   })
 
-  test('native fullscreen shifts chrome and the collapsed workspace spacer together', async ({}, info) => {
+  test('native fullscreen keeps the workspace below the common title row and controls in the corner', async ({}, info) => {
     const { page, app } = bandal
-    if (await page.locator('.workspace-chrome-spacer').count() === 0) {
+    if (await page.locator('.workspace-course .dv-tab').count() === 0) {
       await createCourse(page, '전체화면')
       await createPdfNote(page)
     }
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     const chrome = page.locator('.shell-chrome')
     const normalWidth = await chrome.evaluate(element => element.getBoundingClientRect().width)
+    const controls = page.getByRole('group', { name: '작업 공간 보기', exact: true })
+    const corner = await controls.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      return { top: rect.top, right: innerWidth - rect.right, height: rect.height }
+    })
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setFullScreen(true))
     try {
       await expect(page.locator('html')).toHaveAttribute('data-fullscreen', 'true')
       await expect(chrome).toHaveCSS('width', '48px')
-      await expect(page.locator('.workspace-chrome-spacer').first()).toHaveCSS('width', '48px')
+      const titleBottom = await chrome.evaluate(element => element.getBoundingClientRect().bottom)
+      expect(await page.locator('.workspace-host').evaluate(element => element.getBoundingClientRect().top)).toBe(titleBottom)
+      expect(await controls.evaluate(element => {
+        const rect = element.getBoundingClientRect()
+        return { top: rect.top, right: innerWidth - rect.right, height: rect.height }
+      })).toEqual(corner)
+      await expect(page.locator('.workspace-chrome-spacer')).toHaveCount(0)
       await page.screenshot({ path: info.outputPath('fullscreen-collapsed.png') })
       await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
       await expect(page.locator('aside.app-rail--left')).toHaveCSS('transform', 'none')

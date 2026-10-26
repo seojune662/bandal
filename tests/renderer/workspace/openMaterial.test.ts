@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock, workspace } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   openTabMock: vi.fn(), selectCourseMock: vi.fn(), showCourseWorkspaceMock: vi.fn(),
-  workspace: { activeCourseId: 'course-1', activeWorkspaceKey: 'course-1', activeWorkspace: { kind: 'course', courseId: 'course-1' }, activePanelId: null, surface: 'course' }
+  workspace: { activeCourseId: 'course-1', activeWorkspaceKey: 'course-1', activeWindowId: 'main', activeWorkspace: { kind: 'course', courseId: 'course-1' }, activePanelId: null, surface: 'course' }
 }))
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
@@ -21,6 +21,7 @@ vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({
 }))
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
+  workspaceApiForWindow: () => ({ activeGroup: { id: 'source-group' } }),
   useWorkspaceStore: {
     getState: () => ({ ...workspace, openTab: openTabMock, showWorkspace: showCourseWorkspaceMock })
   }
@@ -30,6 +31,7 @@ vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
 }))
 
 import { openMaterialInCourse } from '../../../src/renderer/src/features/workspace/openMaterial'
+const originalTarget = { courseId: 'course-1', workspace: { kind: 'course' as const, courseId: 'course-1' }, windowId: 'main', groupId: 'source-group' }
 
 describe('openMaterialInCourse', () => {
   beforeEach(() => {
@@ -37,7 +39,7 @@ describe('openMaterialInCourse', () => {
     openTabMock.mockReset()
     selectCourseMock.mockReset(); showCourseWorkspaceMock.mockReset()
     invokeMock.mockResolvedValue({ ok: true })
-    workspace.activeCourseId = 'course-1'; workspace.activeWorkspaceKey = 'course-1'; workspace.activeWorkspace = {kind: 'course', courseId: 'course-1'}; workspace.surface = 'course'
+    workspace.activeCourseId = 'course-1'; workspace.activeWorkspaceKey = 'course-1'; workspace.activeWindowId = 'main'; workspace.activeWorkspace = {kind: 'course', courseId: 'course-1'}; workspace.surface = 'course'
   })
 
   test('opens an image tab and records material activity', () => {
@@ -99,20 +101,34 @@ describe('openMaterialInCourse', () => {
     invokeMock.mockResolvedValueOnce({ id: 'recording-1', title: 'Lecture' })
     openMaterialInCourse('course-1', 'other', 'lecture.wav')
     await Promise.resolve()
-    expect(openTabMock).toHaveBeenCalledWith({ kind: 'recording', payload: { courseId: 'course-1', sessionId: 'recording-1', title: 'Lecture' } })
+    expect(openTabMock).toHaveBeenCalledWith({ kind: 'recording', payload: { courseId: 'course-1', sessionId: 'recording-1', title: 'Lecture' } }, { target: originalTarget })
   })
 
-  test.each(['course', 'home', 'another-file'])('a late recording result respects navigation to %s', async next => {
+  test.each(['course', 'home', 'another-window', 'another-file'])('a late recording result respects navigation to %s', async next => {
     let resolve!: (value: unknown) => void
     invokeMock.mockReturnValueOnce(new Promise(done => { resolve = done }))
     openMaterialInCourse('course-1', 'other', 'lecture.wav')
     if (next === 'course') workspace.activeWorkspaceKey = 'course-2'
     else if (next === 'home') workspace.surface = 'learning-home'
+    else if (next === 'another-window') {
+      workspace.activeWindowId = 'second'
+      openMaterialInCourse('course-1', 'note', 'other-window.md')
+    }
     else openMaterialInCourse('course-1', 'note', 'next.md')
-    openTabMock.mockClear(); selectCourseMock.mockClear()
+    openTabMock.mockClear(); selectCourseMock.mockClear(); showCourseWorkspaceMock.mockClear()
     resolve({ id: 'old-recording', title: 'Old' })
     await Promise.resolve()
-    expect(openTabMock).not.toHaveBeenCalled()
+    if (next === 'another-file') expect(openTabMock).not.toHaveBeenCalled()
+    else expect(openTabMock).toHaveBeenCalledWith(expect.objectContaining({ kind: 'recording' }), { target: originalTarget })
     expect(selectCourseMock).not.toHaveBeenCalled()
+    expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
+  })
+
+  test('explicit target delivery preserves the current workspace and original split', () => {
+    workspace.activeWindowId = 'second'
+    openMaterialInCourse('course-1', 'note', 'created.md', { target: originalTarget, newInstance: true })
+    expect(openTabMock).toHaveBeenCalledWith({ kind: 'note', payload: { courseId: 'course-1', relPath: 'created.md' } }, { target: originalTarget, newInstance: true })
+    expect(selectCourseMock).not.toHaveBeenCalled()
+    expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
   })
 })

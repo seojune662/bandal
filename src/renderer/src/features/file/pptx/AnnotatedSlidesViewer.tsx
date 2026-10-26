@@ -211,7 +211,7 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
     const files = clipboardImageFiles(event.clipboardData)
     if (files.length) { event.preventDefault(); event.stopPropagation(); void addImages(files) }
   }}>
-    <header className="presentation-toolbar"><strong title={fileName}>{fileName}</strong><div className="presentation-toolbar__controls">
+    <header className="presentation-toolbar" data-workspace-toolbar><strong title={fileName}>{fileName}</strong><div className="presentation-toolbar__controls">
       <input type="number" aria-label="슬라이드 번호" min={1} max={presentation.slideCount} value={currentPage} onChange={(e) => { const n = Number(e.target.value); if (n >= 1 && n <= presentation.slideCount) jump(n - 1) }} /><span>/ {presentation.slideCount}</span>
       <button type="button" aria-pressed={annotating} onClick={() => setAnnotating((v) => !v)}>{annotating ? '필기 중' : '텍스트 선택'}</button>
       <button type="button" onClick={() => setDialogOpen(true)}>페이지 필기 {pageConnections.length || ''}</button>

@@ -442,7 +442,7 @@ function RecordingWorkspace({
       data-status={session?.status ?? 'new'}
       data-sidebar={sidebarOpen}
     >
-      <header className="recording__header">
+      <header className="recording__header" data-workspace-toolbar>
         <div className="recording__heading">
           <TabKindIcon kind="recording" />
           <span>녹음</span>

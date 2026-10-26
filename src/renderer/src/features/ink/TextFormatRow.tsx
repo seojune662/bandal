@@ -140,7 +140,7 @@ export function TextFormatRow({
   return (
     <div
       className="ink-format-row"
-      role="toolbar"
+      role="toolbar" data-workspace-toolbar
       aria-label="텍스트 서식"
       {...TEXT_FORMAT_ROW_ATTRIBUTE}
     >

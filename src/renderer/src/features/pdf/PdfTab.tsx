@@ -62,7 +62,8 @@ import {
 } from '../notes/materialLinkNavigation'
 import { readPageSelection } from './lib/domSelection'
 import { normalizeSelectionRects, rectsBoundingBox } from './lib/annotationGeometry'
-import { pdfScrollMemory } from './lib/scrollMemory'
+import { createScrollMemory, pdfScrollMemory, type ScrollMemoryEntry } from './lib/scrollMemory'
+import { FLUSH_PANEL_VIEW_STATE, readPdfPanelViewState } from '../workspace/panelViewState'
 import { PdfViewportResize } from './lib/viewportResize'
 import { useDrawings } from './tools/useDrawings'
 import { usePdfToolStore } from './tools/toolStore'
@@ -110,6 +111,8 @@ configurePdfWorker()
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 4
 const ZOOM_STEP = 1.15
+// Distinct windows on the same file keep independent reading positions.
+const panelScrollMemory = createScrollMemory(100)
 /**
  * 반드시 모듈 레벨 상수 — react-pdf 는 options 참조가 바뀌면 문서를
  * 재로드한다. lazy 모드(range fetch)로 대형 PDF 도 첫 페이지 청크만 읽는다.
@@ -174,6 +177,8 @@ function PdfViewer({
   interactive,
   visible,
   panelId,
+  initialViewState,
+  onViewState,
   pageNotePair,
   noteInfo,
   isPreviewOpen,
@@ -185,6 +190,8 @@ function PdfViewer({
   interactive: boolean
   visible: boolean
   panelId: string
+  initialViewState: ScrollMemoryEntry | null
+  onViewState(state: ScrollMemoryEntry): void
   pageNotePair: PdfPageNotePairContext | null
   noteInfo: PdfNoteInfo
   isPreviewOpen: boolean
@@ -246,10 +253,13 @@ function PdfViewer({
   const [pageAspects, setPageAspects] = useState<Map<number, number>>(new Map())
   const [containerWidth, setContainerWidth] = useState(0)
   const [containerHeight, setContainerHeight] = useState(0)
-  const [zoom, setZoom] = useState<number>(
-    () => pdfScrollMemory.get(courseId, relPath)?.zoom ?? 1
-  )
-  const [currentPage, setCurrentPage] = useState(1)
+  const memoryKey = `${courseId}\u0000${relPath}`
+  const initialStateRef = useRef(initialViewState ?? panelScrollMemory.get(panelId, memoryKey) ?? pdfScrollMemory.get(courseId, relPath))
+  const latestViewStateRef = useRef(initialStateRef.current)
+  const onViewStateRef = useRef(onViewState)
+  onViewStateRef.current = onViewState
+  const [zoom, setZoom] = useState<number>(() => initialStateRef.current?.zoom ?? 1)
+  const [currentPage, setCurrentPage] = useState(initialStateRef.current?.anchor?.page ?? 1)
   const aiPageText = useRef('')
   useEffect(() => {
     let live = true; aiPageText.current = ''
@@ -633,16 +643,22 @@ function PdfViewer({
     const anchor = canMeasure
       ? rememberViewportAnchor()
       : viewAnchorRef.current
-    const previous = pdfScrollMemory.get(courseId, relPath)
+    const previous = latestViewStateRef.current
     if (!canMeasure && previous === null && anchor === null) return
-    pdfScrollMemory.set(courseId, relPath, {
+    const next: ScrollMemoryEntry = {
       scrollTop: canMeasure ? scroller.scrollTop : (previous?.scrollTop ?? 0),
       scrollHeight: canMeasure
         ? scroller.scrollHeight
         : (previous?.scrollHeight ?? 0),
       zoom: zoomRef.current,
-      ...(anchor === null ? {} : { anchor })
-    })
+      ...(anchor === null ? (previous?.anchor ? { anchor: previous.anchor } : {}) : { anchor })
+    }
+    latestViewStateRef.current = next
+    panelScrollMemory.set(panelId, memoryKey, next)
+    onViewStateRef.current(next)
+    if (!canMeasure) return
+    // File defaults are used only when a new panel has no saved view yet.
+    pdfScrollMemory.set(courseId, relPath, next)
     // 재시작 대비 — 마지막 페이지/줌을 로컬 SQLite 에도 남긴다(피기백,
     // 같은 디바운스). 실패는 조용히: 위치 기록은 사용자 콘텐츠가 아니다.
     void invoke('pdf:setViewState', {
@@ -651,7 +667,16 @@ function PdfViewer({
       page: anchor?.page ?? currentPageRef.current,
       zoom: zoomRef.current
     }).catch(() => {})
-  }, [courseId, relPath, rememberViewportAnchor])
+  }, [courseId, relPath, panelId, memoryKey, rememberViewportAnchor])
+
+  useEffect(() => {
+    window.addEventListener(FLUSH_PANEL_VIEW_STATE, persistScroll)
+    window.addEventListener('beforeunload', persistScroll)
+    return () => {
+      window.removeEventListener(FLUSH_PANEL_VIEW_STATE, persistScroll)
+      window.removeEventListener('beforeunload', persistScroll)
+    }
+  }, [persistScroll])
 
   const handleScroll = useCallback((): void => {
     // Hidden panels can emit a scroll event when the browser clamps their
@@ -764,7 +789,7 @@ function PdfViewer({
     // linked pane, explicit jump, or a tab that has since been hidden/closed.
     const canRestore = (): boolean => restoreMountedRef.current && !restoreRef.current.cancelled && visibleRef.current && scrollerRef.current === scroller
     restoreRef.current.done = true
-    const entry = takeRemappedAnchor(courseId, relPath, pdfScrollMemory.get(courseId, relPath))
+    const entry = takeRemappedAnchor(courseId, relPath, initialStateRef.current)
     if (
       entry !== null &&
       (entry.anchor !== undefined || entry.scrollHeight > 0)
@@ -789,6 +814,7 @@ function PdfViewer({
       })
       return
     }
+    if (entry !== null) return
     // 세션 메모리가 없다 = 재시작 후 첫 열람 — 로컬 DB의 마지막 페이지로.
     void invoke('pdf:getViewState', { courseId, relPath })
       .then((saved) => {
@@ -1358,6 +1384,9 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [noteInfo, setNoteInfo] = useState<PdfNoteInfo | null>(null)
   const [infoError, setInfoError] = useState('')
+  const persistView = useCallback((pdfViewState: ScrollMemoryEntry): void => {
+    props.api.updateParameters({ pdfViewState })
+  }, [props.api])
   const currentDescriptor = descriptorFromParams(props.params)
   const course = currentDescriptor?.kind === 'pdf' ? currentDescriptor.payload.courseId : null
   const path = currentDescriptor?.kind === 'pdf' ? currentDescriptor.payload.relPath : null
@@ -1402,6 +1431,8 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
         interactive={panelActive}
         visible={panelVisible}
         panelId={props.api.id}
+        initialViewState={readPdfPanelViewState(props.params['pdfViewState'])}
+        onViewState={persistView}
         pageNotePair={pageNotePair}
         noteInfo={noteInfo}
         isPreviewOpen={isPreviewOpen}

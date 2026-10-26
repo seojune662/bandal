@@ -22,8 +22,3 @@ export function RightSidebar({ course }: { course: Course | null }): JSX.Element
     <section id="right-panel-ai" role="tabpanel" aria-label="AI" hidden={tab !== 'ai'}><WorkspaceAssistantPanel /></section>
   </div>
 }
-
-export function RightSidebarToggle(): JSX.Element {
-  const open = useUiStore(state => state.rightRailOpen)
-  return <div className="right-sidebar-toggle"><Tooltip label={open ? '오른쪽 사이드바 접기' : '오른쪽 사이드바 펼치기'} placement="bottom"><button type="button" className="titlebar-button" aria-label={open ? '오른쪽 사이드바 접기' : '오른쪽 사이드바 펼치기'} aria-expanded={open} aria-controls="right-sidebar" onClick={() => useUiStore.getState().toggleRightRail()}><Icon name="layoutRight" /></button></Tooltip></div>
-}

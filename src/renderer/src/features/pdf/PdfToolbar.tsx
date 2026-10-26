@@ -111,7 +111,7 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
   } = props
 
   return (
-    <div className="pdf-toolbar" role="toolbar" aria-label="PDF 뷰어 도구">
+    <div className="pdf-toolbar" data-workspace-toolbar role="toolbar" aria-label="PDF 뷰어 도구">
       <div className="pdf-toolbar__navigation">
         <button
           type="button"

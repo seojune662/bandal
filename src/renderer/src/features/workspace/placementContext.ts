@@ -5,13 +5,15 @@ import type { WorkspaceRef } from '../../../../shared/types/workspace'
 export interface WorkspaceTarget {
   courseId: string | null
   workspace?: WorkspaceRef | null
-  groupId: string
+  windowId?: string
+  groupId?: string
 }
 
 /** Placement is independent of a document's original resource/course binding. */
 export interface WorkspacePlacement {
   courseId: string | null
   workspace?: WorkspaceRef | null
+  windowId?: string
   panelId: string
   instanceId: string
 }
@@ -19,6 +21,7 @@ export interface WorkspacePlacement {
 export const WorkspacePlacementContext = createContext<WorkspacePlacement | null>(null)
 /** Dockview presentation slots use this before their content has an instance. */
 export const WorkspaceRefContext = createContext<WorkspaceRef | null>(null)
+export const WorkspaceWindowContext = createContext<string>('main')
 export const WorkspaceCourseContext = createContext<string | null>(null)
 export function useWorkspacePlacement(): WorkspacePlacement | null {
   return useContext(WorkspacePlacementContext)

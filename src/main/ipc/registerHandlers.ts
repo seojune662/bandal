@@ -6,6 +6,7 @@ import { sanitizeAnnotationReferences } from '../../shared/types/chatAnnotation'
 import { createProjectNavigationRepo } from '../db/projectNavigationRepo'
 import { createShareInbox } from '../features/share/shareInbox'
 import { registerAnnotationHandlers } from './annotationHandlers'
+import { registerWorkspacePreviewHandlers } from './workspacePreviewHandlers'
 import { exportMaterial, shareGeneratedMaterial } from '../features/materials/exportMaterial'
 import { createShareRootResolver } from '../features/share/shareRuntime'
 import { createMainWindow, revealMainWindow } from '../windows/mainWindow'
@@ -3907,6 +3908,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('feedback:send', (req) => feedback.send(req))
 
   registerAnnotationHandlers(handle)
+  registerWorkspacePreviewHandlers(handle)
   assertEveryChannelHandled()
   try {
     deadlineScheduler.start()

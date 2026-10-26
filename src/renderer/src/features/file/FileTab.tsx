@@ -300,7 +300,7 @@ export default function FileTab(props: IDockviewPanelProps): JSX.Element {
     <FileToolbarContext.Provider value={{ courseId, relPath }}>
     <PresentationContext.Provider value={{ panelId: props.api.id, interactive: interactive && courseActive, pair }}>
     <div className="workspace-panel file-panel" data-kind="file">
-      {needsToolbar && <div className="file-toolbar" role="toolbar" aria-label="파일 도구"><FileToolbarActions /></div>}
+      {needsToolbar && <div className="file-toolbar" data-workspace-toolbar role="toolbar" aria-label="파일 도구"><FileToolbarActions /></div>}
       <FileLoader
         key={`${courseId}:${relPath}`}
         courseId={courseId}

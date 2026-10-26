@@ -1,9 +1,19 @@
 import { isTabDescriptor, type TabDescriptor } from './tabs'
+import { isWorkspaceWindows, mapWorkspaceWindowLayouts } from './workspaceWindows'
 
 function record(value: unknown): value is Record<string, any> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 interface Move { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: boolean }
 /** Rewrites both persisted resource addresses and every Dockview reference atomically. */
 export function rewriteWorkspaceLayoutPaths(raw: unknown, move: Move): { layout: unknown; changed: boolean } {
+  if (isWorkspaceWindows(raw)) {
+    let changed = false
+    const layout = mapWorkspaceWindowLayouts(raw, value => {
+      const result = rewriteWorkspaceLayoutPaths(value, move)
+      changed ||= result.changed
+      return result.layout
+    })
+    return { layout: changed ? layout : raw, changed }
+  }
   if (!record(raw) || !record(raw.panels) || !record(raw.grid)) return { layout: raw, changed: false }
   const nextPath = (path: string): string => path === move.fromRelPath || move.isDirectory && path.startsWith(`${move.fromRelPath}/`) ? `${move.toRelPath}${path.slice(move.fromRelPath.length)}` : path
   const layout = structuredClone(raw), ids = new Map<string, string>()

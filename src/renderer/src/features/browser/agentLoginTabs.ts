@@ -2,7 +2,7 @@ import { isTabDescriptor, type TabDescriptor } from '../../../../shared/tabs'
 import type { BrowserOpenUrl } from '../../../../shared/ipc/events'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
 import { onPush } from '../../lib/ipc'
-import { retainedTabDescriptors, useWorkspaceStore, workspaceApiForCourse } from '../../stores/workspaceStore'
+import { retainedTabDescriptors, useWorkspaceStore, workspaceApiForWindow } from '../../stores/workspaceStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { showToast } from '../../app/toast'
@@ -11,6 +11,7 @@ import { isAgentConnectionReady, useAgentConnectionStore } from '../chat/agentCo
 import { agentConnectionCopy } from '../chat/agentConnectionCopy'
 import { getLocale } from '../../i18n/localeStore'
 import { sameWorkspace, workspaceFromKey, type WorkspaceRef } from '../../../../shared/types/workspace'
+import { workspaceWindowFromKey } from '../../../../shared/workspaceWindows'
 
 interface LoginTab { tabId: string; provider: AgentProvider; origin: string; callbackUrl: string | null; previousPanelId: string | null; courseId: string | null; workspaceKey: string | null; assistantWorkspace: WorkspaceRef | null }
 const loginTabs = new Map<string, LoginTab>()
@@ -43,7 +44,7 @@ export function agentLoginOpenGuard(payload: BrowserOpenUrl): (() => boolean) | 
 function liveLoginDescriptor(tabId: string, key: string | null): TabDescriptor | undefined {
   // Dockview inserts panels synchronously; openTabs is deliberately published on
   // the next animation frame and may still be empty when OAuth completes.
-  const descriptor = workspaceApiForCourse(key)?.panels.find(panel => {
+  const descriptor = workspaceApiForWindow(key)?.panels.find(panel => {
     const candidate = panel.params?.descriptor
     return isTabDescriptor(candidate) && candidate.kind === 'browser' && candidate.payload.tabId === tabId
   })?.params?.descriptor
@@ -92,9 +93,9 @@ export function prepareAgentLoginTab(payload: BrowserOpenUrl, proposedId: string
     const workspace = useWorkspaceStore.getState()
     // Select the exact placement, including sibling projects with one owner,
     // before the normal open path focuses the existing private panel.
-    if (workspace.activeWorkspaceKey !== previous.workspaceKey || workspace.surface !== 'course') {
+    if (workspace.activeWindowKey !== previous.workspaceKey || workspace.surface !== 'course') {
       const scope = previous.workspaceKey === null ? null : workspaceFromKey(previous.workspaceKey)
-      if (scope?.kind === 'project') workspace.showWorkspace(scope)
+      if (scope) { useCoursesStore.getState().selectCourse(previous.courseId, { preserveSurface: true }); workspace.showWorkspaceWindow(scope, workspaceWindowFromKey(previous.workspaceKey!).windowId) }
       else useCoursesStore.getState().selectCourse(previous.courseId)
     }
     return { tabId: previous.tabId, courseId: previous.courseId }
@@ -105,7 +106,7 @@ export function prepareAgentLoginTab(payload: BrowserOpenUrl, proposedId: string
     callbackUrl: new URL(payload.url).searchParams.get('redirect_uri'),
     previousPanelId: previous?.previousPanelId ?? workspace.activePanelSource()?.panelId ?? null,
     assistantWorkspace: previous?.assistantWorkspace ?? (useUiStore.getState().rightRailOpen && useUiStore.getState().rightRailTab === 'ai' ? workspace.activeWorkspace : null),
-    courseId: workspace.activeCourseId, workspaceKey: workspace.activeWorkspaceKey
+    courseId: workspace.activeCourseId, workspaceKey: workspace.activeWindowKey
   })
   return { tabId: proposedId, courseId: workspace.activeCourseId }
 }
@@ -147,7 +148,7 @@ export function installAgentLoginTabLifecycle(): () => void {
       if (owned.courseId === null) {
         // Resource deletion skips the temporary no-course canvas. Managed
         // login pages still own their panels there and must remove them.
-        const temporary = workspaceApiForCourse(null)
+        const temporary = workspaceApiForWindow(null)
         for (const panel of [...temporary?.panels ?? []]) {
           const candidate = panel.params?.descriptor
           if (candidate?.kind === 'browser' && candidate.payload.tabId === target.tabId) panel.api.close()
@@ -156,7 +157,7 @@ export function installAgentLoginTabLifecycle(): () => void {
       } else workspace.closeTabsMatching(descriptor)
     }
     while (finishedTabRequests.size > FINISHED_REQUEST_LIMIT * 4) finishedTabRequests.delete(finishedTabRequests.keys().next().value!)
-    if (wasActive && owned.workspaceKey === workspace.activeWorkspaceKey && (!owned.assistantWorkspace || sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace))) {
+    if (wasActive && owned.workspaceKey === workspace.activeWindowKey && (!owned.assistantWorkspace || sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace))) {
       if (owned.previousPanelId) workspace.activatePanel(owned.previousPanelId)
       if (owned.assistantWorkspace && sameWorkspace(owned.assistantWorkspace, workspace.activeWorkspace)) {
         useUiStore.getState().closeSettings()

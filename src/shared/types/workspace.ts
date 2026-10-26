@@ -1,3 +1,4 @@
+import { workspaceWindowFromKey } from '../workspaceWindows'
 /** A layout belongs to a workspace; its documents retain their original owners. */
 export type WorkspaceRef =
   | { kind: 'course'; courseId: string }
@@ -9,6 +10,7 @@ export function workspaceKey(workspace: WorkspaceRef): string {
 }
 
 export function workspaceFromKey(key: string): WorkspaceRef {
+  key = workspaceWindowFromKey(key).workspaceKey
   if (key.startsWith('project:[')) {
     try {
       const value: unknown = JSON.parse(key.slice('project:'.length))

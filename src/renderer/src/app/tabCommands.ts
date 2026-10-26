@@ -1,5 +1,5 @@
 import { openWorkspaceAssistant } from '../features/assistantPanel/assistantController'
-import { sameWorkspace, workspaceMaterialRoot } from '../../../shared/types/workspace'
+import { workspaceMaterialRoot } from '../../../shared/types/workspace'
 /**
  * Tab-creating commands shared by the ⌘-shortcuts and the new-tab omnibox.
  *
@@ -19,6 +19,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore'
 import { descriptorFor } from '../features/workspace/tabIdentity'
 import { showToast } from './toast'
 import type { WorkspaceTarget } from '../features/workspace/placementContext'
+import { captureActiveWorkspaceTarget } from '../features/workspace/captureWorkspaceTarget'
 
 export const DEFAULT_BROWSER_URL = 'https://www.google.com'
 
@@ -37,18 +38,17 @@ function activeCourseId(): string | null {
 
 /** Creates a .md in the course root and opens it. No-op without a course. */
 export async function createMarkdownTab(title?: string, target?: WorkspaceTarget): Promise<void> {
-  const courseId = target ? target.courseId : activeCourseId()
-  if (courseId === null) return
-  const captured = target ? target.workspace ?? { kind: 'course' as const, courseId: target.courseId! } : useWorkspaceStore.getState().activeWorkspace
+  target ??= captureActiveWorkspaceTarget()
+  if (!target || target.courseId === null) return
+  const courseId = target.courseId
+  const captured = target.workspace ?? { kind: 'course' as const, courseId }
   try {
     const ref = await invoke('notes:create', {
       courseId,
       dirRelPath: workspaceMaterialRoot(captured),
       title: title ?? defaultMarkdownTitle(new Date())
     })
-    if (target) useWorkspaceStore.getState().openTab(descriptorFor('note', ref), { target })
-    else if (sameWorkspace(useWorkspaceStore.getState().activeWorkspace, captured)) useWorkspaceStore.getState().openTab(descriptorFor('note', ref))
-    else showToast('원래 공간에 새 필기를 만들었어요.')
+    useWorkspaceStore.getState().openTab(descriptorFor('note', ref), { target })
     void useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
   } catch (error) {
     console.error('[Bandal] 마크다운을 만들지 못했습니다.', error)
@@ -58,18 +58,17 @@ export async function createMarkdownTab(title?: string, target?: WorkspaceTarget
 
 /** The keyboard picker creates a note immediately using the saved paper defaults. */
 export async function createDefaultNoteTab(target?: WorkspaceTarget): Promise<void> {
-  const courseId = target ? target.courseId : activeCourseId()
-  if (courseId === null) return
-  const captured = target ? target.workspace ?? { kind: 'course' as const, courseId: target.courseId! } : useWorkspaceStore.getState().activeWorkspace
+  target ??= captureActiveWorkspaceTarget()
+  if (!target || target.courseId === null) return
+  const courseId = target.courseId
+  const captured = target.workspace ?? { kind: 'course' as const, courseId }
   const now = new Date()
   const title = `노트 ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const { notePaper: paper, noteOrientation: orientation } = settingsSnapshot().tabs
   try {
     const { relPath } = await invoke('pdfNotes:create', { courseId, title, paper, orientation, ...(captured?.kind === 'project' ? { dirRelPath: workspaceMaterialRoot(captured) } : {}) })
     const descriptor = descriptorFor('pdf', { courseId, relPath })
-    if (target) useWorkspaceStore.getState().openTab(descriptor, { target })
-    else if (sameWorkspace(useWorkspaceStore.getState().activeWorkspace, captured)) useWorkspaceStore.getState().openTab(descriptor)
-    else showToast('원래 공간에 새 노트를 만들었어요.')
+    useWorkspaceStore.getState().openTab(descriptor, { target })
     void useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
   } catch (error) {
     console.error('[Bandal] 노트를 만들지 못했습니다.', error)
@@ -89,6 +88,7 @@ export async function createStudyTab(
   kind: 'chat' | 'recording' | 'whiteboard' | 'board',
   target?: WorkspaceTarget
 ): Promise<void> {
+  if (kind === 'whiteboard') target ??= captureActiveWorkspaceTarget()
   const courseId = target ? target.courseId : activeCourseId()
   const open = (descriptor: TabDescriptor): void => {
     if (target) useWorkspaceStore.getState().openTab(descriptor, { target })

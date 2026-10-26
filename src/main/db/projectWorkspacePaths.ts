@@ -2,6 +2,9 @@ import type { Database } from 'better-sqlite3'
 import type { LearningRepointInput } from '../features/learning/learningRepo'
 import { workspaceFromKey, workspaceKey } from '../../shared/types/workspace'
 import { rewriteWorkspaceLayoutPaths } from '../../shared/workspaceLayoutPaths'
+import { isWorkspaceWindows, mapWorkspaceWindowLayouts } from '../../shared/workspaceWindows'
+import { remapWorkspacePanelIds } from '../../shared/workspacePanelIds'
+import { randomUUID } from 'node:crypto'
 
 /** Runs with the durable learning-path outbox acknowledgement transaction. */
 export function repointProjectWorkspaces(db: Database, input: LearningRepointInput): void {
@@ -62,22 +65,27 @@ export function copyProjectWorkspaces(db: Database, input: LearningRepointInput)
     if (root === null) continue
     let raw: any
     try { raw = JSON.parse(row.layout_json) } catch { continue }
-    const layout = rewriteWorkspaceLayoutPaths(raw, input).layout as any
-    if (!layout || typeof layout !== 'object' || !layout.panels || !layout.grid) continue
-    for (const [id, value] of Object.entries(layout.panels) as [string, any][]) {
-      if (['browser', 'chat', 'plugin-panel'].includes(value?.params?.descriptor?.kind)) delete layout.panels[id]
-    }
-    const visit = (node: any): void => {
-      if (!node || typeof node !== 'object') return
-      if (Array.isArray(node.data)) { node.data.forEach(visit); return }
-      if (!Array.isArray(node.data?.views)) return
-      node.data.views = node.data.views.filter((id: string) => layout.panels[id])
-      if (!node.data.views.includes(node.data.activeView)) {
-        if (node.data.views.length) node.data.activeView = node.data.views[0]
-        else delete node.data.activeView
+    const rewritten = rewriteWorkspaceLayoutPaths(raw, input).layout
+    if (!isWorkspaceWindows(rewritten) && (!rewritten || typeof rewritten !== 'object' || !('panels' in rewritten) || !('grid' in rewritten))) continue
+    const layout = mapWorkspaceWindowLayouts(rewritten, value => {
+      const layout = value as any
+      if (!layout || typeof layout !== 'object' || !layout.panels || !layout.grid) return value
+      for (const [id, panel] of Object.entries(layout.panels) as [string, any][]) {
+        if (['browser', 'chat', 'plugin-panel'].includes(panel?.params?.descriptor?.kind)) delete layout.panels[id]
       }
-    }
-    visit(layout.grid.root)
+      const visit = (node: any): void => {
+        if (!node || typeof node !== 'object') return
+        if (Array.isArray(node.data)) { node.data.forEach(visit); return }
+        if (!Array.isArray(node.data?.views)) return
+        node.data.views = node.data.views.filter((id: string) => layout.panels[id])
+        if (!node.data.views.includes(node.data.activeView)) {
+          if (node.data.views.length) node.data.activeView = node.data.views[0]
+          else delete node.data.activeView
+        }
+      }
+      visit(layout.grid.root)
+      return remapWorkspacePanelIds(layout, id => `${id.split('::duplicate::')[0]}::duplicate::${randomUUID()}`).layout
+    })
     const now = new Date().toISOString()
     db.prepare('INSERT OR IGNORE INTO project_tabs_layout(course_id,root_rel_path,layout_json,created_at,updated_at) VALUES(?,?,?,?,?)').run(input.courseId, root, JSON.stringify(layout), now, now)
   }

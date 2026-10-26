@@ -470,7 +470,7 @@ function SequenceNavBar({
   }
 
   return (
-    <nav className="sequence-nav" aria-label="연결된 자료 이동">
+    <nav className="sequence-nav" data-workspace-toolbar aria-label="연결된 자료 이동">
       {neighbors.prev !== null && (
         <button
           type="button"

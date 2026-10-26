@@ -107,4 +107,45 @@ describe('layoutRepo', () => {
     expect(JSON.parse((ctx.db.prepare('SELECT layout_json FROM workspace_layout_backups WHERE scope_key LIKE ?').get('project:%') as { layout_json: string }).layout_json)).toEqual(legacy)
     expect(repo.get(courseId).layout).toEqual(legacy)
   })
+
+  test('the first multiwindow save preserves the raw legacy backup and rejects malformed collections', () => {
+    const legacy = { panels: {}, grid: { root: { type: 'branch', data: [] } } }
+    repo.save(courseId, legacy)
+    const envelope = { kind: 'workspace-windows', version: 1, activeWindowId: 'second', windows: [
+      { id: 'main', name: '기존 작업', chromeMode: 'all', layout: legacy },
+      { id: 'second', name: '새 작업', chromeMode: 'all-hidden', layout: legacy }
+    ] }
+    repo.save(courseId, envelope)
+    expect(repo.get(courseId).layout).toEqual(envelope)
+    expect(JSON.parse((ctx.db.prepare('SELECT layout_json FROM workspace_layout_backups WHERE scope_key=?').get(courseId) as { layout_json: string }).layout_json)).toEqual(legacy)
+    expect(() => repo.save(courseId, { ...envelope, windows: [] })).toThrow(ValidationError)
+    expect(repo.get(courseId).layout).toEqual(envelope)
+  })
+
+  test('window migration backs up the immediate course and project layouts even when older backups exist', () => {
+    for (const root of [undefined, 'English']) {
+      const oldest = { marker: 'oldest' }, latest = { marker: 'immediate-before-windows' }
+      repo.save(courseId, oldest, root)
+      repo.save(courseId, latest, root)
+      const envelope = { kind: 'workspace-windows', version: 1, activeWindowId: 'main', windows: [{ id: 'main', name: '윈도우 1', chromeMode: 'all', layout: latest }] }
+      repo.save(courseId, envelope, root)
+      repo.save(courseId, { ...envelope, windows: [{ ...envelope.windows[0], name: 'Renamed' }] }, root)
+      const scope = root === undefined ? courseId : `project:${JSON.stringify([courseId, root])}`
+      const backup = (key: string) => JSON.parse((ctx.db.prepare('SELECT layout_json FROM workspace_layout_backups WHERE scope_key=?').get(key) as { layout_json: string }).layout_json)
+      // The separate migration record must never overwrite either backup.
+      expect(backup(`windows-v1:${scope}`)).toEqual(latest)
+      if (root === undefined) expect(backup(scope)).toEqual(oldest)
+    }
+  })
+
+  test('a new project starts empty and legacy project import retains only windows with matching panes', () => {
+    const layout = (path: string) => ({ panels: { note: { id: 'note', params: { descriptor: { kind: 'note', payload: { courseId, relPath: path } } } } },
+      grid: { root: { type: 'leaf', data: { id: 'g', views: ['note'], activeView: 'note' } } } })
+    repo.save(courseId, { kind: 'workspace-windows', version: 1, activeWindowId: 'main', windows: [
+      { id: 'main', name: 'Other', chromeMode: 'all-hidden', layout: layout('course.md') },
+      { id: 'project', name: 'English', chromeMode: 'tabs-hidden', layout: layout('English/note.md') }
+    ] })
+    expect(repo.get(courseId, 'Fresh').layout).toBeNull()
+    expect(repo.get(courseId, 'English').layout).toMatchObject({ activeWindowId: 'project', windows: [{ id: 'project', name: 'English' }] })
+  })
 })

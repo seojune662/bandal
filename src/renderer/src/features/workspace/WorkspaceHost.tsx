@@ -25,15 +25,15 @@ import { Tooltip } from '../../components/Tooltip'
 import { useLocale } from '../../i18n'
 import { flushLastActiveCoursePersist, useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
-import { useWorkspaceStore, retainedTabDescriptors, isWorkspaceDiscarded } from '../../stores/workspaceStore'
+import { useWorkspaceStore, retainedTabDescriptors, isWorkspaceDiscarded, registerBeforeWorkspaceWindowLeave, onWorkspaceWindowRemoved } from '../../stores/workspaceStore'
 import { useFileDropTarget } from '../materials/useFileDropTarget'
 import { NewTabMenu } from './NewTabMenu'
 import { WorkspaceTab } from './WorkspaceTab'
 import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
 import { installWorkspaceDragSession, tabDragSession } from './tabDragSession'
 import { dockviewComponents, workspacePanelContents } from './tabRegistry'
-import { WorkspaceCourseContext, WorkspaceRefContext } from './placementContext'
-import { WorkspaceContentLayer } from './panelContentHost'
+import { WorkspaceCourseContext, WorkspaceRefContext, WorkspaceWindowContext } from './placementContext'
+import { WorkspaceContentLayer, schedulePanelContentLayout } from './panelContentHost'
 import { CourseTabMoveOverlay } from './CourseTabMoveOverlay'
 import { installWorkspaceCourseMoveNavigation, workspaceCourseMoveRetention } from './courseTabMoveNavigation'
 import { focusWorkspaceHeader, headerChromeInset, installAdaptiveTabs, minimumHeaderWidth } from './adaptiveTabs'
@@ -42,8 +42,15 @@ import { WorkspaceLayoutMenu } from './WorkspaceLayoutMenu'
 import { applyWorkspaceLayout, removeEmptyWorkspaceGroup, splitWorkspaceGroup, type WorkspaceLayoutPreset } from './workspaceLayout'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
-import { workspaceKey, workspaceFromKey } from '../../../../shared/types/workspace'
+import { workspaceFromKey } from '../../../../shared/types/workspace'
 import { invoke, onPush } from '../../lib/ipc'
+import { workspaceWindowFromKey, type WorkspaceChromeMode } from '../../../../shared/workspaceWindows'
+import { WorkspaceWindowsOverview } from './WorkspaceWindowsOverview'
+import { flushPanelViewStates } from './panelViewState'
+import { captureCurrentWindowPreview } from './windowOverviewController'
+import { deleteWindowPreview } from './windowPreview'
+import { scheduleBrowserAnchorLayout } from './panels/browserAnchor'
+import { setNativeHostBlocked } from '../browser/nativeHostVisibility'
 
 const StudyMarketHome = lazy(() => import('../studyMarket/StudyMarketHome'))
 const CommunityHome = lazy(() => import('../community/CommunityHome'))
@@ -66,6 +73,7 @@ export function Watermark(props: IWatermarkPanelProps): JSX.Element {
   const ko = useLocale() === 'ko-KR'
   const placementCourseId = useContext(WorkspaceCourseContext)
   const workspace = useContext(WorkspaceRefContext)
+  const windowId = useContext(WorkspaceWindowContext)
   const [projectTitle, setProjectTitle] = useState<string | null>(null)
   const rootRelPath = workspace?.kind === 'project' ? workspace.rootRelPath : undefined
   useEffect(() => {
@@ -88,7 +96,7 @@ export function Watermark(props: IWatermarkPanelProps): JSX.Element {
     () => props.containerApi.groups.length > 1
   )
   const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null, rootRelPath ?? '')
-  const target = props.group ? { courseId: placementCourseId, workspace, groupId: props.group.id } : undefined
+  const target = props.group ? { courseId: placementCourseId, workspace, windowId, groupId: props.group.id } : undefined
 
   // Closing or transferring the last tab preserves its pane. A lone empty
   // pane is still the course home, including layouts saved by older versions.
@@ -152,35 +160,10 @@ export function Watermark(props: IWatermarkPanelProps): JSX.Element {
   )
 }
 
-/** Reserve fixed window controls when the sidebar is closed. */
-function useWindowCorner(props: IDockviewHeaderActionsProps, side: 'left' | 'right'): boolean {
-  const [corner, setCorner] = useState(false)
-  useLayoutEffect(() => {
-    let frame = 0
-    const measure = (): void => {
-      frame = 0
-      const root = props.group.element.closest('.workspace-host')?.getBoundingClientRect()
-      const rect = props.group.element.getBoundingClientRect()
-      setCorner(!!root && rect.width > 0 && Math.abs(rect.top - root.top) < 2 && Math.abs(rect[side] - root[side]) < 2)
-    }
-    const schedule = (): void => { if (!frame) frame = requestAnimationFrame(measure) }
-    const subscription = props.containerApi.onDidLayoutChange(schedule)
-    const resize = new ResizeObserver(schedule)
-    resize.observe(props.group.element)
-    measure()
-    return () => { cancelAnimationFrame(frame); subscription.dispose(); resize.disconnect() }
-  }, [props.group, props.containerApi, side])
-  return corner
-}
-
-function ChromeLeft(props: IDockviewHeaderActionsProps): JSX.Element | null {
-  const corner = useWindowCorner(props, 'left')
-  return corner ? <div className="workspace-chrome-spacer" aria-hidden="true" /> : null
-}
-
 function AddTabAction(props: IDockviewHeaderActionsProps): JSX.Element {
   const courseId = useContext(WorkspaceCourseContext)
   const workspace = useContext(WorkspaceRefContext)
+  const windowId = useContext(WorkspaceWindowContext)
   return (
     <div className="workspace-tab-actions">
       <Tooltip label="새 탭 열기" placement="bottom">
@@ -191,7 +174,7 @@ function AddTabAction(props: IDockviewHeaderActionsProps): JSX.Element {
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect()
             props.api.setActive()
-            const target = { courseId, workspace, groupId: props.group.id }
+            const target = { courseId, workspace, windowId, groupId: props.group.id }
             if (courseId === null) createBrowserTab(undefined, target)
             else openNewTabMenu({ x: rect.left, y: rect.bottom, target })
           }}
@@ -204,9 +187,9 @@ function AddTabAction(props: IDockviewHeaderActionsProps): JSX.Element {
 }
 
 function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
-  const corner = useWindowCorner(props, 'right')
   const courseId = useContext(WorkspaceCourseContext)
   const workspace = useContext(WorkspaceRefContext)
+  const windowId = useContext(WorkspaceWindowContext)
   const ko = useLocale() === 'ko-KR'
   const rightRailOpen = useUiStore(state => state.rightRailOpen)
   useLayoutEffect(() => {
@@ -228,19 +211,19 @@ function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
     const subscription = props.containerApi.onDidLayoutChange(schedule)
     measure()
     return () => { cancelAnimationFrame(frame); resize.disconnect(); subscription.dispose() }
-  }, [props.api, props.containerApi, props.group, corner, rightRailOpen])
+  }, [props.api, props.containerApi, props.group, rightRailOpen])
   const runLayout = (close: () => void, action: () => void): void => {
     close()
     action()
     requestAnimationFrame(() => focusWorkspaceHeader(props.containerApi.activeGroup?.element))
   }
   const presets: [WorkspaceLayoutPreset, string][] = [['single', ko ? '단일 영역' : 'Single pane'], ['columns', ko ? '좌우 2분할' : 'Two columns'], ['rows', ko ? '상하 2분할' : 'Two rows'], ['grid', ko ? '2×2 4분할' : 'Four panes (2×2)']]
-  return <div className="workspace-group-actions" data-window-corner={corner ? 'right' : undefined}>
+  return <div className="workspace-group-actions">
     <OpenTabsAction {...props} menuActions={close => <>
       <button type="button" onClick={event => {
         const rect = event.currentTarget.getBoundingClientRect()
         close(); props.api.setActive()
-        const target = { courseId, workspace, groupId: props.group.id }
+        const target = { courseId, workspace, windowId, groupId: props.group.id }
         if (courseId === null) createBrowserTab(undefined, target)
         else openNewTabMenu({ x: rect.left, y: rect.bottom, target })
       }}>{ko ? '새 탭 열기' : 'Open new tab'}</button>
@@ -253,7 +236,23 @@ function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
   </div>
 }
 
-function CourseWorkspace({ courseId, active }: { courseId: string | null; active: boolean }): JSX.Element {
+function CourseWorkspace({ courseId, active, chromeMode }: { courseId: string | null; active: boolean; chromeMode: WorkspaceChromeMode }): JSX.Element {
+  const windowId = courseId === null ? 'main' : workspaceWindowFromKey(courseId).windowId
+  const apiRef = useRef<import('dockview').DockviewApi | null>(null)
+  const applyChrome = (): void => {
+    const api = apiRef.current
+    if (!api || !active) return
+    let changed = false
+    for (const group of api.groups) {
+      const hidden = chromeMode !== 'all'
+      if (group.header.hidden !== hidden) { group.header.hidden = hidden; changed = true }
+    }
+    if (changed && rootRef.current) api.layout(rootRef.current.clientWidth, rootRef.current.clientHeight, true)
+    schedulePanelContentLayout(); scheduleBrowserAnchorLayout()
+  }
+  const applyChromeRef = useRef(applyChrome)
+  applyChromeRef.current = applyChrome
+  useLayoutEffect(() => applyChromeRef.current(), [active, chromeMode])
   const workspace = courseId === null ? null : workspaceFromKey(courseId)
   const ownerId = workspace?.courseId ?? null
   const ko = useLocale() === 'ko-KR'
@@ -264,21 +263,23 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
   useEffect(() => () => {
     if (frame.current !== null) cancelAnimationFrame(frame.current)
     layoutSubscription.current?.dispose()
-    useWorkspaceStore.getState().detachCourseApi(courseId)
+    useWorkspaceStore.getState().detachWindowApi(courseId)
   }, [courseId])
   const onReady = (event: DockviewReadyEvent): void => {
-    useWorkspaceStore.getState().attachCourseApi(courseId, event.api)
+    apiRef.current = event.api
+    useWorkspaceStore.getState().attachWindowApi(courseId, event.api)
     const layout = event.api.onDidLayoutChange(() => {
       if (frame.current !== null) return
       frame.current = requestAnimationFrame(() => {
         frame.current = null
+        applyChromeRef.current()
         const store = useWorkspaceStore.getState()
-        if (store.activeWorkspaceKey === courseId) store.notifyLayoutChanged()
+        if (store.activeWindowKey === courseId) store.notifyLayoutChanged()
       })
     })
     const overlay = event.api.onWillShowOverlay((event) => {
       const source = tabDragSession.getSource()
-      if (useWorkspaceStore.getState().activeWorkspaceKey !== courseId || source) {
+      if (useWorkspaceStore.getState().activeWindowKey !== courseId || source) {
         event.preventDefault()
         return
       }
@@ -288,13 +289,13 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
       const root = rootRef.current
       const bounds = root?.getBoundingClientRect()
       const native = event.nativeEvent
-      if (native.type !== 'drop' || tabDragSession.getSource() || useWorkspaceStore.getState().activeWorkspaceKey !== courseId ||
+      if (native.type !== 'drop' || tabDragSession.getSource() || useWorkspaceStore.getState().activeWindowKey !== courseId ||
         !bounds || native.clientX < bounds.left || native.clientX > bounds.right || native.clientY < bounds.top || native.clientY > bounds.bottom) event.preventDefault()
     })
     layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose(); drop.dispose() } }
   }
-  return <WorkspaceRefContext.Provider value={workspace}><WorkspaceCourseContext.Provider value={ownerId}><CourseActivity.Provider value={active}>
-    <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active || failed} {...{ inert: !active || failed ? '' : undefined }} data-workspace-course={ownerId ?? ''} data-workspace-key={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
+  return <WorkspaceWindowContext.Provider value={windowId}><WorkspaceRefContext.Provider value={workspace}><WorkspaceCourseContext.Provider value={ownerId}><CourseActivity.Provider value={active}>
+    <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active || failed} {...{ inert: !active || failed ? '' : undefined }} data-workspace-course={ownerId ?? ''} data-workspace-key={workspaceWindowFromKey(courseId ?? '').workspaceKey} data-workspace-window={windowId} data-window-key={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
       <DockviewReact
         theme={bandalTheme}
         dndEdges={workspaceDragEdges}
@@ -304,13 +305,12 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
         defaultRenderer="always"
         defaultTabComponent={WorkspaceTab}
         watermarkComponent={Watermark}
-        prefixHeaderActionsComponent={ChromeLeft}
         leftHeaderActionsComponent={AddTabAction}
         rightHeaderActionsComponent={HeaderActions}
         onReady={onReady}
       />
     </div>
-  </CourseActivity.Provider></WorkspaceCourseContext.Provider></WorkspaceRefContext.Provider>
+  </CourseActivity.Provider></WorkspaceCourseContext.Provider></WorkspaceRefContext.Provider></WorkspaceWindowContext.Provider>
 }
 
 export function WorkspaceHost(): JSX.Element {
@@ -322,7 +322,9 @@ export function WorkspaceHost(): JSX.Element {
   const selectedCourseId = useCoursesStore(state => state.selectedCourseId)
   const workspace = useWorkspaceStore(state => state.activeWorkspace)
   const course = courses.find(entry => entry.id === workspace?.courseId) ?? null
-  const courseId = workspace === null ? null : workspaceKey(workspace)
+  const courseId = useWorkspaceStore(state => state.activeWindowKey)
+  const chromeMode = useWorkspaceStore(state => state.workspaceChromeMode)
+  const overviewOpen = useWorkspaceStore(state => state.windowsOverviewOpen)
   const [retained, setRetained] = useState<string[]>([])
   const retainEmpty = useTemporaryWorkspaceRetention()
   const dragSource = useSyncExternalStore(tabDragSession.subscribe, tabDragSession.getSource)
@@ -334,6 +336,20 @@ export function WorkspaceHost(): JSX.Element {
     ...pendingMoves.flatMap(source => source.courseId && courses.some(course => course.id === workspaceFromKey(source.courseId!).courseId) ? [source.courseId] : [])])]
   const isMenuOpen = useNewTabMenu(state => state.isOpen)
   const hostRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => registerBeforeWorkspaceWindowLeave(captureCurrentWindowPreview), [])
+  useEffect(() => onWorkspaceWindowRemoved((workspaceKey, windowId) => {
+    void deleteWindowPreview(workspaceKey, windowId).catch(() => {})
+  }), [])
+  useLayoutEffect(() => {
+    setNativeHostBlocked('window-overview', overviewOpen)
+    return () => setNativeHostBlocked('window-overview', false)
+  }, [overviewOpen])
+  useLayoutEffect(() => {
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement && (focused.closest('[data-workspace-toolbar]') && chromeMode === 'all-hidden' || focused.closest('.dv-tabs-and-actions-container') && chromeMode !== 'all')) hostRef.current?.focus({ preventScroll: true })
+    schedulePanelContentLayout(); scheduleBrowserAnchorLayout()
+  }, [chromeMode])
 
   useEffect(() => {
     if (surface === 'course' || surface === 'learning-home') return
@@ -361,12 +377,25 @@ export function WorkspaceHost(): JSX.Element {
     setRetained(ids)
     const trim = async (): Promise<void> => {
       const keep = [...ids]
-      for (const candidate of ids) {
-        if (keep.length <= 3) break
-        const running = retainedTabDescriptors(candidate).some(tab => tab.kind === 'browser' && useAgentRuns.getState().byTab[tab.payload.tabId] !== undefined)
-        if (candidate === courseId || candidate === dragSource?.courseId || pendingMoves.some(source => source.courseId === candidate) || running || !await flushWorkspaceNotes(candidate)) continue
+      const scopes = new Map<string, string[]>()
+      for (const id of ids) {
+        const base = workspaceWindowFromKey(id).workspaceKey
+        scopes.set(base, [...(scopes.get(base) ?? []), id])
+      }
+      for (const [base, candidates] of scopes) {
+        // The retention budget counts courses/projects. Evict a whole inactive
+        // workspace together, keeping all canvases of the selected one alive.
+        if (scopes.size <= 3) break
+        const protectedScope = candidates.some(candidate => candidate === courseId || candidate === dragSource?.courseId ||
+          pendingMoves.some(source => source.courseId === candidate) || retainedTabDescriptors(candidate).some(tab =>
+            tab.kind === 'browser' && useAgentRuns.getState().byTab[tab.payload.tabId] !== undefined))
+        if (protectedScope) continue
+        let saved = true
+        for (const candidate of candidates) if (!await flushWorkspaceNotes(candidate)) { saved = false; break }
         if (cancelled) return
-        keep.splice(keep.indexOf(candidate), 1)
+        if (!saved) continue
+        for (const candidate of candidates) keep.splice(keep.indexOf(candidate), 1)
+        scopes.delete(base)
       }
       if (!cancelled && keep.length !== ids.length) setRetained(keep)
     }
@@ -381,6 +410,7 @@ export function WorkspaceHost(): JSX.Element {
     const stopNavigation = installWorkspaceCourseMoveNavigation()
     const stopSession = installWorkspaceDragSession(host)
     const flush = (): void => {
+      flushPanelViewStates()
       useWorkspaceStore.getState().notifyLayoutChanged()
       useWorkspaceStore.getState().flushPendingSave()
       flushLastActiveCoursePersist()
@@ -389,11 +419,12 @@ export function WorkspaceHost(): JSX.Element {
     return () => { stopTabs(); stopSession(); stopNavigation(); window.removeEventListener('beforeunload', flush); flush() }
   }, [])
 
-  return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
-    {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={surface === 'course' && id === courseId} />)}
-    {(retainEmpty || courseId === null || dragSource?.courseId === null || pendingMoves.some(source => source.courseId === null)) && <CourseWorkspace key="empty" courseId={null} active={surface === 'course' && courseId === null} />}
-    <WorkspaceContentLayer components={workspacePanelContents} activeCourseId={courseId} active={surface === 'course' && hydration !== 'error'} />
+  return <div ref={hostRef} className="workspace-host" tabIndex={-1} data-tour="tab-strip" data-workspace-chrome={chromeMode} data-windows-overview={overviewOpen || undefined}>
+    {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={surface === 'course' && id === courseId && !overviewOpen} chromeMode={chromeMode} />)}
+    {(retainEmpty || courseId === null || dragSource?.courseId === null || pendingMoves.some(source => source.courseId === null)) && <CourseWorkspace key="empty" courseId={null} active={surface === 'course' && courseId === null && !overviewOpen} chromeMode={chromeMode} />}
+    <WorkspaceContentLayer components={workspacePanelContents} activeCourseId={courseId} active={surface === 'course' && hydration !== 'error' && !overviewOpen} />
     <CourseTabMoveOverlay />
+    {overviewOpen && surface === 'course' && <WorkspaceWindowsOverview />}
     {surface === 'course' && hydration === 'error' && <div className="workspace-recovery" role="alert">
       <strong>{ko ? '작업 공간을 불러오지 못했어요.' : 'Could not load your workspace.'}</strong>
       <p>{ko ? '저장된 탭은 그대로 보존되어 있어요. 다시 불러와 주세요.' : 'Your saved tabs are preserved. Try loading them again.'}</p>
@@ -402,6 +433,6 @@ export function WorkspaceHost(): JSX.Element {
     {surface === 'learning-home' && <div className="workspace-watermark"><BandalMark size={56} /><p>프로젝트를 선택하세요.</p></div>}
     {surface === 'community' && <Suspense fallback={<div role="status">커뮤니티 불러오는 중…</div>}><CommunityHome /></Suspense>}
     {surface === 'study-market' && <Suspense fallback={<div role="status">마켓플레이스 불러오는 중…</div>}><StudyMarketHome /></Suspense>}
-    {surface === 'course' && isMenuOpen && course !== null && <NewTabMenu course={course} />}
+    {surface === 'course' && !overviewOpen && isMenuOpen && course !== null && <NewTabMenu course={course} />}
   </div>
 }

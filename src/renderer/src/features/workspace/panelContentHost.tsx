@@ -1,10 +1,12 @@
 import { useContext, useLayoutEffect, useRef, useSyncExternalStore, type FunctionComponent } from 'react'
 import type { DockviewApi, DockviewPanelApi, IDockviewPanelProps } from 'dockview'
 import { CourseActivity } from './courseActivity'
-import { WorkspaceRefContext, WorkspaceCourseContext, WorkspacePlacementContext } from './placementContext'
+import { WorkspaceRefContext, WorkspaceCourseContext, WorkspacePlacementContext, WorkspaceWindowContext } from './placementContext'
 import { createRebindingApi } from './rebindingApi'
 import { tabDragSession } from './tabDragSession'
 import { workspaceKey, workspaceFromKey } from '../../../../shared/types/workspace'
+
+import { workspaceWindowKey, workspaceWindowFromKey } from '../../../../shared/workspaceWindows'
 
 type PanelProps = IDockviewPanelProps
 type Bounds = { x: number; y: number; width: number; height: number }
@@ -112,7 +114,8 @@ export function WorkspacePanelSlot(props: PanelProps): JSX.Element {
   const slot = useRef<HTMLDivElement>(null)
   const workspace = useContext(WorkspaceRefContext)
   const ownerId = useContext(WorkspaceCourseContext)
-  const courseId = workspace === null ? ownerId : workspaceKey(workspace)
+  const windowId = useContext(WorkspaceWindowContext)
+  const courseId = workspace === null ? ownerId : workspaceWindowKey(workspaceKey(workspace), windowId)
   useLayoutEffect(() => {
     if (!slot.current) return
     const element = slot.current
@@ -165,7 +168,7 @@ export function WorkspaceContentLayer({ components, activeCourseId, active }: {
     const root = document.querySelector('.workspace-host')
     if (root) resize.observe(root)
     const mutations = new MutationObserver(schedulePanelContentLayout)
-    if (root) mutations.observe(root, { subtree: true, attributes: true, attributeFilter: ['hidden', 'style', 'class'] })
+    if (root) mutations.observe(root, { subtree: true, attributes: true, attributeFilter: ['hidden', 'style', 'class', 'data-workspace-chrome'] })
     window.addEventListener('resize', schedulePanelContentLayout)
     window.addEventListener('scroll', schedulePanelContentLayout, true)
     schedulePanelContentLayout()
@@ -184,8 +187,9 @@ export function WorkspaceContentLayer({ components, activeCourseId, active }: {
       const visible = courseActive && entry.props.api.isVisible
       const workspace = entry.courseId === null ? null : workspaceFromKey(entry.courseId)
       return <CourseActivity.Provider key={entry.instanceId} value={courseActive}>
-        <WorkspacePlacementContext.Provider value={{ courseId: workspace?.courseId ?? null, workspace, panelId: entry.panelId, instanceId: entry.instanceId }}>
+        <WorkspacePlacementContext.Provider value={{ courseId: workspace?.courseId ?? null, workspace, windowId: workspaceWindowFromKey(entry.courseId ?? '').windowId, panelId: entry.panelId, instanceId: entry.instanceId }}>
           <div className="workspace-panel-content" data-panel-instance={entry.instanceId}
+            data-private-preview={entry.props.params?.descriptor?.kind === 'browser' && entry.props.params.descriptor.payload.isPrivate === true || undefined}
             data-content-panel={entry.panelId} data-content-course={workspace?.courseId ?? ''} data-content-workspace={entry.courseId ?? ''}
             hidden={!visible} aria-hidden={!visible} {...{ inert: !visible ? '' : undefined }}
             style={{ left: entry.bounds.x, top: entry.bounds.y, width: entry.bounds.width, height: entry.bounds.height }}

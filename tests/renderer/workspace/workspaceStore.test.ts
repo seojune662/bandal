@@ -13,6 +13,8 @@ vi.mock('../../../src/renderer/src/app/toast', () => ({
 }))
 
 import { registerResourceCloseGuard, registerTabCloseGuard } from '../../../src/renderer/src/features/workspace/tabCloseGuard'
+import { registerOpenNoteSession } from '../../../src/renderer/src/features/notes/noteSessionRegistry'
+import { registerDocumentSave } from '../../../src/renderer/src/features/documents/saveRegistry'
 import { showToast } from '../../../src/renderer/src/app/toast'
 import { invoke } from '../../../src/renderer/src/lib/ipc'
 import {
@@ -28,6 +30,8 @@ import {
   flushLearningResourcesForPath,
   moveWorkspacePanel
 } from '../../../src/renderer/src/stores/workspaceStore'
+import { registerBeforeWorkspaceWindowLeave, workspaceApiForWindow, workspaceApiForCourse } from '../../../src/renderer/src/stores/workspaceStore'
+import { workspaceWindowKey, type WorkspaceWindows } from '../../../src/shared/workspaceWindows'
 import { workspaceKey } from '../../../src/shared/types/workspace'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
@@ -187,6 +191,282 @@ function liveDock(): FakeDockview {
 
 const pdfA = descriptorFor('pdf', { courseId: 'c1', relPath: 'a.pdf' })
 const pdfB = descriptorFor('pdf', { courseId: 'c1', relPath: 'b.pdf' })
+
+describe('independent internal windows', () => {
+  test('a legacy layout becomes the first window and saves distinct views and chrome in one envelope', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const note = descriptorFor('note', { courseId: 'c1', relPath: 'shared.md' })
+    state.openTab(note); state.notifyLayoutChanged()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    state.openTab(note); state.notifyLayoutChanged()
+    state.openTab(note)
+    expect(second.panels).toHaveLength(1)
+    expect(second.panels[0]!.id).not.toBe(first.panels[0]!.id)
+    expect(useWorkspaceStore.getState().activeWorkspaceKey).toBe('c1')
+    expect(useWorkspaceStore.getState().activeWindowKey).toBe(workspaceWindowKey('c1', id))
+    state.renameWindow(id, '시험 준비'); state.setWorkspaceChromeMode('all-hidden')
+    state.reorderWindows([id, 'main'])
+    expect(workspaceApiForCourse('c1')).toBe(second.asApi())
+    expect(workspaceApiForWindow('c1')).toBe(first.asApi())
+    state.selectWindow('main')
+    expect(useWorkspaceStore.getState().workspaceChromeMode).toBe('all')
+    expect(first.panels).toHaveLength(1)
+    await state.flushPendingSave()
+    const saved = savesFor('c1').at(-1) as WorkspaceWindows
+    expect(saved).toMatchObject({ kind: 'workspace-windows', version: 1, activeWindowId: 'main' })
+    expect(saved.windows.map(window => [window.id, window.name, window.chromeMode])).toEqual([[id, '시험 준비', 'all-hidden'], ['main', '윈도우 1', 'all']])
+    expect(saved.windows.map(window => Object.keys((window.layout as { panels: object }).panels).length)).toEqual([1, 1])
+  })
+
+  test('restoring an envelope selects the saved window and retains unvisited windows without another read', async () => {
+    const browser = descriptorFor('browser', { tabId: 'parked', initialUrl: 'https://example.test' })
+    invokeMock.mockImplementation(channel => Promise.resolve(channel === 'layout:get' ? { layout: {
+      kind: 'workspace-windows', version: 1, activeWindowId: 'second', windows: [
+        { id: 'main', name: '자료', chromeMode: 'all', layout: singleLeafLayout([browser]) },
+        { id: 'second', name: '연습', chromeMode: 'tabs-hidden', layout: singleLeafLayout([pdfB]) }
+      ]
+    } } : { ok: true }) as never)
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle(); await settle()
+    expect(useWorkspaceStore.getState().activeWindowId).toBe('second')
+    state.attachWindowApi(workspaceWindowKey('c1', 'second'), second.asApi()); await settle()
+    expect(useWorkspaceStore.getState().workspaceChromeMode).toBe('tabs-hidden')
+    expect(second.panels.map(panel => panel.id)).toEqual([tabPanelId(pdfB)])
+    expect(retainedTabDescriptors()).toEqual(expect.arrayContaining([browser, pdfB]))
+    state.selectWindow('main'); await settle()
+    expect(first.panels.map(panel => panel.id)).toEqual([tabPanelId(browser)])
+    expect(invokeMock.mock.calls.filter(([channel]) => channel === 'layout:get')).toHaveLength(1)
+  })
+
+  test('same-course popup and delayed new-tab target retain the exact source window', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    const group = { id: 'same-group', panels: first.panels }
+    Object.assign(first, { getGroup: () => group })
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    state.openTab(descriptorFor('browser', { tabId: 'opener', initialUrl: 'https://example.test' })); state.notifyLayoutChanged()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    const popup = descriptorFor('browser', { tabId: 'child', initialUrl: 'https://example.test/child' })
+    expect(openBrowserTabInCourse(popup, 'c1', true, 'opener')).toBe(true)
+    state.openTab(pdfA, { target: { courseId: 'c1', workspace: { kind: 'course', courseId: 'c1' }, windowId: 'main', groupId: group.id } })
+    expect(first.panels.map(panel => panel.params?.descriptor)).toEqual(expect.arrayContaining([popup, pdfA]))
+    expect(second.panels).toHaveLength(0)
+  })
+
+  test('delayed opens persist to an evicted original window without mounting it or following current focus', async () => {
+    const first = liveDock(), original = liveDock(), current = liveDock(), restored = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const id = state.createWindow()!, key = workspaceWindowKey('c1', id)
+    state.attachWindowApi(key, original.asApi()); await settle()
+    const note = descriptorFor('note', { courseId: 'c1', relPath: 'draft.md' })
+    state.openTab(note); state.notifyLayoutChanged()
+    const target = { workspace: { kind: 'course' as const, courseId: 'c1' }, courseId: 'c1', windowId: id, groupId: 'live' }
+    state.setActiveCourse('c2'); state.attachWindowApi('c2', current.asApi()); await settle()
+    state.detachWindowApi(key); state.detachWindowApi('c1')
+    expect(workspaceApiForWindow(key)).toBeNull()
+    state.openTab(pdfA, { target }); state.openTab(pdfA, { target })
+    state.openTab(pdfB, { target: { ...target, groupId: 'removed-group' } })
+    expect(useWorkspaceStore.getState().activeWorkspaceKey).toBe('c2')
+    expect(current.panels).toHaveLength(0)
+    expect(original.addPanelCalls).toHaveLength(1)
+    expect(retainedTabDescriptors(key)).toEqual([note, pdfA])
+    await state.flushPendingSave()
+    const saved = savesFor('c1').at(-1) as WorkspaceWindows
+    expect(Object.values((saved.windows.find(window => window.id === id)!.layout as { panels: object }).panels)).toHaveLength(2)
+    state.showWorkspaceWindow({ kind: 'course', courseId: 'c1' }, id); state.attachWindowApi(key, restored.asApi()); await settle()
+    expect(restored.panels.map(panel => panel.params?.descriptor)).toEqual([note, pdfA])
+  })
+
+  test('closing a window respects vetoes, keeps one window and durably removes only the selected window', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    state.openTab(pdfA); state.notifyLayoutChanged()
+    expect(await state.closeWindow('main')).toBe(false)
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    state.openTab(descriptorFor('browser', { tabId: 'form', initialUrl: 'https://example.test/form' })); state.notifyLayoutChanged()
+    const stop = registerTabCloseGuard(() => false)
+    expect(await state.closeWindow(id)).toBe(false)
+    expect(useWorkspaceStore.getState().windows).toHaveLength(2)
+    stop()
+    state.setWindowsOverviewOpen(true)
+    expect(await state.closeWindow(id)).toBe(true)
+    expect(useWorkspaceStore.getState().windowsOverviewOpen).toBe(true)
+    expect(useWorkspaceStore.getState().activeWindowId).toBe('main')
+    expect(first.panels.map(panel => panel.params?.descriptor)).toEqual([pdfA])
+    expect(retainedTabDescriptors()).not.toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'browser' })]))
+    expect((savesFor('c1').at(-1) as WorkspaceWindows).windows.map(window => window.id)).toEqual(['main'])
+  })
+
+  test.each(['note', 'pdf'] as const)('a %s save failure preserves the window before any browser close can destroy native pages', async kind => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    state.openTab(descriptorFor('browser', { tabId: 'form', initialUrl: 'https://example.test/form' }))
+    const ref = { courseId: 'c1', relPath: `draft.${kind === 'note' ? 'md' : 'pdf'}` }
+    second.activate()
+    state.openTab(kind === 'note' ? descriptorFor('note', ref) : descriptorFor('pdf', ref)); state.notifyLayoutChanged()
+    const stopSave = kind === 'note' ? registerOpenNoteSession({ panelId: 'save-failure-note', ref: () => ref, retarget: () => {}, flush: async () => ({ status: 'error', detail: 'disk full' }) })
+      : registerDocumentSave(async () => { throw new Error('disk full') }, ref)
+    const close = vi.fn(() => true), stopGuard = registerTabCloseGuard(close)
+    try {
+      expect(await state.closeWindow(id)).toBe(false)
+      expect(close).not.toHaveBeenCalled()
+      expect(useWorkspaceStore.getState().windows).toHaveLength(2)
+      expect(second.panels).toHaveLength(2)
+    } finally { stopSave(); stopGuard() }
+  })
+
+  test('closing a source window after navigating does not publish its collection over the destination', async () => {
+    const first = liveDock(), second = liveDock(), destination = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    state.openTab(descriptorFor('browser', { tabId: 'wait', initialUrl: 'https://example.test' })); state.notifyLayoutChanged()
+    let release!: (allow: boolean) => void, started!: () => void
+    const guardStarted = new Promise<void>(resolve => { started = resolve })
+    const stop = registerTabCloseGuard(() => { started(); return new Promise<boolean>(resolve => { release = resolve }) })
+    const closing = state.closeWindow(id)
+    await guardStarted
+    state.setActiveCourse('c2'); state.attachWindowApi('c2', destination.asApi()); await settle()
+    state.renameWindow('main', 'Destination')
+    release(true); expect(await closing).toBe(true); stop()
+    expect(useWorkspaceStore.getState().activeWorkspaceKey).toBe('c2')
+    expect(useWorkspaceStore.getState().windows).toMatchObject([{ id: 'main', name: 'Destination' }])
+  })
+
+  test('a later browser veto removes only already-accepted native closes and keeps them reopenable', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    const accepted = descriptorFor('browser', { tabId: 'accepted', initialUrl: 'https://example.test/one' })
+    const vetoed = descriptorFor('browser', { tabId: 'vetoed', initialUrl: 'https://example.test/two' })
+    state.openTab(accepted); second.activate(); state.openTab(vetoed); second.activate(); state.openTab(pdfA); state.notifyLayoutChanged()
+    for (const panel of second.panels) panel.api.close.mockImplementation(() => second.removePanel(panel))
+    const stop = registerTabCloseGuard(descriptor => descriptor.kind !== 'browser' || descriptor.payload.tabId !== 'vetoed')
+    try {
+      expect(await state.closeWindow(id)).toBe(false)
+      expect(useWorkspaceStore.getState().windows).toHaveLength(2)
+      expect(second.panels.map(panel => panel.params?.descriptor)).toEqual([vetoed, pdfA])
+      expect(retainedTabDescriptors()).not.toContainEqual(accepted)
+      expect(showToastMock).toHaveBeenCalledWith(expect.stringContaining('이미 닫기'))
+      state.reopenClosedTab()
+      expect(second.panels.map(panel => panel.params?.descriptor)).toContainEqual(accepted)
+    } finally { stop() }
+  })
+
+  test('hydrating another workspace remaps colliding document view IDs and keeps grid references valid', async () => {
+    invokeMock.mockImplementation(channel => Promise.resolve(channel === 'layout:get' ? { layout: singleLeafLayout([pdfA]) } : { ok: true }) as never)
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    state.showWorkspace({ kind: 'project', courseId: 'c1', rootRelPath: 'Project' })
+    const base = workspaceKey({ kind: 'project', courseId: 'c1', rootRelPath: 'Project' })
+    state.attachWindowApi(base, second.asApi()); await settle()
+    expect(second.panels).toHaveLength(1)
+    expect(second.panels[0]!.id).not.toBe(first.panels[0]!.id)
+    expect(second.panels[0]!.params?.descriptor).toEqual(pdfA)
+    const restored = second.fromJSONCalls.at(-1) as { grid: { root: { data: { views: string[] } } } }
+    expect(restored.grid.root.data.views).toEqual([second.panels[0]!.id])
+  })
+
+  test('a failed collection save restores the window without keeping an already-closed browser panel', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    state.openTab(descriptorFor('browser', { tabId: 'accepted', initialUrl: 'https://example.test' })); second.activate(); state.openTab(pdfA); state.notifyLayoutChanged()
+    for (const panel of second.panels) panel.api.close.mockImplementation(() => second.removePanel(panel))
+    invokeMock.mockImplementation((channel, input) => {
+      const layout = (input as { layout?: WorkspaceWindows } | undefined)?.layout
+      if (channel === 'layout:save' && layout?.kind === 'workspace-windows' && layout.windows.length === 1) return Promise.reject(new Error('disk full')) as never
+      return Promise.resolve({ ok: true }) as never
+    })
+    const stop = registerTabCloseGuard(() => true)
+    try {
+      const closing = state.closeWindow(id)
+      await vi.runAllTimersAsync()
+      expect(await closing).toBe(false)
+      expect(useWorkspaceStore.getState().windows).toHaveLength(2)
+      expect(useWorkspaceStore.getState().activeWindowId).toBe(id)
+      expect(second.panels.map(panel => panel.params?.descriptor)).toEqual([pdfA])
+      const saved = savesFor('c1').at(-1) as WorkspaceWindows
+      expect(saved.windows).toHaveLength(2)
+      expect(JSON.stringify(saved)).not.toContain('browser:accepted')
+    } finally { stop() }
+  })
+
+  test('a failed close keeps a newer selected window instead of restoring the stale starting selection', async () => {
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey('c1', id), second.asApi()); await settle()
+    state.openTab(pdfA); state.notifyLayoutChanged()
+    let rejectSave!: (error: Error) => void, started!: () => void, hold = true
+    const saveStarted = new Promise<void>(resolve => { started = resolve })
+    invokeMock.mockImplementation((channel, input) => {
+      const layout = (input as { layout?: WorkspaceWindows } | undefined)?.layout
+      if (channel === 'layout:save' && layout?.kind === 'workspace-windows' && layout.windows.length === 1) {
+        if (!hold) return Promise.reject(new Error('disk full')) as never
+        started(); return new Promise((_, reject) => { rejectSave = reject }) as never
+      }
+      return Promise.resolve({ ok: true }) as never
+    })
+    const closing = state.closeWindow(id)
+    await saveStarted
+    hold = false
+    state.selectWindow('main')
+    // The selected-window save supersedes the rejected removal snapshot.
+    rejectSave(new Error('disk full'))
+    await settle()
+    await vi.runAllTimersAsync()
+    expect(await closing).toBe(false)
+    expect(useWorkspaceStore.getState().windows).toHaveLength(2)
+    expect(useWorkspaceStore.getState().activeWindowId).toBe('main')
+    expect((savesFor('c1').at(-1) as WorkspaceWindows).activeWindowId).toBe('main')
+  })
+
+  test('only the latest deferred navigation runs and immediate document opens wait for its window', async () => {
+    const first = liveDock(), third = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const releases: Array<() => void> = []
+    const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => releases.push(resolve)))
+    state.setActiveCourse('c2'); state.setActiveCourse('c3'); state.openTab(pdfA)
+    expect(useWorkspaceStore.getState().activeCourseId).toBe('c1')
+    releases[0]!(); await settle()
+    expect(useWorkspaceStore.getState().activeCourseId).toBe('c1')
+    releases[1]!(); await settle()
+    state.attachWindowApi('c3', third.asApi()); await settle()
+    expect(useWorkspaceStore.getState().activeCourseId).toBe('c3')
+    expect(first.panels).toHaveLength(0)
+    expect(third.panels.map(panel => panel.params?.descriptor)).toEqual([pdfA])
+    stop()
+  })
+
+  test('renaming and removing a project traverse every window including ownerless browser tabs', async () => {
+    const workspace = { kind: 'project' as const, courseId: 'c1', rootRelPath: 'old' }
+    const first = liveDock(), second = liveDock(), state = useWorkspaceStore.getState(), base = workspaceKey(workspace)
+    state.showWorkspace(workspace); state.attachWindowApi(base, first.asApi()); await settle()
+    state.openTab(descriptorFor('note', { courseId: 'c1', relPath: 'old/a.md' })); state.notifyLayoutChanged()
+    const id = state.createWindow()!
+    state.attachWindowApi(workspaceWindowKey(base, id), second.asApi()); await settle()
+    state.openTab(descriptorFor('browser', { tabId: 'project-browser', initialUrl: 'https://example.test' })); state.notifyLayoutChanged()
+    // Eviction is required here: the fixture does not implement real group reattachment.
+    state.detachWindowApi(base)
+    reconcileWorkspaceMaterialRename('c1', 'old', 'new')
+    const next = { ...workspace, rootRelPath: 'new' }, nextBase = workspaceKey(next)
+    expect(useWorkspaceStore.getState().activeWorkspace).toEqual(next)
+    expect(useWorkspaceStore.getState().windows.map(window => window.id)).toEqual(['main', id])
+    expect(retainedTabDescriptors(nextBase)).toEqual([descriptorFor('note', { courseId: 'c1', relPath: 'new/a.md' })])
+    const stop = registerTabCloseGuard(descriptor => descriptor.kind !== 'browser')
+    expect(await prepareCloseLearningSpace(next, false)).toBe(false); stop()
+    await closeLearningSpace(next, false)
+    expect(retainedTabDescriptors()).toEqual([])
+  })
+})
 
 test('projects sharing an owner hydrate, retain and save independent tab layouts', async () => {
   const first = { kind: 'project' as const, courseId: 'c1', rootRelPath: 'English' }

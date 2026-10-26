@@ -103,6 +103,21 @@ export function annotationBrowserTarget(event: IpcMainInvokeEvent, tabId: string
   return { contents: tab.view.webContents, visible: tab.view.getVisible(), bounds: tab.bounds ?? null,
     courseId: browsingContext(tab.view.webContents.id)?.courseId ?? null }
 }
+/** Only main-owned visible views in this sender's host participate in a workspace snapshot. */
+export function workspaceBrowserPreviewTargets(event: IpcMainInvokeEvent): Array<{
+  contents: WebContents; bounds: Electron.Rectangle; isPrivate: boolean; isCurrent: () => boolean
+}> {
+  const host = owner(event)
+  return [...tabs.values()].flatMap(tab => {
+    if (tab.host !== host || tab.view.webContents.isDestroyed() || !tab.view.getVisible() || !tab.bounds) return []
+    const bounds = { ...tab.bounds }, contents = tab.view.webContents
+    const documentId = browserAuthDocumentId(contents)
+    return [{ contents, bounds, isPrivate: tab.isPrivate, isCurrent: () =>
+      tabs.get(tab.tabId) === tab && !contents.isDestroyed() && tab.view.getVisible() &&
+      documentId === browserAuthDocumentId(contents) && !!tab.bounds &&
+      ['x', 'y', 'width', 'height'].every(key => tab.bounds?.[key as keyof Electron.Rectangle] === bounds[key as keyof Electron.Rectangle]) }]
+  })
+}
 function state(wc: WebContents): BrowserPageState {
   const stateRevision = (stateRevisions.get(wc) ?? 0) + 1
   stateRevisions.set(wc, stateRevision)

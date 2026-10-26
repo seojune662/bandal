@@ -4,6 +4,7 @@ import { createCoursesRepo } from '../../src/main/features/courses'
 import { createLayoutRepo } from '../../src/main/db/layoutRepo'
 import { copyProjectWorkspaces, repointProjectWorkspaces } from '../../src/main/db/projectWorkspacePaths'
 import { workspaceKey } from '../../src/shared/types/workspace'
+import { readWorkspaceWindows } from '../../src/shared/workspaceWindows'
 
 let ctx: TestDb | undefined
 afterEach(() => ctx?.cleanup())
@@ -45,4 +46,56 @@ test('folder copies inherit group and portable layouts with independent bindings
   expect(Object.values(copy.panels)[0]).toMatchObject({ params: { descriptor: { payload: { courseId, rootRelPath: 'Reading-2', projectId: 'shared-copy-hint' } } } })
   expect(repo.get(courseId, 'Reading').layout).toEqual(layout)
   expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM workspace_chat_sessions').get()).toEqual({ n: 0 })
+})
+
+test('project rename and copy transform every window while retaining order, names and active selection', () => {
+  ctx = createTestDb()
+  const courseId = createCoursesRepo({ db: ctx.db, getDataRoot: () => ctx!.dir }).create({ name: 'Owner', color: '#000' }).id
+  const repo = createLayoutRepo(ctx.db)
+  ctx.db.prepare('INSERT INTO project_navigation(course_id,root_rel_path,sort_order) VALUES(?,?,?)').run(courseId, 'old', 0)
+  const createLayout = (suffix: string) => {
+    const id = `note:${courseId}:old/note.md::duplicate::${suffix}`, browserId = `browser:${suffix}`
+    return { panels: { [id]: { id, contentComponent: 'note', params: { descriptor: { kind: 'note', payload: { courseId, relPath: 'old/note.md' } } } },
+      [browserId]: { id: browserId, contentComponent: 'browser', params: { descriptor: { kind: 'browser', payload: { tabId: suffix, initialUrl: 'https://example.test' } } } } },
+      grid: { root: { type: 'leaf', data: { id: 'g', views: [id, browserId], activeView: id } } } }
+  }
+  repo.save(courseId, { kind: 'workspace-windows', version: 1, activeWindowId: 'second', windows: [
+    { id: 'main', name: 'First', chromeMode: 'all', layout: createLayout('one') },
+    { id: 'second', name: 'Second', chromeMode: 'tabs-hidden', layout: createLayout('two') }
+  ] }, 'old')
+  repointProjectWorkspaces(ctx.db, { courseId, fromRelPath: 'old', toRelPath: 'new', isDirectory: true })
+  const renamed = readWorkspaceWindows(repo.get(courseId, 'new').layout)
+  expect(renamed.activeWindowId).toBe('second')
+  expect(renamed.windows.map(window => window.name)).toEqual(['First', 'Second'])
+  for (const window of renamed.windows) expect(JSON.stringify(window.layout)).toContain('new/note.md')
+  copyProjectWorkspaces(ctx.db, { courseId, fromRelPath: 'new', toRelPath: 'copy', isDirectory: true })
+  const copied = readWorkspaceWindows(repo.get(courseId, 'copy').layout)
+  expect(copied.windows.map(window => window.chromeMode)).toEqual(['all', 'tabs-hidden'])
+  for (const window of copied.windows) {
+    const layout = window.layout as ReturnType<typeof createLayout>
+    expect(Object.keys(layout.panels)).toHaveLength(1)
+    expect(layout.grid.root.data.views).toEqual(Object.keys(layout.panels))
+    expect(JSON.stringify(layout)).toContain('copy/note.md')
+    expect(layout.grid.root.data.activeView).toBe(Object.keys(layout.panels)[0])
+    expect(Object.keys(layout.panels)[0]).not.toBe(Object.keys((renamed.windows.find(source => source.id === window.id)!.layout as typeof layout).panels)[0])
+  }
+  expect(JSON.stringify(repo.get(courseId, 'new').layout)).toContain('browser:one')
+})
+
+test('copied project external documents get new view IDs even when resource paths do not change', () => {
+  ctx = createTestDb()
+  const courseId = createCoursesRepo({ db: ctx.db, getDataRoot: () => ctx!.dir }).create({ name: 'Owner', color: '#000' }).id
+  const repo = createLayoutRepo(ctx.db)
+  ctx.db.prepare('INSERT INTO project_navigation(course_id,root_rel_path,sort_order) VALUES(?,?,?)').run(courseId, 'old', 0)
+  const id = `note:${courseId}:shared.md`, descriptor = { kind: 'note', payload: { courseId, relPath: 'shared.md' } }
+  const layout = { panels: { [id]: { id, contentComponent: 'note', params: { descriptor } } }, grid: { root: { type: 'leaf', data: { id: 'g', views: [id], activeView: id } } } }
+  repo.save(courseId, layout, 'old')
+  copyProjectWorkspaces(ctx.db, { courseId, fromRelPath: 'old', toRelPath: 'copy', isDirectory: true })
+  const copy = repo.get(courseId, 'copy').layout as typeof layout
+  const copiedId = Object.keys(copy.panels)[0]!
+  expect(copiedId).toMatch(new RegExp('::duplicate::'))
+  expect(copiedId).not.toBe(id)
+  expect(copy.panels[copiedId]!.params.descriptor).toEqual(descriptor)
+  expect(copy.grid.root.data).toMatchObject({ views: [copiedId], activeView: copiedId })
+  expect(repo.get(courseId, 'old').layout).toEqual(layout)
 })

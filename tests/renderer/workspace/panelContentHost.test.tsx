@@ -4,7 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { DockviewApi, DockviewPanelApi, IDockviewPanelProps } from 'dockview'
 import { rebindPanelContent, resetPanelContentForTests, WorkspaceContentLayer, WorkspacePanelSlot } from '../../../src/renderer/src/features/workspace/panelContentHost'
-import { WorkspaceCourseContext, useWorkspacePlacement } from '../../../src/renderer/src/features/workspace/placementContext'
+import { WorkspaceCourseContext, WorkspaceRefContext, WorkspaceWindowContext, useWorkspacePlacement } from '../../../src/renderer/src/features/workspace/placementContext'
+import { workspaceWindowKey } from '../../../src/shared/workspaceWindows'
 
 const observers = new Set<MockResizeObserver>()
 class MockResizeObserver {
@@ -43,6 +44,41 @@ function api(): DockviewPanelApi & { emit(name: string): void } {
   return value as unknown as DockviewPanelApi & { emit(name: string): void }
 }
 afterEach(() => { resetPanelContentForTests(); document.body.replaceChildren(); frames.clear(); vi.restoreAllMocks() })
+
+test('two windows in one course keep separate live contents and suspend both in overview', async () => {
+  let mounts = 0
+  function Content() {
+    const placement = useWorkspacePlacement()
+    useEffect(() => { mounts++ }, [])
+    return <input data-window={placement?.windowId} defaultValue={placement?.windowId} />
+  }
+  const first = api(), second = api(), container = {} as DockviewApi
+  Object.assign(second, { id: 'note:original:draft.md::duplicate::second' })
+  const host = document.createElement('div'); host.className = 'workspace-host'; document.body.append(host)
+  const root = createRoot(host)
+  const render = (id: string, active = true) => <>
+    <WorkspaceRefContext.Provider value={{ kind: 'course', courseId: 'original' }}>
+      {[['main', first], ['second', second]].map(([windowId, panel]) => <WorkspaceWindowContext.Provider key={windowId as string} value={windowId as string}>
+        <WorkspacePanelSlot api={panel as DockviewPanelApi} containerApi={container} params={{}} />
+      </WorkspaceWindowContext.Provider>)}
+    </WorkspaceRefContext.Provider>
+    <WorkspaceContentLayer components={{ note: Content }} activeCourseId={workspaceWindowKey('original', id)} active={active} />
+  </>
+  await act(async () => root.render(render('main')))
+  const firstEditor = host.querySelector<HTMLInputElement>('[data-window="main"]')!
+  firstEditor.value = 'draft in first window'
+  expect(firstEditor.closest<HTMLElement>('.workspace-panel-content')!.hidden).toBe(false)
+  await act(async () => root.render(render('second')))
+  expect(firstEditor.closest<HTMLElement>('.workspace-panel-content')!.hidden).toBe(true)
+  expect(host.querySelector('[data-window="second"]')!.closest<HTMLElement>('.workspace-panel-content')!.hidden).toBe(false)
+  await act(async () => root.render(render('second', false)))
+  expect([...host.querySelectorAll<HTMLElement>('.workspace-panel-content')].every(node => node.hidden && node.hasAttribute('inert'))).toBe(true)
+  await act(async () => root.render(render('main')))
+  expect(host.querySelector('[data-window="main"]')).toBe(firstEditor)
+  expect(firstEditor.value).toBe('draft in first window')
+  expect(mounts).toBe(2)
+  await act(async () => root.unmount())
+})
 
 test('moving a slot preserves the same React mount and editor DOM with its unsaved draft', async () => {
   let mounts = 0, unmounts = 0

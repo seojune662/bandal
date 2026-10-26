@@ -49,6 +49,9 @@ import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
+import { readNotePanelViewState, type NotePanelViewState } from '../workspace/panelViewState'
+import { usePanelVisible } from '../workspace/usePanelVisible'
+import { useNotePanelViewState } from './useNotePanelViewState'
 import { requestMaterialConnectionsRefresh } from '../links/useMaterialConnections'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
 import { canAutoFocusNote } from './noteAutoFocus'
@@ -138,6 +141,7 @@ interface EditorSeed {
 interface NoteSessionProps extends NoteRef {
   panelApi: IDockviewPanelProps['api']
   pageNotePair: PdfPageNotePairContext | null
+  initialViewState: NotePanelViewState | null
 }
 
 const STATUS_LABEL: Record<SaveStatus, string> = {
@@ -871,7 +875,8 @@ function NoteSession({
   courseId,
   relPath,
   panelApi,
-  pageNotePair
+  pageNotePair,
+  initialViewState
 }: NoteSessionProps): JSX.Element {
   const [editorSeed, setEditorSeed] = useState<EditorSeed | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -881,9 +886,15 @@ function NoteSession({
   const [recoveryBusy, setRecoveryBusy] = useState(false)
   const assistant = usePanelAssistant()
   const [presentedMarkdown, setPresentedMarkdown] = useState('')
-  const [viewMode, setViewMode] = useState<NoteViewMode>('edit')
+  const initialViewRef = useRef(initialViewState)
+  const hasLoadedRef = useRef(false)
+  const [viewMode, setViewMode] = useState<NoteViewMode>(initialViewRef.current?.mode ?? 'edit')
+  const viewModeRef = useRef(viewMode)
+  viewModeRef.current = viewMode
+  const panelVisible = usePanelVisible(panelApi)
   const [currentRelPath, setCurrentRelPath] = useState(relPath)
   const [fontScale, setFontScale] = useState<NoteFontScale>(() => {
+    if (initialViewRef.current) return parseNoteFontScale(String(initialViewRef.current.fontScale))
     try {
       return parseNoteFontScale(localStorage.getItem(NOTE_FONT_SCALE_STORAGE_KEY))
     } catch {
@@ -926,6 +937,9 @@ function NoteSession({
   /** Remote markdown waiting for focus to leave before it can remount the editor. */
   const pendingEditorMarkdownRef = useRef<string | null>(null)
   const pendingScrollTopRef = useRef<number | null>(null)
+  useNotePanelViewState({ panelApi, root: containerRef, initial: initialViewRef.current,
+    visible: panelVisible, ready: editorSeed !== null, revision: editorSeed?.revision ?? 0,
+    mode: viewMode, fontScale })
   useEffect(() => registerDocumentContext(assistant?.panelId ?? `note:${courseId}:${currentRelPath}`, () => ({ courseId, kind: 'note', title: currentRelPath.split('/').pop() ?? currentRelPath, relPath: currentRelPath, text: currentMarkdownRef.current.slice(0, 12000), unsaved: currentMarkdownRef.current !== persistedMarkdownRef.current })), [courseId, currentRelPath, assistant?.panelId])
 
 
@@ -1021,11 +1035,7 @@ function NoteSession({
             revision: revisionRef.current
           })
           setPresentedMarkdown(synchronized.currentMarkdown)
-          setViewMode(
-            splitQuizMarkdown(synchronized.currentMarkdown) === null
-              ? 'edit'
-              : 'quiz'
-          )
+          if (splitQuizMarkdown(synchronized.currentMarkdown) === null) setViewMode('edit')
           setStatusIfMounted(synchronized.dirty ? 'dirty' : 'saved')
           if (synchronized.dirty) scheduleRef.current()
         }
@@ -1272,7 +1282,9 @@ function NoteSession({
       revisionRef.current += 1
       setEditorSeed({ markdown: note.markdown, revision: revisionRef.current })
       setPresentedMarkdown(note.markdown)
-      setViewMode(splitQuizMarkdown(note.markdown) === null ? 'edit' : 'quiz')
+      setViewMode(splitQuizMarkdown(note.markdown) === null ? 'edit'
+        : hasLoadedRef.current ? viewModeRef.current : initialViewRef.current?.mode ?? 'quiz')
+      hasLoadedRef.current = true
       setLoadError(null)
       setStatusIfMounted('saved')
     },
@@ -1465,17 +1477,6 @@ function NoteSession({
     }
   }, [cancelEditBroadcast, clearTimer, preserveOnClose])
 
-  useEffect(() => {
-    const syncFontScale = (event: Event): void => {
-      if (!(event instanceof CustomEvent)) return
-      const scale = parseNoteFontScale(String(event.detail))
-      setFontScale(scale)
-    }
-    window.addEventListener('bandal:note-font-scale', syncFontScale)
-    return () =>
-      window.removeEventListener('bandal:note-font-scale', syncFontScale)
-  }, [])
-
   const changeFontScale = useCallback((scale: NoteFontScale): void => {
     setFontScale(scale)
     try {
@@ -1483,9 +1484,6 @@ function NoteSession({
     } catch {
       // Storage may be unavailable in a locked-down renderer; keep the session value.
     }
-    window.dispatchEvent(
-      new CustomEvent('bandal:note-font-scale', { detail: scale })
-    )
   }, [])
 
   const stepFontScale = useCallback(
@@ -1684,7 +1682,7 @@ function NoteSession({
       }}
     >
       {(editorSeed === null || damagedPageNote || (viewMode === 'quiz' && quizSections !== null && pageNoteDocument === null)) && (
-        <header className="note-toolbar" role="toolbar" aria-label="마크다운 도구">
+        <header className="note-toolbar" data-workspace-toolbar role="toolbar" aria-label="마크다운 도구">
           {documentActions}
           <MaterialExportButton courseId={courseId} relPath={currentRelPath} disabled={editorSeed === null || damagedPageNote} title="공유 · 마크다운 내보내기" />
           <AssistantPanelToggle />
@@ -1815,6 +1813,7 @@ export default function NoteTab(props: IDockviewPanelProps): JSX.Element {
       relPath={relPath}
       panelApi={props.api}
       pageNotePair={pageNotePair}
+      initialViewState={readNotePanelViewState(props.params['noteViewState'])}
     />
   )
 }

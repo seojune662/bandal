@@ -1,6 +1,6 @@
 import { attachNativePage } from './nativePageHandle'
 import { createTabFaviconController, focusVisibleBrowserPanel } from './browserTabEvents'
-import { useWorkspaceStore, workspaceApiForCourse } from '../../stores/workspaceStore'
+import { useWorkspaceStore, workspaceApiForWindow } from '../../stores/workspaceStore'
 import { overlapsNativePage } from './useNativePageOcclusion'
 /**
  * One native browser page, positioned over its stable DOM panel anchor.
@@ -170,7 +170,7 @@ export function BrowserGuestView({
         const courseId = ownerCourseRef.current
         if (event.webContentsId !== element.getWebContentsId() ||
           useWorkspaceStore.getState().activeCourseId !== courseId || !getBrowserAnchorRect(tabId)) return
-        focusVisibleBrowserPanel(workspaceApiForCourse(useWorkspaceStore.getState().activeWorkspaceKey), tabId)
+        focusVisibleBrowserPanel(workspaceApiForWindow(useWorkspaceStore.getState().activeWindowKey), tabId)
       }) as EventListener],
       [
         'did-start-loading',

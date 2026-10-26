@@ -227,13 +227,6 @@
 .bandal-dockview .dv-tab::before {
   display: none;
 }
-.workspace-chrome-spacer {
-  width: max(0px, calc(var(--window-controls-width) - var(--shell-navigation-width) - var(--shell-course-width)));
-  height: var(--chrome-height);
-  flex: 0 0 auto;
-  transition: width var(--dur-base) var(--ease-out);
-}
-
 .workspace-tab {
   display: flex;
   align-items: center;
@@ -342,15 +335,6 @@
   gap: var(--space-1);
   height: 100%;
   padding-inline: var(--space-2);
-}
-
-/* With the right rail closed, this header reaches the window edge beneath
- * Electron's caption buttons. env() tracks their actual width; the token has
- * a 138px fallback plus a small safety gap for older overlay implementations. */
-:root[data-platform='win32']
-  .app-shell[data-right-rail='closed']
-  .workspace-group-actions[data-window-corner='right'] {
-  margin-inline-end: var(--window-controls-inset);
 }
 
 .workspace-add-tab {
@@ -839,7 +823,6 @@
 }
 
 /* Retained tab strips must not leave native window-drag hit regions behind. */
-.workspace-chrome-spacer,
 .workspace-course[hidden] .dv-tabs-and-actions-container,
 .workspace-course[hidden] .dv-tabs-and-actions-container * {
   -webkit-app-region: no-drag;
@@ -882,3 +865,9 @@
 .workspace-host[data-tab-drag-outside] :is(.dv-drop-target-anchor, .dv-drop-target-selection, .course-tab-move-preview) {
   visibility: hidden !important;
 }
+
+.workspace-host[data-workspace-chrome="tabs-hidden"] .bandal-dockview,
+.workspace-host[data-workspace-chrome="all-hidden"] .bandal-dockview { --workspace-tab-height: 0px; }
+.workspace-host[data-workspace-chrome="tabs-hidden"] .dv-tabs-and-actions-container,
+.workspace-host[data-workspace-chrome="all-hidden"] .dv-tabs-and-actions-container { display:none; }
+.workspace-host:focus { outline:none; }

@@ -792,6 +792,7 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/learning.spec.ts')
     e2e.add('e2e/materialsDrag.spec.ts')
   }
+  if (has(/^src\/(?:renderer\/src\/(?:app\/(?:WorkspaceControls|HomeSidebar|AppShell|RightSidebar|app-shell)\.|features\/workspace\/|stores\/workspaceStore\.ts$)|shared\/(?:workspaceWindows|workspacePanelIds|ipc\/workspacePreviewContract)\.ts$|main\/(?:features\/workspace\/|ipc\/workspacePreviewHandlers\.ts$))/)) e2e.add('e2e/workspaceWindows.spec.ts')
   const workspace = has(/^(src\/renderer\/src\/(features\/workspace\/|stores\/workspaceStore\.ts$)|src\/shared\/tabs\.ts$)/)
   if (workspace) {
     for (const spec of ['tabs', 'tabDrag', 'workspaceLayout', 'workspaceNarrowTabs', 'workspaceCourseDrop', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']) e2e.add(`e2e/${spec}.spec.ts`)

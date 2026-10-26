@@ -1,4 +1,4 @@
-import { resetWorkspaceStoreForTests, useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
+import { registerBeforeWorkspaceWindowLeave, resetWorkspaceStoreForTests, useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
@@ -9,7 +9,7 @@ let dispose: () => void
 const originalSelectCourse = useCoursesStore.getState().selectCourse
 beforeEach(() => {
   resetWorkspaceStoreForTests()
-  useWorkspaceStore.setState({ activeCourseId: 'source', activeWorkspaceKey: 'source', activeWorkspace: {kind: 'course', courseId: 'source'} })
+  useWorkspaceStore.setState({ activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', activeWindowId: 'main', activeWorkspace: {kind: 'course', courseId: 'source'} })
   useCoursesStore.setState({ selectCourse: originalSelectCourse, selectedCourseId: 'source', courses: ['source', 'target', 'third'].map(id => ({ id } as never)) })
   vi.spyOn(useCoursesStore.getState(), 'selectCourse').mockImplementation(id => { useCoursesStore.setState({ selectedCourseId: id }) })
   dispose = installWorkspaceCourseMoveNavigation()
@@ -21,6 +21,22 @@ test('a canceled hover visit returns to the initial course after several folder 
   navigateWorkspaceCourseHover('drag', 'target'); navigateWorkspaceCourseHover('drag', 'third')
   tabDragSession.end()
   expect(useCoursesStore.getState().selectedCourseId).toBe('source')
+})
+
+test('canceling during preview capture cancels the pending hover transition', async () => {
+  let finishCapture!: () => void
+  const capture = new Promise<void>(resolve => { finishCapture = resolve })
+  const unregister = registerBeforeWorkspaceWindowLeave(() => capture)
+  try {
+    navigateWorkspaceCourseHover('drag', 'target')
+    expect(useWorkspaceStore.getState().activeWorkspaceKey).toBe('source')
+    tabDragSession.end()
+    finishCapture()
+    await capture
+    await Promise.resolve()
+    expect(useWorkspaceStore.getState().activeWorkspaceKey).toBe('source')
+    expect(useCoursesStore.getState().selectedCourseId).toBe('source')
+  } finally { unregister() }
 })
 
 test('a successful move keeps the destination even when dragend arrives before its result', () => {
