@@ -355,3 +355,14 @@ describe('sanitizeSettings — sidebar widgets', () => {
   expect(result.widgets).toMatchObject({ enabled: ['mail', 'todo'], collapsed: ['mail'], heightRatio: 0.45 })
   expect(result.dataRoot).toBe(defaults.dataRoot)
 })
+
+describe('sanitizeSettings — dismissed announcements', () => {
+  test('keeps unique well-formed ids and drops everything else', () => {
+    const result = sanitizeSettings(
+      { dismissedAnnouncements: ['ipad-launch-2026-10', 'ipad-launch-2026-10', 7, 'Bad Id', ''] },
+      DEFAULT_SETTINGS
+    )
+    expect(result.dismissedAnnouncements).toEqual(['ipad-launch-2026-10'])
+    expect(sanitizeSettings({ dismissedAnnouncements: 'x' }, DEFAULT_SETTINGS).dismissedAnnouncements).toEqual([])
+  })
+})

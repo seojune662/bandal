@@ -7,3 +7,5 @@ export const DOCS_URL = `${WEBSITE_URL}/docs`
 export const CHANGELOG_URL = `${WEBSITE_URL}/changelog`
 
 export const GITHUB_ISSUES_URL = 'https://github.com/seojune662/bandal/issues'
+
+export const IPAD_APP_STORE_URL = 'https://apps.apple.com/kr/app/id6824053530'

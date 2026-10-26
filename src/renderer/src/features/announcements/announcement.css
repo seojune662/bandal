@@ -1,0 +1,164 @@
+.announcement-overlay {
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--backdrop);
+  backdrop-filter: blur(var(--space-1));
+  animation: help-overlay-in var(--dur-fast) var(--ease-out);
+}
+
+.announcement {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  width: min(calc(var(--dialog-width) * 2.5), 100%);
+  max-height: calc(100% - var(--space-6));
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: help-panel-in var(--dur-base) var(--ease-out);
+}
+
+.announcement__close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 1;
+  display: grid;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  place-items: center;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.announcement__close:hover,
+.announcement__close:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.announcement__close:active {
+  transform: scale(0.9);
+}
+
+.announcement__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--space-7) var(--space-6) var(--space-6);
+}
+
+.announcement__tag {
+  padding: 2px var(--space-2);
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+}
+
+.announcement__copy h2 {
+  margin-top: var(--space-4);
+  font-size: calc(var(--text-xl) * 1.35);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-tight);
+}
+
+.announcement__copy p {
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.announcement__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: auto;
+  padding-top: var(--space-6);
+}
+
+.announcement__primary {
+  height: calc(var(--button-height) * 1.2);
+  font-size: var(--text-base);
+}
+
+.announcement__later {
+  height: var(--button-height);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+}
+
+.announcement__later:hover,
+.announcement__later:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.announcement__visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  /* Top padding clears the close button. */
+  padding: var(--space-7) var(--space-5) var(--space-6);
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+    var(--bg-app);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.ipad-visual__device {
+  width: 100%;
+  padding: 6px;
+  background: #0b0b0b;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+}
+
+.ipad-visual__device img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 9px;
+}
+
+.ipad-visual__qr {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.ipad-visual__qr img {
+  width: 76px;
+  height: 76px;
+  padding: 6px;
+  /* QR codes need dark modules on a light field in either theme. */
+  background: #fff;
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 720px) {
+  .announcement {
+    grid-template-columns: 1fr;
+  }
+
+  .announcement__visual {
+    display: none;
+  }
+}

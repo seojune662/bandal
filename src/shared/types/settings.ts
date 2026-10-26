@@ -293,6 +293,8 @@ export interface Settings {
   keybindings: Record<string, string | null>
   /** One-time product milestones. */
   milestones: Milestones
+  /** Ids of in-app announcements the user already closed. */
+  dismissedAnnouncements: string[]
   /** [M8] Chosen school + the user layer over its preset shortcuts. */
   university: UniversitySettings
   /**
@@ -342,6 +344,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tutorial: DEFAULT_TUTORIAL,
   keybindings: {},
   milestones: DEFAULT_MILESTONES,
+  dismissedAnnouncements: [],
   university: DEFAULT_UNIVERSITY_SETTINGS,
   openAdjacentTab: false,
   restoreLastCourse: true,

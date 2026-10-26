@@ -89,6 +89,8 @@ export async function launchBandal(
           // Tour offer (.tour-offer) is a pointer-intercepting dialog — it
           // pops mid-test and steals clicks. Mark the tour as already seen.
           tutorial: { seenVersion: 1, activeCourseId: null },
+          // The launch announcement is a modal too; its own spec opts back in.
+          dismissedAnnouncements: ['ipad-launch-2026-10'],
           ...options.extraSettings
         },
         null,

@@ -23,6 +23,7 @@ import { LearningSpacesPanel } from '../features/learning/LearningSpacesPanel'
 import { FeatureLauncherPanel } from '../features/launcher/FeatureLauncherPanel'
 import { RightSidebar, RightSidebarToggle } from './RightSidebar'
 import { AnnotationOverlay } from '../features/annotation/AnnotationOverlay'
+import { IpadAnnouncement } from '../features/announcements/IpadAnnouncement'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { TourOverlay } from '../features/onboarding/tour/TourOverlay'
@@ -460,6 +461,7 @@ export function AppShell(): JSX.Element {
       <ToastHost />
       <ShareImportDialog />
       {!isOnboardingVisible && !settingsPresent && <CommunityPromotion />}
+      <IpadAnnouncement mainScreenVisible={!isOnboardingVisible && !settingsPresent} />
       <LearningDialogsHost />
       <PresentationProgress />
       {settingsPresent && (

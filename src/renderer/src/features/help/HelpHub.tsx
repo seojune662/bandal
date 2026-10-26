@@ -17,6 +17,7 @@ import { useUpdateStore } from '../../stores/updateStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { useTourStore } from '../onboarding/tour/tourStore'
+import { OPEN_IPAD_ANNOUNCEMENT_EVENT } from '../announcements/IpadAnnouncement'
 import { FeedbackDialog, OPEN_FEEDBACK_EVENT } from './FeedbackDialog'
 import { MilestonesOverlay } from './MilestonesOverlay'
 import { ProgressRing } from './ProgressRing'
@@ -299,6 +300,16 @@ export function HelpHub(): JSX.Element {
                 label={t('help.milestones.progress')}
               />
             </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu()
+              window.dispatchEvent(new CustomEvent(OPEN_IPAD_ANNOUNCEMENT_EVENT))
+            }}
+          >
+            {t('help.menu.ipadApp')}
           </button>
           <span className="context-menu__separator" role="separator" />
           <button type="button" role="menuitem" onClick={() => openHelpPage(DOCS_URL)}>

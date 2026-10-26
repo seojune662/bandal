@@ -331,6 +331,9 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
     tutorial: sanitizeTutorial(record.tutorial),
     keybindings: sanitizeKeybindings(record.keybindings),
     milestones: sanitizeMilestones(record.milestones),
+    dismissedAnnouncements: Array.isArray(record.dismissedAnnouncements)
+      ? [...new Set(record.dismissedAnnouncements.filter((id): id is string => typeof id === 'string' && /^[a-z0-9-]{1,64}$/.test(id)))].slice(-100)
+      : [],
     university: sanitizeUniversitySettings(record.university),
     openAdjacentTab:
       typeof record.openAdjacentTab === 'boolean'
