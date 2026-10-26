@@ -375,7 +375,9 @@ test('an identical persisted panel in the destination rejects a real drag and pr
     await expect(selected(page, source.name)).toBeVisible()
     await expect(visibleTab(page, 'shared')).toBeVisible()
     await expect(page.locator('.note-tab:visible .ProseMirror')).toBeVisible()
-    await page.evaluate(() => { (window as any).__collisionSourceEditor = document.querySelector('.workspace-panel-content:not([hidden]) .ProseMirror') })
+    const sourceContent = page.locator(`.workspace-panel-content[data-content-workspace="${source.id}"]:not([hidden]) .ProseMirror`)
+    await expect(sourceContent).toBeVisible()
+    await sourceContent.evaluate(editor => { (window as any).__collisionSourceEditor = editor })
     const beforeMove = await persistedPanels(page, source.id, target.id)
     await dragOverFolder(page, visibleTab(page, 'shared'), target.name)
     // Restoring two old canonical placements now repairs their editor identity
@@ -390,9 +392,11 @@ test('an identical persisted panel in the destination rejects a real drag and pr
     expect(await persistedPanels(page, source.id, target.id)).toEqual(beforeDrop)
     expect(await page.evaluate(() => (window as any).__collisionSourceEditor?.isConnected)).toBe(true)
     await folder(page, source.name).locator('.course-row__select').click()
-    await expect(visibleTab(page, 'shared')).toBeVisible()
-    expect(await page.evaluate(() => (window as any).__collisionSourceEditor === document.querySelector('.workspace-panel-content:not([hidden]) .ProseMirror'))).toBe(true)
-    await expect(page.locator('.note-tab:visible .ProseMirror')).toContainText('충돌해도 보존할 필기')
+    // Both retained canvases contain a tab named shared. Wait for the source's
+    // actual editor, not the identical title still visible during capture.
+    await expect(sourceContent).toBeVisible()
+    expect(await sourceContent.evaluate(editor => (window as any).__collisionSourceEditor === editor)).toBe(true)
+    await expect(sourceContent).toContainText('충돌해도 보존할 필기')
   } finally { await bandal.close() }
 })
 

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { WorkspaceRef } from '../../../src/shared/types/workspace'
 
-const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock, workspace } = vi.hoisted(() => ({
+const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock, pendingTargetMock, materials, workspace } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   openTabMock: vi.fn(), selectCourseMock: vi.fn(), showCourseWorkspaceMock: vi.fn(),
-  workspace: { activeCourseId: 'course-1', activeWorkspaceKey: 'course-1', activeWindowId: 'main', activeWorkspace: { kind: 'course', courseId: 'course-1' }, activePanelId: null, surface: 'course' }
+  pendingTargetMock: vi.fn<() => Promise<import('../../../src/renderer/src/features/workspace/placementContext').WorkspaceTarget> | undefined>(), materials: { activeCourseId: 'course-1' },
+  workspace: { activeCourseId: 'course-1', activeWorkspaceKey: 'course-1', activeWindowId: 'main', activeWorkspace: { kind: 'course', courseId: 'course-1' } as WorkspaceRef, activePanelId: null, surface: 'course' }
 }))
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
@@ -16,21 +18,22 @@ vi.mock('../../../src/renderer/src/app/toast', () => ({
 
 vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({
   useMaterialsStore: {
-    getState: () => ({ activeCourseId: 'course-1' })
+    getState: () => materials
   }
 }))
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   workspaceApiForWindow: () => ({ activeGroup: { id: 'source-group' } }),
+  capturePendingWorkspaceTarget: pendingTargetMock,
   useWorkspaceStore: {
     getState: () => ({ ...workspace, openTab: openTabMock, showWorkspace: showCourseWorkspaceMock })
   }
 }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
-  useCoursesStore: { getState: () => ({ courses: [{ id: 'course-1' }], selectCourse: selectCourseMock }) }
+  useCoursesStore: { getState: () => ({ courses: [{ id: 'course-1' }, { id: 'course-2' }], selectCourse: selectCourseMock }) }
 }))
 
-import { openMaterialInCourse } from '../../../src/renderer/src/features/workspace/openMaterial'
+import { openMaterialInCourse, openMaterialInWorkspace } from '../../../src/renderer/src/features/workspace/openMaterial'
 const originalTarget = { courseId: 'course-1', workspace: { kind: 'course' as const, courseId: 'course-1' }, windowId: 'main', groupId: 'source-group' }
 
 describe('openMaterialInCourse', () => {
@@ -38,6 +41,8 @@ describe('openMaterialInCourse', () => {
     invokeMock.mockReset()
     openTabMock.mockReset()
     selectCourseMock.mockReset(); showCourseWorkspaceMock.mockReset()
+    pendingTargetMock.mockReset()
+    materials.activeCourseId = 'course-1'
     invokeMock.mockResolvedValue({ ok: true })
     workspace.activeCourseId = 'course-1'; workspace.activeWorkspaceKey = 'course-1'; workspace.activeWindowId = 'main'; workspace.activeWorkspace = {kind: 'course', courseId: 'course-1'}; workspace.surface = 'course'
   })
@@ -129,6 +134,69 @@ describe('openMaterialInCourse', () => {
     openMaterialInCourse('course-1', 'note', 'created.md', { target: originalTarget, newInstance: true })
     expect(openTabMock).toHaveBeenCalledWith({ kind: 'note', payload: { courseId: 'course-1', relPath: 'created.md' } }, { target: originalTarget, newInstance: true })
     expect(selectCourseMock).not.toHaveBeenCalled()
+    expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
+  })
+
+  test.each<WorkspaceRef>([
+    { kind: 'course', courseId: 'course-2' },
+    { kind: 'project', courseId: 'course-2', rootRelPath: 'Reading' }
+  ])('a sidebar click waits for its selected $kind without mixing the resource owner with the old canvas', async destination => {
+    materials.activeCourseId = 'course-2'
+    const target = { courseId: 'course-2', workspace: destination, windowId: 'selected-window' }
+    let finishTarget!: (value: typeof target) => void
+    pendingTargetMock.mockReturnValue(new Promise(resolve => { finishTarget = resolve }))
+    openMaterialInWorkspace('note', 'selected.md', { newInstance: true })
+    expect(openTabMock).not.toHaveBeenCalled()
+    expect(selectCourseMock).not.toHaveBeenCalled()
+    expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
+    workspace.activeWorkspace = destination
+    workspace.activeCourseId = 'course-2'
+    workspace.activeWindowId = 'selected-window'
+    // A subsequent tree update must not change the resource captured by click.
+    materials.activeCourseId = 'course-1'
+    workspace.activeWorkspace = { kind: 'course', courseId: 'course-1' }
+    workspace.activeWindowId = 'another-window'
+    finishTarget(target)
+    await Promise.resolve()
+    expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
+    expect(selectCourseMock).not.toHaveBeenCalled()
+    expect(openTabMock).toHaveBeenCalledExactlyOnceWith({ kind: 'note', payload: { courseId: 'course-2', relPath: 'selected.md' } }, { newInstance: true, target })
+  })
+
+  test('an explicit sidebar target bypasses pending navigation and keeps the original window', () => {
+    materials.activeCourseId = 'course-2'
+    workspace.activeWindowId = 'other-window'
+    pendingTargetMock.mockReturnValue(new Promise(() => {}))
+    openMaterialInWorkspace('note', 'original.md', { target: originalTarget })
+    expect(pendingTargetMock).not.toHaveBeenCalled()
+    expect(openTabMock).toHaveBeenCalledExactlyOnceWith({ kind: 'note', payload: { courseId: 'course-1', relPath: 'original.md' } }, { target: originalTarget })
+    expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
+  })
+
+  test('an explicitly chosen project is not redirected by the pending sidebar navigation', () => {
+    const destination: WorkspaceRef = { kind: 'project', courseId: 'course-1', rootRelPath: 'Original' }
+    pendingTargetMock.mockReturnValue(new Promise(() => {}))
+    openMaterialInWorkspace('pdf', 'original.pdf', { workspace: destination })
+    expect(pendingTargetMock).not.toHaveBeenCalled()
+    expect(showCourseWorkspaceMock).toHaveBeenCalledExactlyOnceWith(destination)
+    expect(openTabMock).toHaveBeenCalledExactlyOnceWith({ kind: 'pdf', payload: { courseId: 'course-1', relPath: 'original.pdf' } })
+  })
+
+  test('a recording keeps the resolved cold window through another internal-window selection', async () => {
+    materials.activeCourseId = 'course-2'
+    const target = { courseId: 'course-2', workspace: { kind: 'course' as const, courseId: 'course-2' }, windowId: 'saved-window' }
+    pendingTargetMock.mockResolvedValue(target)
+    let resolveRecording!: (value: unknown) => void
+    invokeMock.mockImplementation(channel => channel === 'recordings:resolve' ? new Promise(resolve => { resolveRecording = resolve }) : Promise.resolve({ ok: true }))
+    openMaterialInWorkspace('other', 'cold-recording.wav')
+    await Promise.resolve()
+    workspace.activeWorkspace = target.workspace
+    workspace.activeWindowId = 'newer-window'
+    materials.activeCourseId = 'course-1'
+    resolveRecording({ id: 'cold-recording', title: 'Lecture' })
+    await Promise.resolve()
+    expect(pendingTargetMock).toHaveBeenCalledTimes(1)
+    expect(openTabMock).toHaveBeenCalledExactlyOnceWith({ kind: 'recording', payload: { courseId: 'course-2', sessionId: 'cold-recording', title: 'Lecture' } }, { target })
     expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
   })
 })

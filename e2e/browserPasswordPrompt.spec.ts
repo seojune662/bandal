@@ -42,14 +42,39 @@ test('a submitted account waits through Google verification and opens a compact 
     await expect.poll(() => bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(view => view.getURL() === url)?.id ?? null, loginUrl)).not.toBeNull()
     const guestId = await bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(view => view.getURL() === url)!.id, loginUrl)
     await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('window.__bandalLoginReporterInstalledV2__ === true'), guestId)).toBe(true)
+    const waitForNativePage = async (): Promise<void> => {
+      await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()
+        .filter(window => window.webContents.getURL().includes('index.html'))
+        .flatMap(window => window.contentView.children)
+        .some(view => 'webContents' in view && (view.webContents as Electron.WebContents).id === id &&
+          view.getVisible() && view.getBounds().width > 0 && view.getBounds().height > 0), guestId)).toBe(true)
+      await bandal.app.evaluate(async ({ webContents }, id) => {
+        const guest = webContents.fromId(id)!
+        await guest.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+        await guest.capturePage()
+      }, guestId)
+    }
+    // A loaded guest can still be hidden while the new-tab picker closes.
+    // Wait for its visible view before entering and submitting the fixture form.
+    await waitForNativePage()
     await bandal.app.evaluate(async ({ webContents }, id) => {
       const guest = webContents.fromId(id)!
       guest.focus()
       await guest.executeJavaScript('document.querySelector("input[type=password]").focus()')
       await guest.insertText('synthetic-fixture-password')
-      guest.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
-      guest.sendInputEvent({ type: 'char', keyCode: '\r' })
-      guest.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
+    }, guestId)
+    await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!
+      .executeJavaScript('document.querySelector("input[type=password]").value.length'), guestId))
+      .toBe('synthetic-fixture-password'.length)
+    await bandal.app.evaluate(async ({ webContents }, id) => {
+      const guest = webContents.fromId(id)!
+      const point = await guest.executeJavaScript(`(() => {
+        const rect = document.querySelector('button[type=submit]').getBoundingClientRect()
+        return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) }
+      })()`)
+      // Use trusted native pointer input, independent of CI's OS keyboard focus.
+      guest.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 })
+      guest.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 })
     }, guestId)
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as unknown as { passwordFixture: { stages: number } }).passwordFixture.stages)).toBe(1)
     await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.getURL(), guestId)).toBe(`${origin}/signin/challenge/passkey`)
@@ -62,17 +87,6 @@ test('a submitted account waits through Google verification and opens a compact 
     await expect(page.getByRole('dialog', { name: '비밀번호 저장', exact: true })).toHaveCount(0)
     expect(await anchor.boundingBox()).toEqual(before)
     await expect(page.locator('.browser-external-auth.browser-login-prompt')).toHaveCount(0)
-    const waitForNativePage = async (): Promise<void> => {
-      await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
-        .filter(window => window.webContents.getURL().includes('index.html'))
-        .flatMap(window => window.contentView.children)
-        .filter(view => 'webContents' in view && view.getVisible()).length)).toBe(1)
-      await bandal.app.evaluate(async ({ webContents }, id) => {
-        const guest = webContents.fromId(id)!
-        await guest.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
-        await guest.capturePage()
-      }, guestId)
-    }
     const capture = async (name: string): Promise<void> => {
       await page.evaluate(async () => {
         await Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))

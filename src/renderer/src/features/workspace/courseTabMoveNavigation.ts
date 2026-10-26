@@ -125,6 +125,19 @@ export function isWorkspaceCourseMoveDropCurrent(nonce: string): boolean {
   return pendingSources.some(source => source.nonce === nonce) && (!navigation || !navigation.externalSelection)
 }
 
+/** A selected folder can still be capturing the previous canvas. Its stale
+ * geometry must not advertise or accept a drop for the new destination. */
+export function isWorkspaceCourseMoveTargetCurrent(nonce: string, windowKey: string | null): boolean {
+  const navigation = navigations.get(nonce)
+  if (!navigation) return true
+  if (navigation.externalSelection) return false
+  if (navigation.expected === null || windowKey === null) return navigation.expected === windowKey
+  const expected = workspaceWindowFromKey(navigation.expected)
+  return navigation.expected === expected.workspaceKey
+    ? workspaceWindowFromKey(windowKey).workspaceKey === expected.workspaceKey
+    : windowKey === navigation.expected
+}
+
 /** A valid favorite copy keeps its chosen screen without moving the live tab. */
 export function acceptWorkspaceCourseCopyDrop(nonce: string): void {
   const navigation = navigations.get(nonce)

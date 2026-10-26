@@ -2,7 +2,7 @@ import { registerBeforeWorkspaceWindowLeave, resetWorkspaceStoreForTests, useWor
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
-import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop, installWorkspaceCourseMoveNavigation, navigateWorkspaceCourseHover, workspaceCourseMoveRetention } from '../../../src/renderer/src/features/workspace/courseTabMoveNavigation'
+import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop, installWorkspaceCourseMoveNavigation, isWorkspaceCourseMoveTargetCurrent, navigateWorkspaceCourseHover, workspaceCourseMoveRetention } from '../../../src/renderer/src/features/workspace/courseTabMoveNavigation'
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: vi.fn(async () => ({})), onPush: vi.fn(() => () => {}) }))
 let dispose: () => void
@@ -36,6 +36,25 @@ test('canceling during preview capture cancels the pending hover transition', as
     await Promise.resolve()
     expect(useWorkspaceStore.getState().activeWorkspaceKey).toBe('source')
     expect(useCoursesStore.getState().selectedCourseId).toBe('source')
+  } finally { unregister() }
+})
+
+test('a pending hover cannot target the previous canvas and only its latest requested destination becomes eligible', async () => {
+  let finishCapture!: () => void
+  const capture = new Promise<void>(resolve => { finishCapture = resolve })
+  const unregister = registerBeforeWorkspaceWindowLeave(() => capture)
+  try {
+    expect(isWorkspaceCourseMoveTargetCurrent('drag', 'source')).toBe(true)
+    navigateWorkspaceCourseHover('drag', 'target')
+    expect(useWorkspaceStore.getState().activeWindowKey).toBe('source')
+    expect(isWorkspaceCourseMoveTargetCurrent('drag', 'source')).toBe(false)
+    navigateWorkspaceCourseHover('drag', 'third')
+    expect(isWorkspaceCourseMoveTargetCurrent('drag', 'target')).toBe(false)
+    finishCapture()
+    await capture
+    await Promise.resolve()
+    expect(useWorkspaceStore.getState().activeWindowKey).toBe('third')
+    expect(isWorkspaceCourseMoveTargetCurrent('drag', 'third')).toBe(true)
   } finally { unregister() }
 })
 

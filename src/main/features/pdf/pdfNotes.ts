@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString, resolveInsideReal } from '../../db/validate'
 import { parsePdfPageNote, serializePdfPageNote, type PdfPageNoteDocument, type PdfPageSize } from '../../../shared/pdfPageNote'
-import { isPdfPageNoteLinkMetadata } from '../../../shared/types/link'
+import { isPdfPageNoteLinkMetadata, type MaterialLinkRecord } from '../../../shared/types/link'
 import { transformBox, transformShape } from './noteGeometry'
 import { createNoteFileTransaction, type NoteFileWrite } from './noteFileTransaction'
 import { createLegacyNoteMigration } from './legacyNoteMigration'
@@ -123,8 +123,15 @@ export function createPdfNotesService(deps: PdfNotesDeps) {
     }
     const writes: NoteFileWrite[] = [{ target: path, bytes: Buffer.from(bytes) }]
     const pageNoteUpdates: Array<() => void> = []
+    const pageLinks = (): MaterialLinkRecord[] => deps.links.listFor(courseId, relPath).outgoing.filter((link: MaterialLinkRecord) => link.kind === 'pdf-page-note')
+    const linkedNotes = pageLinks()
+    const linkSnapshot = (links: MaterialLinkRecord[]): string => JSON.stringify(links.map(({ id, target, metadata }) => ({ id, target, metadata })).sort((a, b) => a.id.localeCompare(b.id)))
+    const expectedLinks = linkSnapshot(linkedNotes)
+    const assertLinksCurrent = (): void => {
+      if (linkSnapshot(pageLinks()) !== expectedLinks) throw new ValidationError('페이지 변경을 기다리는 동안 연결된 노트가 변경되었습니다. 페이지 변경을 다시 시도해 주세요.')
+    }
     // Prepare linked Markdown before the transaction; it is journaled with the PDF.
-    for (const link of deps.links.listFor(courseId, relPath).outgoing) {
+    for (const link of linkedNotes) {
       if (link.kind !== 'pdf-page-note' || link.target.kind !== 'note' || !isPdfPageNoteLinkMetadata(link.metadata)) continue
       let note: { markdown: string; mtime: number }
       try { note = deps.notes.read(link.target.payload) } catch { continue }
@@ -137,11 +144,15 @@ export function createPdfNotesService(deps: PdfNotesDeps) {
       const latest = deps.notes.read(link.target.payload)
       if (latest.mtime !== note.mtime || latest.markdown !== note.markdown) throw new ValidationError('연결된 마크다운이 변경되었습니다. 페이지 변경을 다시 시도해 주세요.')
       writes.push({ target: resolveInsideReal(deps.courses.getFolder(courseId), link.target.payload.relPath), bytes: Buffer.from(serializePdfPageNote(rewritten)) })
-      pageNoteUpdates.push(() => deps.links.updateMetadata(courseId, link.id, { version: 1, syncScroll: link.metadata.syncScroll, fingerprint, pageSizes: next.map(displayed) }))
+      const syncScroll = link.metadata.syncScroll
+      pageNoteUpdates.push(() => deps.links.updateMetadata(courseId, link.id, { version: 1, syncScroll, fingerprint, pageSizes: next.map(displayed) }))
     }
     // Recheck after asynchronous PDF generation: never overwrite intervening edits.
     deps.pdfBindings.check({ courseId, relPath, documentRevision: expected })
-    publish(writes, () => {
+    await publish.publishAsync(writes, () => {
+      // Link mutations do not take the material lock. Validate again in this
+      // synchronous transaction if one arrived after the retry preflight.
+      assertLinksCurrent()
       pinPdfClipSources(db,courseId,relPath,expected,sourceBytes.length)
       archivePdfRows(db, binding.materialID, expected, courseId, relPath)
       db.prepare('UPDATE pdf_document_bindings SET bound_sha=?, evidence=?, legacy_unverified=0 WHERE material_id=?').run(revision, 'receipt', binding.materialID)
@@ -165,7 +176,7 @@ export function createPdfNotesService(deps: PdfNotesDeps) {
         if (page !== anchor.page) db.prepare('UPDATE recording_anchors SET payload=? WHERE id=?').run(JSON.stringify({ ...anchor, page }), row.id)
       }
       for (const update of pageNoteUpdates) update()
-    })
+    }, { beforeAttempt: assertLinksCurrent })
     deps.pdfBindings.check({ courseId, relPath, documentRevision: revision })
     deps.materials.invalidateTree(courseId); deps.changed(courseId)
     return { documentRevision: revision, fingerprint, pageCount: entries.length, pageMap: Array.from({ length: count }, (_, index) => targets.get(index + 1) ?? []) }

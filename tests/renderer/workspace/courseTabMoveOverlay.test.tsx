@@ -5,6 +5,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { CourseTabMoveOverlay } from '../../../src/renderer/src/features/workspace/CourseTabMoveOverlay'
 import { BANDAL_TAB_DRAG_MIME } from '../../../src/renderer/src/features/workspace/tabDrag'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
+import * as navigation from '../../../src/renderer/src/features/workspace/courseTabMoveNavigation'
+import { dropWorkspaceTabOnCourse } from '../../../src/renderer/src/features/workspace/workspaceTabDrop'
 
 const workspace = vi.hoisted(() => ({
   state: { activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', windowsOverviewOpen: false, surface: 'course', hydration: 'ready' }, api: { groups: [] as unknown[] },
@@ -25,11 +27,12 @@ function box(element: HTMLElement, x: number, y: number, width: number, height: 
 }
 function drag(element: HTMLElement, type: string, x: number, y: number, relatedTarget?: Node) {
   const event = new Event(type, { bubbles: true, cancelable: true })
-  Object.assign(event, { clientX: x, clientY: y, relatedTarget, dataTransfer: { types: [BANDAL_TAB_DRAG_MIME], dropEffect: 'none' } })
+  Object.assign(event, { clientX: x, clientY: y, relatedTarget, dataTransfer: { types: [BANDAL_TAB_DRAG_MIME], dropEffect: 'none', getData: () => JSON.stringify({ source: tabDragSession.getSource() }) } })
   act(() => { element.dispatchEvent(event) })
   return event
 }
 beforeEach(() => {
+  vi.clearAllMocks()
   host = document.createElement('main'); host.className = 'workspace-host'; box(host, 200, 40, 800, 600)
   canvas = document.createElement('div'); host.append(canvas)
   sidebar = document.createElement('aside'); box(sidebar, 0, 40, 200, 600)
@@ -89,6 +92,29 @@ test('a course that becomes ready under a stationary held pointer restores its p
     vi.advanceTimersToNextFrame()
   })
   expect(host.querySelector('.course-tab-move-preview')).not.toBeNull()
+})
+
+test('a pending folder navigation cannot preview or consume a drop in the previous canvas', () => {
+  vi.useFakeTimers()
+  vi.spyOn(navigation, 'isWorkspaceCourseMoveTargetCurrent').mockImplementation((_nonce, key) => key === 'target')
+  // Capturing a preview leaves the old canvas ready and mounted temporarily.
+  // A ready hydration flag alone must not authorize a source-internal drop.
+  drag(canvas, 'dragenter', 700, 300)
+  expect(host.querySelector('.course-tab-move-preview')).toBeNull()
+  expect(drag(canvas, 'drop', 700, 300).defaultPrevented).toBe(false)
+  expect(dropWorkspaceTabOnCourse).not.toHaveBeenCalled()
+  act(() => {
+    workspace.state.activeCourseId = 'target'
+    workspace.state.activeWorkspaceKey = 'target'
+    workspace.state.activeWindowKey = 'target'
+    for (const listener of workspace.listeners) listener(workspace.state)
+    vi.advanceTimersToNextFrame()
+  })
+  expect(host.querySelector('.course-tab-move-preview')).not.toBeNull()
+  expect(drag(canvas, 'drop', 700, 300).defaultPrevented).toBe(true)
+  expect(dropWorkspaceTabOnCourse).toHaveBeenCalledExactlyOnceWith(
+    { courseId: 'source', panelId: 'panel', nonce: 'held' }, 'target', undefined
+  )
 })
 
 test('hydration finishing after the pointer enters the sidebar cannot revive a split preview', () => {

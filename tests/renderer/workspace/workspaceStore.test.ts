@@ -30,7 +30,7 @@ import {
   flushLearningResourcesForPath,
   moveWorkspacePanel
 } from '../../../src/renderer/src/stores/workspaceStore'
-import { registerBeforeWorkspaceWindowLeave, workspaceApiForWindow, workspaceApiForCourse } from '../../../src/renderer/src/stores/workspaceStore'
+import { capturePendingWorkspaceTarget, registerBeforeWorkspaceWindowLeave, workspaceApiForWindow, workspaceApiForCourse, workspaceCourseForPanel } from '../../../src/renderer/src/stores/workspaceStore'
 import { workspaceWindowKey, type WorkspaceWindows } from '../../../src/shared/workspaceWindows'
 import { workspaceKey } from '../../../src/shared/types/workspace'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
@@ -539,6 +539,75 @@ describe('independent internal windows', () => {
     stop()
     state.setActiveCourse('rail-source')
     expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-source', rightRailTab: 'ai' })
+  })
+
+  test('a clicked cold destination resolves its saved window and survives a superseding course selection', async () => {
+    const state = useWorkspaceStore.getState(), first = liveDock(), third = liveDock()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    const saved: WorkspaceWindows = { kind: 'workspace-windows', version: 1, activeWindowId: 'saved', windows: [
+      { id: 'main', name: 'First', chromeMode: 'all', layout: emptyLayout() },
+      { id: 'saved', name: 'Saved', chromeMode: 'all', layout: emptyLayout() }
+    ] }
+    const reads: Array<(value: { layout: unknown }) => void> = []
+    invokeMock.mockImplementation((channel, input) => channel === 'layout:get' && (input as { courseId?: string }).courseId === 'c2'
+      ? new Promise(resolve => reads.push(resolve)) as never : Promise.resolve(channel === 'layout:get' ? { layout: null } : { ok: true }) as never)
+    let release!: () => void
+    const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => { release = resolve }))
+    state.setActiveCourse('c2')
+    const captured = capturePendingWorkspaceTarget()!
+    state.setActiveCourse('c3'); release(); await settle(); state.attachWindowApi('c3', third.asApi()); await settle()
+    reads[0]!({ layout: saved })
+    const target = await captured
+    expect(target).toEqual({ courseId: 'c2', workspace: { kind: 'course', courseId: 'c2' }, windowId: 'saved' })
+    const note = descriptorFor('note', { courseId: 'c2', relPath: 'clicked.md' })
+    state.openTab(note, { target })
+    reads[1]!({ layout: saved }); await vi.runAllTimersAsync()
+    expect(useWorkspaceStore.getState().activeWindowKey).toBe('c3')
+    expect(third.panels).toHaveLength(0)
+    const key = workspaceWindowKey('c2', 'saved')
+    expect(retainedTabDescriptors(key)).toContainEqual(note)
+    expect(retainedTabDescriptors('c2')).not.toContainEqual(note)
+    const persisted = savesFor('c2').at(-1) as WorkspaceWindows
+    expect(persisted.windows.find(window => window.id === 'saved')?.layout).toMatchObject({ panels: expect.any(Object) })
+    stop()
+    const revisit = liveDock()
+    state.showWorkspaceWindow({ kind: 'course', courseId: 'c2' }, 'saved'); state.attachWindowApi(key, revisit.asApi()); await settle()
+    expect(revisit.panels.map(panel => panel.params?.descriptor)).toEqual([note])
+  })
+
+  test('the same document opened concurrently in two cold windows keeps both exact requests', async () => {
+    const state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', liveDock().asApi()); await settle()
+    const saved: WorkspaceWindows = { kind: 'workspace-windows', version: 1, activeWindowId: 'main', windows: ['main', 'other'].map(id => ({ id, name: id, chromeMode: 'all', layout: emptyLayout() })) }
+    const reads: Array<(value: { layout: unknown }) => void> = []
+    invokeMock.mockImplementation(channel => channel === 'layout:get' ? new Promise(resolve => reads.push(resolve)) as never : Promise.resolve({ ok: true }) as never)
+    const note = descriptorFor('note', { courseId: 'c2', relPath: 'shared.md' })
+    for (const windowId of ['main', 'other']) state.openTab(note, { target: { courseId: 'c2', workspace: { kind: 'course', courseId: 'c2' }, windowId } })
+    expect(reads).toHaveLength(2)
+    for (const resolve of reads) resolve({ layout: saved })
+    await vi.runAllTimersAsync()
+    expect(retainedTabDescriptors('c2')).toContainEqual(note)
+    expect(retainedTabDescriptors(workspaceWindowKey('c2', 'other'))).toContainEqual(note)
+    expect(useWorkspaceStore.getState().activeWindowKey).toBe('c1')
+    const persisted = savesFor('c2').at(-1) as WorkspaceWindows
+    const ids = persisted.windows.flatMap(window => Object.keys((window.layout as { panels: object }).panels))
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  test('a browser with an explicit cold target retains native ownership while its layout is loading', async () => {
+    const state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', liveDock().asApi()); await settle()
+    let resolve!: (value: { layout: unknown }) => void
+    invokeMock.mockImplementation(channel => channel === 'layout:get' ? new Promise(done => { resolve = done }) as never : Promise.resolve({ ok: true }) as never)
+    const browser = descriptorFor('browser', { tabId: 'exact-cold', initialUrl: 'https://example.test' })
+    state.openTab(browser, { target: { courseId: 'c2', workspace: { kind: 'course', courseId: 'c2' }, windowId: 'main' } })
+    expect(browserTabCourseId('exact-cold')).toBe('c2')
+    expect(workspaceCourseForPanel('browser:exact-cold')).toBe('c2')
+    expect(retainedTabDescriptors('c2')).toContainEqual(browser)
+    resolve({ layout: null }); await vi.runAllTimersAsync()
+    expect(browserTabCourseId('exact-cold')).toBe('c2')
+    expect(useWorkspaceStore.getState().activeWindowKey).toBe('c1')
   })
 
   test('renaming and removing a project traverse every window including ownerless browser tabs', async () => {

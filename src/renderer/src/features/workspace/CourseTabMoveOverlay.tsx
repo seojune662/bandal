@@ -3,7 +3,7 @@ import type { DockviewApi } from 'dockview'
 import { useWorkspaceStore, workspaceApiForWindow, type WorkspacePanelMovePosition } from '../../stores/workspaceStore'
 import { BANDAL_TAB_DRAG_MIME, matchesWorkspaceMoveData } from './tabDrag'
 import { tabDragSession } from './tabDragSession'
-import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop } from './courseTabMoveNavigation'
+import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop, isWorkspaceCourseMoveTargetCurrent } from './courseTabMoveNavigation'
 import { showToast } from '../../app/toast'
 import { dropWorkspaceTabOnCourse } from './workspaceTabDrop'
 import { moveWorkspacePanel as movePanelWithinWorkspace } from './workspaceLayout'
@@ -81,6 +81,7 @@ export function CourseTabMoveOverlay(): JSX.Element {
     const targetAtPoint = (x: number, y: number): { courseId: string | null; target: MoveTarget } | null => {
       const source = tabDragSession.getSource(), state = useWorkspaceStore.getState()
       if (!source || tabDragSession.getSnapshot() !== 'tab' ||
+        !isWorkspaceCourseMoveTargetCurrent(source.nonce, state.activeWindowKey) ||
         state.surface !== 'course' || state.windowsOverviewOpen || state.hydration !== 'ready' || (state.activeWindowKey === null && source.courseId !== null)) return null
       const api = workspaceApiForWindow(state.activeWindowKey)
       const target = api ? courseMoveTarget(api, root, x, y) : null

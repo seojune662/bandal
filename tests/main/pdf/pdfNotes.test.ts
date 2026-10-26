@@ -1,6 +1,6 @@
 import { resolvePdfClipSource, isReferencedClipRevision } from '../../../src/main/features/pdf/pdfClipSource'
 import { pendingPdfConflicts, recoverPendingPdfMutation } from '../../../src/main/features/pdf/pendingPdfMutations'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -15,6 +15,17 @@ import { pdfFileRevision, createPDFOriginalPreserver } from '../../../src/main/f
 import { createNoteFileTransaction } from '../../../src/main/features/pdf/noteFileTransaction'
 import { legacyNoteID } from '../../../src/main/features/pdf/legacyNoteMigration'
 import { DRAWING_KINDS, type DrawingData } from '../../../src/shared/types/drawing'
+import { serializePdfPageNote } from '../../../src/shared/pdfPageNote'
+import type { MaterialLinkRecord } from '../../../src/shared/types/link'
+
+const faults = vi.hoisted(() => ({ rename: undefined as ((source: string, target: string) => void) | undefined }))
+vi.mock('node:fs', async original => {
+  const actual = await original<typeof import('node:fs')>()
+  return { ...actual, renameSync: (...args: Parameters<typeof actual.renameSync>) => {
+    faults.rename?.(String(args[0]), String(args[1]))
+    return actual.renameSync(...args)
+  } }
+})
 
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
 describe('shared editable PDF notes', () => {
@@ -30,7 +41,7 @@ describe('shared editable PDF notes', () => {
     canvas=createCanvasRepo(ctx.db)
     deps={db:ctx.db,courses,materials,pdfBindings,notes:{},links:{listFor:()=>({outgoing:[]})},userDataPath:ctx.dir,changed:()=>{}};service=createPdfNotesService(deps)
   })
-  afterEach(()=>ctx.cleanup())
+  afterEach(()=>{ faults.rename=undefined; ctx.cleanup() })
   test('migrates all editable object kinds once, preserves dark paper and untouched originals',async()=>{
     const board=canvas.createBoard({courseId,title:'Legacy'})
     canvas.setBackground({boardId:board.id,background:'dots',surface:'dark'});canvas.setPageCount({boardId:board.id,pageCount:2})
@@ -91,6 +102,39 @@ describe('shared editable PDF notes', () => {
     expect(isReferencedClipRevision(ctx.db,courseId,source.relPath,revision)).toBe(true)
     expect(readFileSync(resolvePdfClipSource(ctx.dir,folder,pinned))).toEqual(bytes)
     expect(drawings.update({id:clip.id,data:{...clip.data,clip:pinned}}).data.clip).toEqual(pinned)
+  })
+  test.each(['added', 'removed', 'metadata'] as const)('preserves linked-note changes (%s) while a Windows PDF replacement is waiting', async change => {
+    const note = await service.create({ courseId, title: 'Waiting PDF' })
+    const target = join(folder, note.relPath), original = readFileSync(target), revision = hash(original)
+    const size = { width: 595, height: 842 }, notePath = 'linked.md'
+    const markdown = serializePdfPageNote({ title: 'Linked', manifest: { version: 1, source: encodeURIComponent(note.relPath), fingerprint: 'before', pages: [size] }, pages: ['Keep this note'], appendix: '' })
+    writeFileSync(join(folder, notePath), markdown)
+    const link: MaterialLinkRecord = { id: randomUUID(), courseId, source: { kind: 'pdf', payload: { courseId, relPath: note.relPath } }, target: { kind: 'note', payload: { courseId, relPath: notePath } }, kind: 'pdf-page-note', label: 'Linked', metadata: { version: 1, syncScroll: true, fingerprint: 'before', pageSizes: [size] }, createdAt: new Date().toISOString() }
+    let outgoing = change === 'added' ? [] : [link], attempts = 0
+    const updateMetadata = vi.fn()
+    deps.links = { listFor: () => ({ outgoing }), updateMetadata }
+    deps.notes = { read: () => ({ markdown: readFileSync(join(folder, notePath), 'utf8'), mtime: 1 }) }
+    faults.rename = (_source, path) => {
+      if (path !== target || ++attempts > 1) return
+      setImmediate(() => {
+        if (change === 'added') outgoing = [link]
+        if (change === 'removed') outgoing = []
+        if (change === 'metadata') link.metadata = { ...link.metadata!, syncScroll: false }
+      })
+      throw Object.assign(new Error('pending PDF reader'), { code: 'EPERM' })
+    }
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { ...platform, value: 'win32' })
+    try {
+      await expect(service.restructure({ courseId, relPath: note.relPath, expectedRevision: revision, pages: [{ source: 1 }, { source: 1 }] })).rejects.toThrow('연결된 노트가 변경')
+    } finally { Object.defineProperty(process, 'platform', platform) }
+    expect(attempts).toBe(1)
+    expect(readFileSync(target)).toEqual(original)
+    expect(readFileSync(join(folder, notePath), 'utf8')).toBe(markdown)
+    expect(updateMetadata).not.toHaveBeenCalled()
+    expect(ctx.db.prepare('SELECT id FROM pdf_restructure_log').all()).toEqual([])
+    expect(outgoing).toHaveLength(change === 'removed' ? 0 : 1)
+    if (change === 'metadata') expect(link.metadata!.syncScroll).toBe(false)
   })
   test('late-view ink is durable and recovers onto a separate editable original exactly once',async()=>{
     const note=await service.create({courseId,title:'Late edit'}),original=readFileSync(join(folder,note.relPath)),revision=hash(original)

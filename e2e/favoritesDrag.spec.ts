@@ -80,13 +80,16 @@ test('drags a real dockview tab into course favorites', async () => {
   let immediateState: FavoriteStateSnapshot | null = null
   try {
     await createCourse(page, '드래그 과목')
+    const courseId = await page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(course => course.name === '드래그 과목')!.id)
+    const workspace = page.locator('.workspace-course:not([hidden])')
+    await expect(workspace).toHaveAttribute('data-workspace-course', courseId)
 
     // Existing board descriptors remain real dockview tabs even though the
     // five creation actions no longer include them. The rail is an overlay.
     await page.keyboard.press('ControlOrMeta+Alt+KeyD')
 
-    const tab = page.locator('.dv-tab', {
-      has: page.locator('.workspace-tab__title', { hasText: '학업 보드' })
+    const tab = workspace.locator('.dv-tab', {
+      has: page.locator('.workspace-tab__title', { hasText: /^학업 보드$/ })
     })
     const favorites = page.getByRole('region', { name: '즐겨찾기' })
     await expect(tab).toBeVisible()
@@ -187,9 +190,9 @@ test('drags a real dockview tab into course favorites', async () => {
 
     // Widening the allowed operation to copyMove must preserve dockview's
     // original move behavior. Add a second tab and reorder the first one.
-    await page.locator('.workspace-add-tab').click()
+    await workspace.locator('.workspace-add-tab').click()
     await page.getByRole('option', { name: /^마크다운(?:\s|$)/ }).click()
-    const noteTab = page.locator('.dv-tab', {
+    const noteTab = workspace.locator('.dv-tab', {
       has: page.locator('.workspace-tab__title', { hasText: /^새 마크다운/ })
     })
     await expect(noteTab).toBeVisible()
@@ -202,7 +205,7 @@ test('drags a real dockview tab into course favorites', async () => {
         y: noteBox!.height / 2
       }
     })
-    await expect(page.locator('.dv-tab .workspace-tab__title')).toHaveText([
+    await expect(workspace.locator('.dv-tab .workspace-tab__title')).toHaveText([
       noteTitle!,
       '학업 보드'
     ])

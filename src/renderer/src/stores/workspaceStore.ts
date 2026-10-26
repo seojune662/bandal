@@ -202,8 +202,8 @@ const windowCollections = new Map<string, WorkspaceWindows>()
 const envelopeWorkspaces = new Set<string>()
 const requestedWindowSelections = new Map<string, string>()
 const closingWindows = new Set<string>()
-interface OwnedBrowserOpen { key: string; descriptor: TabDescriptor; background: boolean; followSavedSelection: boolean; shouldOpen?: () => boolean }
-const ownedBrowserOpens = new Map<string, OwnedBrowserOpen>()
+interface OwnedWorkspaceOpen { requestId: string; key: string; descriptor: TabDescriptor; background: boolean; followSavedSelection: boolean; newInstance?: boolean; groupId?: string; shouldOpen?: () => boolean }
+const ownedWorkspaceOpens = new Map<string, OwnedWorkspaceOpen>()
 let suppressWorkspacePublish = false
 const windowRemovedListeners = new Set<(workspaceKey: string, windowId: string) => void>()
 export function onWorkspaceWindowRemoved(listener: (workspaceKey: string, windowId: string) => void): () => void {
@@ -219,6 +219,17 @@ let requestedTransitionKey: string | null | undefined
 export function registerBeforeWorkspaceWindowLeave(callback: (windowKey: string) => void | Promise<void>): () => void {
   beforeWindowLeave = callback
   return () => { if (beforeWindowLeave === callback) beforeWindowLeave = null }
+}
+/** Capture the selected destination while its previous canvas is still visible.
+ * Resolve a cold workspace's saved window now, before later async file work. */
+export function capturePendingWorkspaceTarget(): Promise<WorkspaceTarget> | undefined {
+  const key = requestedTransitionKey
+  if (!key || key === useWorkspaceStore.getState().activeWindowKey) return undefined
+  const parsed = workspaceWindowFromKey(key), workspace = workspaceFromKey(key)
+  const groupId = workspaceApiForWindow(key)?.activeGroup?.id
+  const target = { courseId: workspace.courseId, workspace, windowId: parsed.windowId, ...(groupId ? { groupId } : {}) }
+  if (parsed.windowId !== DEFAULT_WORKSPACE_WINDOW_ID || loadedWindowCollection(parsed.workspaceKey)) return Promise.resolve(target)
+  return invoke('layout:get', workspaceLayoutScope(workspace)).then(saved => ({ ...target, windowId: readWorkspaceWindows(saved.layout).activeWindowId }))
 }
 function collectionFor(key: string): WorkspaceWindows {
   const base = workspaceWindowFromKey(key).workspaceKey
@@ -891,6 +902,17 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       }
       if (options?.shouldOpen && !options.shouldOpen()) return
       const destination = options?.target ? { ...options.target, courseId: options.target.workspace === undefined ? options.target.courseId : options.target.workspace === null ? null : workspaceWindowKey(workspaceKey(options.target.workspace), options.target.windowId ?? collectionFor(workspaceKey(options.target.workspace)).activeWindowId) } : undefined
+      if (destination?.courseId && !discardedCourses.has(destination.courseId) &&
+          (!workspaceApiForWindow(destination.courseId) || !hydratedCourses.has(destination.courseId))) {
+        const copy = options?.newInstance ? duplicateTabDescriptor(descriptor) : descriptor
+        const staged: OwnedWorkspaceOpen = { requestId: crypto.randomUUID(), key: destination.courseId, descriptor: copy,
+          background: options?.background === true, followSavedSelection: false,
+          ...(options?.newInstance ? { newInstance: true } : {}), ...(destination.groupId ? { groupId: destination.groupId } : {}),
+          ...(options?.shouldOpen ? { shouldOpen: options.shouldOpen } : {}) }
+        ownedWorkspaceOpens.set(staged.requestId, staged)
+        void materializeOwnedWorkspaceOpen(staged)
+        return
+      }
       if (destination && destination.courseId !== get().activeWindowKey) {
         const target = workspaceApiForWindow(destination.courseId)
         const group = destination.groupId ? target?.getGroup(destination.groupId) : undefined
@@ -1252,7 +1274,7 @@ export function resetWorkspaceStoreForTests(): void {
   envelopeWorkspaces.clear()
   requestedWindowSelections.clear()
   closingWindows.clear()
-  ownedBrowserOpens.clear()
+  ownedWorkspaceOpens.clear()
   suppressWorkspacePublish = false
   windowRemovedListeners.clear()
   beforeWindowLeave = null
@@ -1301,7 +1323,7 @@ export function retainedTabDescriptors(courseId?: string): TabDescriptor[] {
   if (temporary && state.activeWindowKey !== null && courseId === undefined) {
     descriptors.push(...temporary.panels.flatMap(panel => isTabDescriptor(panel.params?.descriptor) ? [panel.params.descriptor] : []))
   }
-  for (const open of ownedBrowserOpens.values()) if ((courseId === undefined || courseId === open.key) && !discardedCourses.has(open.key) && (!open.shouldOpen || open.shouldOpen())) {
+  for (const open of ownedWorkspaceOpens.values()) if ((courseId === undefined || courseId === open.key) && !discardedCourses.has(open.key) && (!open.shouldOpen || open.shouldOpen())) {
     if (!descriptors.some(tab => tabPanelId(tab) === tabPanelId(open.descriptor))) descriptors.push(open.descriptor)
   }
   return descriptors
@@ -1322,7 +1344,7 @@ export function isWorkspaceDiscarded(key: string): boolean { return discardedCou
 export function workspaceCourseForPanel(panelId: string): string | null {
   for (const [courseId, target] of courseApis) if (target.getPanel(panelId)) return courseId
   for (const [courseId, layout] of runtimeLayouts) if (tabsFromLayout(layout)[panelId]) return courseId
-  const staged = ownedBrowserOpens.get(panelId)
+  const staged = ownedWorkspaceOpens.get(panelId) ?? [...ownedWorkspaceOpens.values()].find(open => open.descriptor.kind === 'browser' && tabPanelId(open.descriptor) === panelId)
   if (staged && !discardedCourses.has(staged.key)) return staged.key
   return null
 }
@@ -1571,7 +1593,7 @@ export function browserTabWorkspace(tabId: string): WorkspaceRef | null {
   for (const [courseId, layout] of runtimeLayouts) {
     if (!discardedCourses.has(courseId) && Object.values(tabsFromLayout(layout)).some(ownsTab)) return workspaceFromKey(courseId)
   }
-  const staged = ownedBrowserOpens.get(`browser:${tabId}`)
+  const staged = ownedWorkspaceOpens.get(`browser:${tabId}`) ?? [...ownedWorkspaceOpens.values()].find(open => ownsTab(open.descriptor))
   if (staged && !discardedCourses.has(staged.key)) return workspaceFromKey(staged.key)
   return null
 }
@@ -1587,11 +1609,11 @@ export function openBrowserTabInCourse(descriptor: TabDescriptor, ownerId: strin
   const courseId = openerKey ?? pendingOwner ?? (ownerId !== undefined && ownerId !== null && state.activeCourseId === ownerId ? state.activeWindowKey : ownerId === null || ownerId === undefined ? ownerId : selectedWindowKey(ownerId))
   if (courseId !== undefined && courseId !== null && discardedCourses.has(courseId)) return false
   if (courseId && courseId === requestedTransitionKey && courseId !== state.activeWindowKey) {
-    const staged: OwnedBrowserOpen = { key: courseId, descriptor, background,
+    const staged: OwnedWorkspaceOpen = { requestId: tabPanelId(descriptor), key: courseId, descriptor, background,
       followSavedSelection: !openerKey && workspaceWindowFromKey(courseId).windowId === DEFAULT_WORKSPACE_WINDOW_ID && !runtimeLayouts.has(courseId),
       ...(shouldOpen ? { shouldOpen } : {}) }
-    ownedBrowserOpens.set(tabPanelId(descriptor), staged)
-    void materializeOwnedBrowserOpen(staged)
+    ownedWorkspaceOpens.set(staged.requestId, staged)
+    void materializeOwnedWorkspaceOpen(staged)
     return true
   }
   const target = courseId === undefined ? undefined : courseApis.get(courseId)
@@ -1615,14 +1637,14 @@ export function openBrowserTabInCourse(descriptor: TabDescriptor, ownerId: strin
   return true
 }
 
-/** Explicit native requests survive a canceled navigation and stay visible to guest reaping. */
-async function materializeOwnedBrowserOpen(open: OwnedBrowserOpen): Promise<void> {
-  const id = tabPanelId(open.descriptor), base = workspaceWindowFromKey(open.key).workspaceKey
+/** Explicit opens survive canceled navigation without mounting a hidden canvas. */
+async function materializeOwnedWorkspaceOpen(open: OwnedWorkspaceOpen): Promise<void> {
+  const requestId = open.requestId, base = workspaceWindowFromKey(open.key).workspaceKey
   try {
     if (!runtimeLayouts.has(open.key)) {
       const saved = await invoke('layout:get', workspaceLayoutScope(workspaceFromKey(base)))
       const converted = await convertStoredWindows(base, saved.layout)
-      if (ownedBrowserOpens.get(id) !== open || discardedCourses.has(base) || discardedCourses.has(open.key)) return
+      if (ownedWorkspaceOpens.get(requestId) !== open || discardedCourses.has(base) || discardedCourses.has(open.key)) return
       if (!loadedWindowCollection(base)) {
         windowCollections.set(base, converted.collection)
         if (isWorkspaceWindows(saved.layout)) envelopeWorkspaces.add(base)
@@ -1630,27 +1652,37 @@ async function materializeOwnedBrowserOpen(open: OwnedBrowserOpen): Promise<void
       }
       if (open.followSavedSelection) open.key = workspaceWindowKey(base, collectionFor(base).activeWindowId)
     }
-    if (ownedBrowserOpens.get(id) !== open || discardedCourses.has(open.key) || open.shouldOpen && !open.shouldOpen()) return
+    if (ownedWorkspaceOpens.get(requestId) !== open || discardedCourses.has(open.key) || open.shouldOpen && !open.shouldOpen()) return
+    if (!collectionFor(base).windows.some(window => window.id === workspaceWindowFromKey(open.key).windowId)) throw new Error('원래 윈도우가 닫혔습니다.')
     const state = useWorkspaceStore.getState(), target = courseApis.get(open.key)
+    const id = open.newInstance && open.descriptor.kind !== 'browser' ? createDuplicatePanelId(open.descriptor) : newPanelId(open.descriptor, open.key)
     if (target && hydratedCourses.has(open.key)) {
-      if (!target.getPanel(id)) {
+      const group = open.groupId ? target.getGroup(open.groupId) : undefined
+      if (open.groupId && !group) throw new Error('원래 작업 영역이 닫혔습니다.')
+      const existing = open.newInstance ? undefined : findLogicalPanel(target, open.descriptor)
+      if (existing) {
+        existing.api.updateParameters({ ...existing.params, descriptor: open.descriptor })
+        if (!open.background) existing.api.setActive()
+      } else {
         const previous = target.activePanel
-        target.addPanel({ id, component: open.descriptor.kind, title: tabTitle(open.descriptor), params: { descriptor: open.descriptor }, inactive: open.background })
+        target.addPanel({ id, component: open.descriptor.kind, title: tabTitle(open.descriptor), params: { descriptor: open.descriptor }, inactive: open.background,
+          ...(group ? { position: { referenceGroup: group.id, index: group.panels.length } } : {}) })
         if (open.background) previous?.api.setActive()
       }
       state.saveRetainedLayout(open.key, target.toJSON())
       if (state.activeWindowKey === open.key) state.notifyLayoutChanged()
     } else {
-      const layout = appendRetainedTab(runtimeLayouts.get(open.key) ?? emptyWindowLayout(), open.descriptor, id,
-        { groupId: undefined, background: open.background, newInstance: false })
+      const raw = runtimeLayouts.get(open.key)
+      const layout = appendRetainedTab(raw === null || raw === undefined || typeof raw === 'object' && Object.keys(raw).length === 0 ? emptyWindowLayout() : raw, open.descriptor, id,
+        { groupId: open.groupId, background: open.background, newInstance: open.newInstance })
       if (!layout) throw new Error('원래 작업 영역을 읽지 못했습니다.')
       state.saveRetainedLayout(open.key, layout)
     }
   } catch (error) {
-    console.error('[workspace] 브라우저 탭을 원래 공간에 열지 못했습니다.', error)
-    showToast('브라우저 탭을 열지 못했어요. 원래 공간에서 다시 시도해 주세요.', 'danger')
+    console.error('[workspace] 탭을 원래 공간에 열지 못했습니다.', error)
+    showToast('탭을 열지 못했어요. 원래 공간에서 다시 시도해 주세요.', 'danger')
   } finally {
-    if (ownedBrowserOpens.get(id) === open) ownedBrowserOpens.delete(id)
+    if (ownedWorkspaceOpens.get(requestId) === open) ownedWorkspaceOpens.delete(requestId)
     const state = useWorkspaceStore.getState()
     useWorkspaceStore.setState({ openTabs: { ...state.openTabs } })
   }

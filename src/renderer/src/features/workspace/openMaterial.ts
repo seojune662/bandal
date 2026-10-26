@@ -12,7 +12,7 @@ import type { MaterialKind } from '../../../../shared/types/materials'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import { useMaterialsStore } from '../../stores/materialsStore'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { capturePendingWorkspaceTarget, useWorkspaceStore } from '../../stores/workspaceStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { descriptorFor } from './tabIdentity'
 import { isViewableFile } from '../file/fileFormats'
@@ -66,6 +66,14 @@ export function openMaterialInWorkspace(
 ): void {
   const courseId = options?.target ? options.target.courseId : useMaterialsStore.getState().activeCourseId
   if (courseId === null) return
+  const pendingTarget = options?.target || options?.workspace || options?.navigateToOwner ? undefined : capturePendingWorkspaceTarget()
+  if (pendingTarget) {
+    // Capture both the clicked resource and requested canvas. A later course
+    // selection must neither redirect nor discard this explicit file open.
+    void pendingTarget.then(target => openMaterialInCourse(courseId, kind, relPath, { ...options, target }))
+      .catch(() => showToast('원래 작업 영역을 읽지 못해 자료를 열지 못했어요. 다시 시도해 주세요.', 'danger'))
+    return
+  }
   openMaterialInCourse(courseId, kind, relPath, { ...options, workspace: options?.workspace ?? useWorkspaceStore.getState().activeWorkspace })
 }
 
