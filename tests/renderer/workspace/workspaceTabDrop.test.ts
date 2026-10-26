@@ -2,12 +2,13 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
 import { installWorkspaceCourseMoveNavigation, workspaceCourseMoveRetention } from '../../../src/renderer/src/features/workspace/courseTabMoveNavigation'
 import { dropWorkspaceTabOnCourse } from '../../../src/renderer/src/features/workspace/workspaceTabDrop'
+import { workspaceWindowKey } from '../../../src/shared/workspaceWindows'
 
 const fixture = vi.hoisted(() => {
   const courseListeners = new Set<(state: any, previous: any) => void>()
   const workspaceListeners = new Set<(state: any, previous: any) => void>()
   const state = { selectedCourseId: 'source', courses: [{ id: 'source' }, { id: 'target' }, { id: 'other' }], selectCourse: (_id: string | null) => {} }
-  const workspace = { activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', windowsOverviewOpen: false, hydration: 'ready', surface: 'course', showWorkspace: (_ref: any) => {} }
+  const workspace = { activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', windowsOverviewOpen: false, hydration: 'ready', surface: 'course', showWorkspace: (_ref: any) => {}, showWorkspaceWindow: (_ref: any, _windowId: string) => {} }
   return { state, workspace, courseListeners, workspaceListeners, move: vi.fn(), toast: vi.fn(), api: { activeGroup: { id: 'target-group', panels: [{ id: 'one' }, { id: 'two' }] } } }
 })
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: {
@@ -33,10 +34,16 @@ function hydrate(hydration: string) {
   Object.assign(fixture.workspace, { activeCourseId: 'target', activeWorkspaceKey: 'target', activeWindowKey: 'target', hydration })
   for (const listener of fixture.workspaceListeners) listener(fixture.workspace, previous)
 }
+function showWorkspace(ref: any, windowId = 'main') {
+  const previous = { ...fixture.workspace }
+  Object.assign(fixture.workspace, { activeCourseId: ref?.courseId ?? null, activeWorkspaceKey: ref?.courseId ?? null,
+    activeWindowKey: ref ? workspaceWindowKey(ref.courseId, windowId) : null, hydration: 'loading' })
+  for (const listener of fixture.workspaceListeners) listener(fixture.workspace, previous)
+}
 beforeEach(() => {
   vi.useFakeTimers()
   Object.assign(fixture.state, { selectedCourseId: 'source', courses: [{ id: 'source' }, { id: 'target' }, { id: 'other' }], selectCourse: select })
-  Object.assign(fixture.workspace, { activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', windowsOverviewOpen: false, hydration: 'ready', surface: 'course', showWorkspace: (ref: any) => { const previous = { ...fixture.workspace }; Object.assign(fixture.workspace, {activeCourseId: ref?.courseId ?? null, activeWorkspaceKey: ref?.courseId ?? null, activeWindowKey: ref?.courseId ?? null, hydration: 'loading'}); for(const listener of fixture.workspaceListeners) listener(fixture.workspace, previous) } })
+  Object.assign(fixture.workspace, { activeCourseId: 'source', activeWorkspaceKey: 'source', activeWindowKey: 'source', windowsOverviewOpen: false, hydration: 'ready', surface: 'course', showWorkspace, showWorkspaceWindow: showWorkspace })
   fixture.move.mockReset().mockResolvedValue(true); fixture.toast.mockClear()
   dispose = installWorkspaceCourseMoveNavigation()
   tabDragSession.beginTab(source)
@@ -82,6 +89,19 @@ test('hydration failure cancels before moving and restores the source course', a
   expect(fixture.move).not.toHaveBeenCalled()
   expect(fixture.state.selectedCourseId).toBe('source')
   expect(fixture.toast).toHaveBeenCalledTimes(1)
+})
+
+test('a rejected move returns to its original internal window', async () => {
+  tabDragSession.end()
+  const key = workspaceWindowKey('source', 'second')
+  fixture.workspace.activeWindowKey = key
+  const held = { ...source, courseId: key }
+  tabDragSession.beginTab(held)
+  fixture.move.mockResolvedValue(false)
+  const operation = dropWorkspaceTabOnCourse(held, 'target')
+  tabDragSession.end(); hydrate('ready')
+  expect(await operation).toBe(false)
+  expect(fixture.workspace.activeWindowKey).toBe(key)
 })
 
 test('external navigation while hydration is pending wins over cancellation rollback', async () => {

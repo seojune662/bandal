@@ -1,17 +1,30 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
+import { workspaceKey } from '../../../src/shared/types/workspace'
+import { workspaceWindowKey } from '../../../src/shared/workspaceWindows'
 
 const fixture = vi.hoisted(() => ({
   tabs: [] as any[], liveTabs: null as any[] | null, nav: {} as Record<string, { url: string }>, courseId: null as string | null,
   activeBrowserId: null as string | null, priorPanel: null as string | null,
-  aiOpen: false, workspace: null as any,
-  selectCourse: vi.fn(), close: vi.fn(), closeTemporary: vi.fn(), activate: vi.fn(), settings: vi.fn(), toast: vi.fn(), showAssistant: vi.fn(), showWorkspace: vi.fn(), closeSettings: vi.fn()
+  aiOpen: false, workspace: null as any, windowId: 'main', liveWindowKey: null as string | null,
+  selectCourse: vi.fn(), close: vi.fn(), closeTemporary: vi.fn(), activate: vi.fn(), settings: vi.fn(), toast: vi.fn(), showAssistant: vi.fn(), showWorkspaceWindow: vi.fn(), lookupWindow: vi.fn(), closeSettings: vi.fn()
 }))
-vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => ({ selectCourse: (id: string | null) => { fixture.selectCourse(id); fixture.courseId = id } }) } }))
+function currentWorkspaceKey(): string | null { return fixture.workspace ? workspaceKey(fixture.workspace) : fixture.courseId }
+function currentWindowKey(): string | null {
+  const base = currentWorkspaceKey()
+  return base === null ? null : workspaceWindowKey(base, fixture.windowId)
+}
+vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: { getState: () => ({ selectCourse: (id: string | null, options?: unknown) => { fixture.selectCourse(id, options); fixture.courseId = id } }) } }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   retainedTabDescriptors: () => fixture.tabs,
-  workspaceApiForCourse: () => ({ panels: (fixture.liveTabs ?? fixture.tabs).map(descriptor => ({ params: { descriptor }, api: { close: fixture.closeTemporary } })) }),
-  useWorkspaceStore: { getState: () => ({ surface: 'course', activeWorkspaceKey: fixture.workspace?.kind === 'project' ? `project:${JSON.stringify([fixture.workspace.courseId, fixture.workspace.rootRelPath])}` : fixture.courseId, activeCourseId: fixture.courseId, activeWorkspace: fixture.workspace, showWorkspace: (scope: any) => { fixture.showWorkspace(scope); fixture.workspace = scope; fixture.courseId = scope?.courseId ?? null }, activePanelSource: () => fixture.priorPanel ? { panelId: fixture.priorPanel } : null, activeBrowserTabId: () => fixture.activeBrowserId, closeTabsMatching: fixture.close, activatePanel: fixture.activate, notifyLayoutChanged: vi.fn() }) }
+  workspaceApiForWindow: (key: string | null) => {
+    fixture.lookupWindow(key)
+    return key === fixture.liveWindowKey ? { panels: (fixture.liveTabs ?? fixture.tabs).map(descriptor => ({ params: { descriptor }, api: { close: fixture.closeTemporary } })) } : null
+  },
+  useWorkspaceStore: { getState: () => ({ surface: 'course', activeWorkspaceKey: currentWorkspaceKey(), activeWindowKey: currentWindowKey(), activeWindowId: fixture.courseId === null ? null : fixture.windowId,
+    activeCourseId: fixture.courseId, activeWorkspace: fixture.workspace ?? (fixture.courseId ? { kind: 'course', courseId: fixture.courseId } : null),
+    showWorkspaceWindow: (scope: any, windowId: string) => { fixture.showWorkspaceWindow(scope, windowId); fixture.workspace = scope; fixture.courseId = scope.courseId; fixture.windowId = windowId },
+    activePanelSource: () => fixture.priorPanel ? { panelId: fixture.priorPanel } : null, activeBrowserTabId: () => fixture.activeBrowserId, closeTabsMatching: fixture.close, activatePanel: fixture.activate, notifyLayoutChanged: vi.fn() }) }
 }))
 vi.mock('../../../src/renderer/src/features/browser/browserGuestsStore', () => ({ useBrowserGuests: { getState: () => ({ nav: fixture.nav }) } }))
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: { getState: () => ({ openSettings: fixture.settings, closeSettings: fixture.closeSettings, showAssistant: fixture.showAssistant, rightRailOpen: fixture.aiOpen, rightRailTab: 'ai' }) } }))
@@ -24,13 +37,14 @@ const url = 'https://auth.openai.com/oauth/authorize?state=ephemeral'
 function begin() {
   setIpcAdapter({ invoke: vi.fn(), on: (_channel: string, cb: (payload: any) => void) => { progress = cb; return () => undefined } } as unknown as IpcAdapter)
   stop = installAgentLoginTabLifecycle()
+  fixture.liveWindowKey = currentWindowKey()
   const payload = { url, isPrivate: true, loginProvider: 'codex' as const, loginRequestId: 'attempt' }
   const result = prepareAgentLoginTab(payload, 'owned-tab')
   fixture.tabs = [{ kind: 'browser', payload: { tabId: result.tabId, initialUrl: url, isPrivate: true } }]
   fixture.activeBrowserId = 'owned-tab'
   return payload
 }
-afterEach(() => { stop?.(); stop = undefined; fixture.tabs = []; fixture.liveTabs = null; fixture.nav = {}; fixture.courseId = null; fixture.activeBrowserId = null; fixture.priorPanel = null; fixture.aiOpen = false; fixture.workspace = null; vi.clearAllMocks(); resetAgentConnectionsForTests(); setIpcAdapter(null) })
+afterEach(() => { stop?.(); stop = undefined; fixture.tabs = []; fixture.liveTabs = null; fixture.nav = {}; fixture.courseId = null; fixture.activeBrowserId = null; fixture.priorPanel = null; fixture.aiOpen = false; fixture.workspace = null; fixture.windowId = 'main'; fixture.liveWindowKey = null; vi.clearAllMocks(); resetAgentConnectionsForTests(); setIpcAdapter(null) })
 describe('managed login tabs', () => {
   test('finishes a live login panel before its next-frame retained snapshot has been published', () => {
     begin(); fixture.liveTabs = fixture.tabs; fixture.tabs = []
@@ -80,7 +94,8 @@ describe('managed login tabs', () => {
     const payload = begin()
     fixture.courseId = 'course-b'
     expect(prepareAgentLoginTab(payload, 'duplicate')).toEqual({ tabId: 'owned-tab', courseId: 'course-a' })
-    expect(fixture.selectCourse).toHaveBeenCalledExactlyOnceWith('course-a')
+    expect(fixture.selectCourse).toHaveBeenCalledExactlyOnceWith('course-a', { preserveSurface: true })
+    expect(fixture.showWorkspaceWindow).toHaveBeenCalledExactlyOnceWith({ kind: 'course', courseId: 'course-a' }, 'main')
     expect(fixture.courseId).toBe('course-a')
   })
   test('reopening from a sibling project returns to the exact owning project before focusing its login tab', () => {
@@ -89,8 +104,30 @@ describe('managed login tabs', () => {
     const payload = begin()
     fixture.workspace = { ...original, rootRelPath: 'second' }
     expect(prepareAgentLoginTab(payload, 'duplicate')).toEqual({ tabId: 'owned-tab', courseId: 'course-a' })
-    expect(fixture.showWorkspace).toHaveBeenCalledExactlyOnceWith(original)
-    expect(fixture.selectCourse).not.toHaveBeenCalled()
+    expect(fixture.showWorkspaceWindow).toHaveBeenCalledExactlyOnceWith(original, 'main')
+    expect(fixture.selectCourse).toHaveBeenCalledExactlyOnceWith('course-a', { preserveSurface: true })
+  })
+  test('reopening from a sibling window selects the exact owning window before focusing its retained login tab', () => {
+    const original = { kind: 'project' as const, courseId: 'course-a', rootRelPath: 'first' }
+    fixture.courseId = original.courseId; fixture.workspace = original; fixture.windowId = 'login-window'
+    const payload = begin(), ownedKey = workspaceWindowKey(workspaceKey(original), 'login-window')
+    fixture.windowId = 'working-window'
+    expect(prepareAgentLoginTab(payload, 'duplicate')).toEqual({ tabId: 'owned-tab', courseId: 'course-a' })
+    expect(fixture.lookupWindow).toHaveBeenCalledWith(ownedKey)
+    expect(fixture.showWorkspaceWindow).toHaveBeenCalledExactlyOnceWith(original, 'login-window')
+    expect(fixture.windowId).toBe('login-window')
+  })
+  test('completion in a sibling window closes the owned login tab without restoring focus or settings there', () => {
+    fixture.courseId = 'course'; fixture.workspace = { kind: 'course', courseId: 'course' }; fixture.windowId = 'login-window'; fixture.priorPanel = 'chat:original'
+    begin()
+    fixture.windowId = 'working-window'
+    progress!({ provider: 'codex', requestId: 'attempt', stage: 'done' })
+    expect(fixture.lookupWindow).toHaveBeenCalledWith(workspaceWindowKey('course', 'login-window'))
+    expect(fixture.close).toHaveBeenCalledExactlyOnceWith(fixture.tabs[0])
+    expect(fixture.showWorkspaceWindow).not.toHaveBeenCalled()
+    expect(fixture.activate).not.toHaveBeenCalled()
+    expect(fixture.settings).not.toHaveBeenCalled()
+    expect(fixture.windowId).toBe('working-window')
   })
   test('completion from settings does not reopen settings in a sibling project', () => {
     fixture.courseId = 'course-a'; fixture.workspace = { kind: 'project', courseId: 'course-a', rootRelPath: 'first' }; begin()
