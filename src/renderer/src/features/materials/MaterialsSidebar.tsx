@@ -31,6 +31,7 @@ import { type MaterialTreeProps } from './MaterialTree'
 import { MaterialBrowser, MaterialViewMenu } from './MaterialViews'
 import { readMaterialView, rememberMaterialView, readMaterialSort, rememberMaterialSort, type MaterialView } from './materialViewPreference'
 import { sortMaterials } from './materialPresentation'
+import { revealMaterialRow } from './materialScroll'
 import { useMaterialContentSearch } from './useMaterialContentSearch'
 import { MaterialContentResults } from './MaterialContentResults'
 import { ExternalSourcesPanel } from './ExternalSourcesPanel'
@@ -445,7 +446,7 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
       const row = Array.from(rows ?? []).find(
         (candidate) => candidate.dataset.materialPath === selectedRelPath
       )
-      row?.scrollIntoView({ block: 'nearest' })
+      if (row && sidebarRef.current) revealMaterialRow(row, sidebarRef.current)
     })
     return () => window.cancelAnimationFrame(frame)
   }, [selectedRelPath, tree])

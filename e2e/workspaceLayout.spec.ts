@@ -75,12 +75,19 @@ for (const scenario of [{ theme: 'dark', width: 1440, height: 900, zoom: 1 }, { 
       expect(await page.evaluate(() => (window as any).__preservedPaneEditor.isConnected && (window as any).__preservedPaneEditor.textContent.includes('preserved draft'))).toBe(true)
       expect(await workspace.locator('.workspace-chrome-spacer').count()).toBeLessThanOrEqual(1)
       await expect(page.getByRole('button', { name: '오른쪽 사이드바 펼치기', exact: true })).toHaveCount(1)
+      // A saved file refreshes the retained materials tree while its rail is
+      // closed. Revealing that selection must never scroll the app document.
+      writeFileSync(join(course.folderPath, 'refresh-probe.md'), '# Tree refresh while closed\n')
+      await expect(page.locator('[data-material-path="refresh-probe.md"]')).toBeAttached()
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+      expect(await page.evaluate(() => ({ x: scrollX, y: scrollY }))).toEqual({ x: 0, y: 0 })
       const before = await groups.first().boundingBox()
       const vertical = workspace.locator('.dv-horizontal > .dv-sash-container > .dv-sash:not(.dv-disabled)').first()
       for (const fraction of [0.05, 0.5, 0.94]) await resizeAt(page, vertical, 'x', fraction)
       await expect.poll(async () => (await groups.first().boundingBox())!.width).not.toBe(before!.width)
       const horizontal = workspace.locator('.dv-vertical > .dv-sash-container > .dv-sash:not(.dv-disabled)').first()
       await resizeAt(page, horizontal, 'y', 0.6)
+      expect(await page.evaluate(() => ({ x: scrollX, y: scrollY }))).toEqual({ x: 0, y: 0 })
       // The last pane is focused; opening from the first pane must honor its +.
       const first = groups.first()
       await first.getByRole('button', { name: '새 탭 열기', exact: true }).click()

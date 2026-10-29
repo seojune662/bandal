@@ -18,6 +18,9 @@ body,
  * tokens.css follows the multiplier, so this behaves like browser zoom. */
 html {
   font-size: calc(100% * var(--font-scale));
+  /* The app viewport stays fixed; only its document and sidebar panes scroll.
+     Unlike hidden, clip also blocks focus/scrollIntoView from moving the root. */
+  overflow: clip;
 }
 
 body {
@@ -27,7 +30,7 @@ body {
   color: var(--text-primary);
   background: var(--bg-app);
   -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  overflow: clip;
   user-select: none;
 }
 

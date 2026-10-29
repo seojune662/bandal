@@ -185,10 +185,28 @@ test('saved WAV opens its own tab; folding, scrolling and playback are independe
   }
 })
 
-test('tab menu order, all shortcuts and tab defaults work together', async () => {
+for (const agentConnected of [false, true]) {
+test(`tab menu order, all shortcuts and tab defaults work together with ${agentConnected ? 'connected' : 'unconnected'} AI`, async () => {
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const bandal = await launchBandal()
   try {
+    // Fix the provider state before any AI surface opens. These shortcut tests
+    // must not depend on a local CLI installation, login or an external model.
+    await bandal.app.evaluate(({ ipcMain }, connected) => {
+      for (const channel of ['chat:open', 'agent:availability', 'agent:models', 'agent:skills']) ipcMain.removeHandler(channel)
+      ipcMain.handle('chat:open', (_event, req) => ({
+        history: [],
+        availability: { installed: connected, loggedIn: connected },
+        sessionInfo: {
+          id: req.sessionId, courseId: req.courseId, provider: 'claude-code',
+          model: null, status: 'idle', cliSessionId: null, title: null,
+          surface: 'app', lastUsedAt: null
+        }
+      }))
+      ipcMain.handle('agent:availability', () => ({ installed: connected, loggedIn: connected }))
+      ipcMain.handle('agent:models', () => ({ models: [] }))
+      ipcMain.handle('agent:skills', () => [])
+    }, agentConnected)
     const { page } = bandal
     await createCourse(page, '탭 설정 검증')
     await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
@@ -263,9 +281,18 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
     await expect(page.locator('.browser-toolbar:visible')).toBeVisible()
     await page.keyboard.press(`${mod}+Shift+a`)
     // AI opens beside the active document in the workspace sidebar.
-    await expect(page.getByRole('region', { name: '공간 AI', exact: true })
-      .getByRole('textbox', { name: '메시지 입력', exact: true })).toBeVisible()
+    await expect(page.getByRole('tablist', { name: '오른쪽 사이드바', exact: true })
+      .getByRole('tab', { name: 'AI', exact: true })).toHaveAttribute('aria-selected', 'true')
+    const assistant = page.getByRole('region', { name: '공간 AI', exact: true })
+    await expect(assistant).toBeVisible()
+    await expect(assistant.getByText('탭 설정 검증', { exact: true })).toBeVisible()
     await expect(page.locator('.dv-tab.dv-active-tab')).toContainText('example.invalid')
+    if (agentConnected) {
+      await expect(assistant.getByRole('textbox', { name: '메시지 입력', exact: true })).toBeVisible()
+    } else {
+      await expect(assistant.getByRole('button', { name: '연결하기', exact: true })).toBeVisible()
+      await expect(assistant.getByRole('textbox', { name: '메시지 입력', exact: true })).toHaveCount(0)
+    }
     await page.keyboard.press(`${mod}+Alt+r`)
     await expect(page.locator('.recording:visible')).toBeVisible()
     await expect(
@@ -296,3 +323,4 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
     await bandal.close()
   }
 })
+}
