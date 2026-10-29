@@ -15,6 +15,18 @@ async function chooseLayout(page: Page, name: string): Promise<void> {
 }
 
 async function resizeAt(page: Page, sash: Locator, direction: 'x' | 'y', fraction: number): Promise<void> {
+  // Rail transitions and deferred editor focus can still move the workspace
+  // after all four panes mount. Start a drag from settled screen coordinates.
+  await expect.poll(() => sash.evaluate(async element => {
+    const shell = element.closest('.app-shell')!
+    const animating = (): boolean => shell.getAnimations().some(animation => animation.playState === 'running' || animation.pending)
+    if (animating()) return false
+    const before = element.getBoundingClientRect()
+    for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame)
+    const after = element.getBoundingClientRect()
+    const dimensions = ['x', 'y', 'width', 'height'] as const
+    return element.isConnected && !animating() && dimensions.every(key => Math.abs(after[key] - before[key]) < 0.1)
+  })).toBe(true)
   const box = (await sash.boundingBox())!
   const point = direction === 'x'
     ? { x: box.x + box.width / 2, y: box.y + box.height * fraction }

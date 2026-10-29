@@ -262,7 +262,10 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
     await page.keyboard.press(`${mod}+Shift+b`)
     await expect(page.locator('.browser-toolbar:visible')).toBeVisible()
     await page.keyboard.press(`${mod}+Shift+a`)
-    await expect(page.locator('.dv-tab.dv-active-tab')).toContainText('AI')
+    // AI opens beside the active document in the workspace sidebar.
+    await expect(page.getByRole('region', { name: '공간 AI', exact: true })
+      .getByRole('textbox', { name: '메시지 입력', exact: true })).toBeVisible()
+    await expect(page.locator('.dv-tab.dv-active-tab')).toContainText('example.invalid')
     await page.keyboard.press(`${mod}+Alt+r`)
     await expect(page.locator('.recording:visible')).toBeVisible()
     await expect(
