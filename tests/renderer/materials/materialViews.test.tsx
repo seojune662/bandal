@@ -155,11 +155,52 @@ test('compact retains expandable inline tree and scoped list cannot escape its p
 
 test('a large readable list mounts a bounded set of previews and keyboard End reaches its last row', async () => {
   props.nodes = Array.from({ length: 1200 }, (_, index) => ({ name: `file-${index}.md`, relPath: `file-${index}.md`, kind: 'note' }))
+  // jsdom has no layout: model a real viewport whose list moves when scrolled.
+  // Otherwise a pending measurement sees top=0 even after End and unmounts
+  // the last row by incorrectly returning the virtual window to the start.
+  const rowHeight = 100, viewportHeight = 600, listOffset = 50
+  let scrollTop = 0
+  Object.defineProperties(host, {
+    clientHeight: { configurable: true, value: viewportHeight },
+    scrollTop: { configurable: true, get: () => scrollTop, set: (value: number) => {
+      scrollTop = Math.max(0, Math.min(value, listOffset + props.nodes.length * rowHeight - viewportHeight))
+    } }
+  })
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this === host) return new DOMRect(0, 40, 320, viewportHeight)
+    if (this.matches('.materials-items--list')) return new DOMRect(0, 40 + listOffset - scrollTop, 320, props.nodes.length * rowHeight)
+    if (this.matches('.material-row')) return new DOMRect(0, 0, 320, rowHeight)
+    return new DOMRect()
+  })
+  const frames = new Map<number, FrameRequestCallback>()
+  let frameId = 0
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.set(++frameId, callback); return frameId })
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => { frames.delete(id) })
+  const measureScrolledWindow = (): void => {
+    act(() => host.dispatchEvent(new Event('scroll')))
+    expect(frames.size).toBeGreaterThan(0)
+    act(() => {
+      const pending = [...frames.values()]
+      frames.clear()
+      for (const callback of pending) callback(0)
+    })
+  }
   await render('list')
   expect(host.querySelector('[data-total-rows]')?.getAttribute('data-total-rows')).toBe('1200')
   expect(host.querySelectorAll('[data-material-row]')).toHaveLength(30)
   await act(async () => {
     row('file-0.md').dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }))
   })
+  // Exercise the initial measurement racing with End, not just synchronous focus.
+  measureScrolledWindow()
   expect(document.activeElement?.getAttribute('data-material-path')).toBe('file-1199.md')
+  expect(row('file-0.md')).toBeNull()
+  expect(host.querySelectorAll('[data-material-row]').length).toBeLessThan(40)
+  await act(async () => {
+    row('file-1199.md').dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }))
+  })
+  measureScrolledWindow()
+  expect(document.activeElement?.getAttribute('data-material-path')).toBe('file-0.md')
+  expect(row('file-1199.md')).toBeNull()
+  expect(host.querySelectorAll('[data-material-row]').length).toBeLessThan(40)
 })
