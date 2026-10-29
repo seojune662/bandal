@@ -2,6 +2,7 @@ import { PROJECT_NAVIGATION_CHANNELS, type ProjectNavigationContract } from '../
 import { ANNOTATION_CHANNELS, type AnnotationIpcContract } from './annotationContract'
 import { WORKSPACE_PREVIEW_CHANNELS, type WorkspacePreviewIpcContract } from './workspacePreviewContract'
 import type { SharedMaterialRequest } from '../types/share'
+import type { PDFPreviewSnapshot } from '../types/pdfPreview'
 import type { ExternalSourceLocation } from '../types/externalSources'
 import type { BillingState, RuntimeSyncState, RuntimeSyncConflict } from '../types/subscription'
 import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'
@@ -110,7 +111,7 @@ import type {
 import type { MediaProgress } from '../types/mediaProgress'
 import type { PdfViewState } from '../types/pdfViewState'
 import type { PipOpenRequest, PipState } from '../types/pip'
-import type { SearchHit } from '../types/search'
+import type { SearchHit, ContentSearchIndexStatus } from '../types/search'
 import type { BrowserExtensionSummary } from '../types/browserExtension'
 import type {
   MaterialBacklinkGroup,
@@ -1117,6 +1118,10 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
     req: { courseId: string; relPath: string }
     res: { documentRevision: string; paper: 'blank' | 'lines' | 'grid' | 'dots' | null; surface: 'dark' | 'light'; orientation: 'portrait' | 'landscape' }
   }
+  'pdf:previewSnapshot': {
+    req: { courseId: string; relPath: string }
+    res: PDFPreviewSnapshot
+  }
   'pdf:restructure': {
     req: { courseId: string; relPath: string; expectedRevision: string; pages: Array<{ source: number | null; rotate?: 0 | 90 | 180 | 270 }> }
     res: { documentRevision: string; fingerprint: string; pageCount: number; pageMap: number[][] }
@@ -1200,12 +1205,13 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
   // -- full-text search across course material --------------------------------
   /**
    * Searches inside notes and PDF text, not just filenames.
-   * PDF pages are indexed lazily — the renderer already extracts page text for
-   * highlighting, so it hands that over rather than parsing twice in main.
+   * Unopened PDFs are indexed incrementally in a dedicated background process.
+   * The folder boundary is applied before ranking/limits. Index progress is
+   * refreshed through search:changed without blocking the first result.
    */
   'search:query': {
-    req: { courseId: string; query: string; limit?: number }
-    res: { hits: SearchHit[] }
+    req: { courseId: string; query: string; limit?: number; rootRelPath?: string }
+    res: { hits: SearchHit[]; indexing: ContentSearchIndexStatus }
   }
   'search:indexPdfPages': {
     req: {
@@ -1690,7 +1696,7 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
 export const IPC_CHANNELS = [
   ...WORKSPACE_PREVIEW_CHANNELS,
   ...ANNOTATION_CHANNELS,
-  'pdfNotes:create', 'pdfNotes:info', 'pdf:restructure', 'pdfNotes:migrateLegacy', 'pdfNotes:migrationStatus',
+  'pdfNotes:create', 'pdfNotes:info', 'pdf:previewSnapshot', 'pdf:restructure', 'pdfNotes:migrateLegacy', 'pdfNotes:migrationStatus',
   ...STUDY_MARKET_CHANNELS,
   ...COMMUNITY_CHANNELS,
   ...LEARNING_CHANNELS,

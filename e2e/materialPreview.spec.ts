@@ -128,8 +128,25 @@ test('hover previews text, office, table, PDF and image files without opening do
       expect(await bandal.page.locator('.workspace-tab').count()).toBe(before)
     }
     const pdfCard = await showPreview(bandal, bandal.page.locator('[data-material-path="page.pdf"]'))
-    await expect(pdfCard.getByRole('img', { name: '첫 페이지' })).toBeVisible()
+    await expect(pdfCard.getByRole('img', { name: 'PDF 첫 페이지' })).toBeVisible()
     await expect(pdfCard).toContainText('1 / 1쪽')
+    // A normal imported PDF uses the same saved-ink composite as a PDF note.
+    // Keep the hover open while repository writes arrive so scoped updates,
+    // not a new mouse hover or a filesystem modification, refresh the preview.
+    const lastDrawing = await bandal.page.evaluate(async courseId => {
+      const { documentRevision } = await window.bandal.invoke('pdf:previewSnapshot', { courseId, relPath: 'page.pdf' })
+      let id = ''
+      for (let index = 0; index < 165; index++) {
+        const drawing = await window.bandal.invoke('drawings:create', { courseId, relPath: 'page.pdf', documentRevision, page: 1, kind: 'rect',
+          data: { box: { x: .1 + (index % 10) * .07, y: .2 + Math.floor(index / 10) * .03, width: .04, height: .02 } },
+          style: { color: 'blue', width: .002, opacity: 1 } })
+        id = drawing.id
+      }
+      return { id, documentRevision }
+    }, course.id)
+    await expect(pdfCard.locator('svg[aria-label="저장된 필기"] rect')).toHaveCount(165)
+    await bandal.page.evaluate(async request => { await window.bandal.invoke('drawings:delete', { ids: [request.id], documentRevision: request.documentRevision }) }, lastDrawing)
+    await expect(pdfCard.locator('svg[aria-label="저장된 필기"] rect')).toHaveCount(164)
     await info.attach('pdf-material-preview', { body: await bandal.page.screenshot({ path: info.outputPath('pdf-material-preview.png') }), contentType: 'image/png' })
     const imageCard = await showPreview(bandal, bandal.page.locator('[data-material-path="image.png"]'))
     await expect(imageCard.getByRole('img', { name: 'image.png 미리보기' })).toBeVisible()
@@ -264,12 +281,13 @@ test('migrated note hover preserves editable first-page text and attached image'
     }, course.id)
     expect(note).toBeTruthy()
     await page.getByRole('button', { name: '자료 새로고침' }).click()
+    await page.locator('[data-material-path="노트"]').click()
     const row = page.locator(`[data-material-path="${note.relPath}"]`)
     await expect(row).toBeVisible()
     await expect(row).toHaveAttribute('data-material-new', 'true')
     const before = await page.locator('.workspace-tab').count()
     const card = await showPreview(bandal, row)
-    await expect(card.getByRole('img', { name: '노트 첫 페이지' })).toBeVisible()
+    await expect(card.getByRole('img', { name: '저장된 필기' })).toBeVisible()
     await expect(card).toContainText('First page preview marker')
     await expect(card).not.toContainText('Second page must stay hidden')
     await expect(card).toContainText('1 / 3쪽')

@@ -114,11 +114,18 @@ export function changedFiles(base) {
       for (const input of pdfDependencyPromotionInputs()) files.add(input)
     }
   }
-  // Adding this isolated browser preload leaves the app's build pipeline intact.
+  // Isolated entry registrations leave the existing build pipeline intact.
   if (files.has('electron.vite.config.ts')) {
-    const before = git('show', `${base}:electron.vite.config.ts`)
+    const before = gitBlob(base, 'electron.vite.config.ts')
     const after = readFileSync('electron.vite.config.ts', 'utf8')
-    if (onlyBrowserGestureEntryChanged(before, after) || onlyHoverPreviewEntryChanged(before, after)) files.delete('electron.vite.config.ts')
+    if (onlyPdfSearchEntryAdded(before, after)) {
+      files.delete('electron.vite.config.ts')
+      // Utility-process entry points sit outside the TS import graph. Retain
+      // worker startup, indexing and packaged search coverage for entry-only edits.
+      for (const file of ['pdfSearchHost.ts', 'pdfSearchClient.ts', 'pdfSearchIndexer.ts']) {
+        files.add(`src/main/features/search/${file}`)
+      }
+    } else if (onlyBrowserGestureEntryChanged(before, after) || onlyHoverPreviewEntryChanged(before, after)) files.delete('electron.vite.config.ts')
   }
   for (const [file, additions, inputs] of [
     ['src/renderer/src/app/AppShell.tsx', ["import { ShareImportDialog } from '../features/share/ShareImportDialog'", '      <ShareImportDialog />'], ['src/renderer/src/features/share/ShareImportDialog.tsx']],
@@ -670,6 +677,17 @@ export function onlyHoverPreviewEntryChanged(before, after) {
   return strip(before) === strip(after)
 }
 
+export function onlyPdfSearchEntryAdded(before, after) {
+  const previous = before.replaceAll('\r\n', '\n')
+  const next = after.replaceAll('\r\n', '\n')
+  const anchor = "          backgroundHost: resolve(__dirname, 'src/main/background/host.ts'),\n"
+  const entry = "          pdfSearchHost: resolve(__dirname, 'src/main/features/search/pdfSearchHost.ts'),\n"
+  // Only this one addition is proven isolated: preserve every existing option,
+  // entry and plugin, and reject removals, duplicates or alternate entry paths.
+  return !previous.includes('pdfSearchHost') && previous.split(anchor).length === 2 &&
+    next === previous.replace(anchor, anchor + entry)
+}
+
 export function onlySwipeRegistrationChanged(before, after) {
   // A visibility predicate passed to the gesture bridge does not change native
   // tab placement or dragging. Keep their unit coverage, but run gesture E2E.
@@ -713,6 +731,11 @@ export function planChecks(files, full = false) {
   if (has(/^src\/(?:renderer\/src\/features\/(?:assistantPanel\/|chat\/studyMode)|main\/features\/(?:learning\/(?:learningRuntime|learningAgent)\.ts$|agent\/chatStudyRecords)|shared\/types\/study\.ts$)/)) e2e.add('e2e/workspaceStudyModes.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/learning\/(?:LearningSpacesPanel|ProjectGroupMenu|projectNavigation)|main\/db\/projectNavigation|shared\/projectNavigation)/)) e2e.add('e2e/projectGroups.spec.ts')
   if (has(/^src\/renderer\/src\/features\/materials\/(?:MaterialViews|MaterialTree|MaterialsSidebar|materialViewPreference|materials)\./)) e2e.add('e2e/materialViews.spec.ts')
+  if (has(/^src\/main\/features\/search\//)) {
+    e2e.add('e2e/materialViews.spec.ts')
+    e2e.add('e2e/coursePerformance.spec.ts')
+  }
+  if (has(/^src\/renderer\/src\/(?:app\/(?:AppShell|RightSidebar|shortcuts)\.tsx?$|stores\/(?:uiStore|workspaceStore)\.ts$|features\/(?:materials\/(?:MaterialsSidebar|MaterialViews|MaterialTree|materialsExpanded)\.(?:tsx|css)$|pdfNotes\/NewNoteSheet\.tsx$|workspace\/openMaterial\.ts$|browser\/(?:nativeHostVisibility|webviewPassthrough|useNativePageOcclusion)\.ts$))/)) e2e.add('e2e/materialExpanded.spec.ts')
   if (has(/^(?:src\/(?:main\/(?:features\/externalSources\/|ipc\/externalSourcesHandlers\.ts$)|renderer\/src\/features\/materials\/(?:ExternalSourcesPanel|externalSources)\.|shared\/types\/externalSources\.ts$)|native\/photo-picker\/|scripts\/build-photo-picker\.mjs$)/)) e2e.add('e2e/externalSources.spec.ts')
   if (has(/^(?:src\/(?:main\/(?:features\/share\/|ipc\/shareHandlers\.ts$)|renderer\/src\/features\/share\/|shared\/types\/share\.ts$)|native\/share-extension\/|scripts\/(?:build-share-extension|sign-mac|verify-share-extension)\.mjs$)/)) e2e.add('e2e/shareImport.spec.ts')
   if (ipadBilling) e2e.add('e2e/ipadBilling.spec.ts')
@@ -847,7 +870,7 @@ export function planChecks(files, full = false) {
   const pdfZoomOnly = !full && pdfChanges.length > 0 && pdfChanges.every(f => /\/(PdfTab\.tsx|PdfPageView\.tsx|BufferedPdfCanvas\.tsx|pdf\.css|lib\/zoomInput\.ts)$/.test(f))
   const partial = new Map()
   if (pdfZoomOnly) partial.set('e2e/pdfTextbox.spec.ts', 'zooming in and back preserves normalized geometry')
-  const infrastructure = files.filter(f => /^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/index\.ts|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/.test(f))
+  const infrastructure = files.filter(f => /^src\/(main\/(background\/|db\/|index\.ts|features\/(?:materials|search)\/)|preload\/index\.ts|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/.test(f))
   if (!full && infrastructure.length > 0 && infrastructure.every(f => f === 'src/preload/index.ts' || f === 'src/renderer/src/stores/workspaceStore.ts')) {
     partial.set('e2e/coursePerformance.spec.ts', '100 course switches retain the visible PDF')
   }

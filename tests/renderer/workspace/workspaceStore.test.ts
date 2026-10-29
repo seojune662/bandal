@@ -688,11 +688,82 @@ function savesFor(courseId: string): unknown[] {
 beforeEach(() => {
   vi.useFakeTimers()
   resetWorkspaceStoreForTests()
+  useUiStore.getState().closeMaterialsExpanded()
   invokeMock.mockReset()
   showToastMock.mockReset()
   invokeMock.mockImplementation((channel: string) => {
     if (channel === 'layout:get') return Promise.resolve({ layout: null })
     return Promise.resolve({ ok: true })
+  })
+})
+
+describe('expanded materials successful opening', () => {
+  test.each(['pdf', 'note', 'image', 'file'] as const)('closes only after a %s panel is created and preserves duplicate opens', async kind => {
+    const dock = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    const descriptor = descriptorFor(kind, { courseId: 'c1', relPath: `document.${kind}` })
+    const opened = vi.fn()
+    useUiStore.getState().setMaterialsExpanded(true)
+    state.openTab(descriptor, { onOpened: opened })
+    expect(dock.panels).toHaveLength(1)
+    Object.assign(dock.panels[0]!, { group: { id: 'live', panels: dock.panels } })
+    expect(useUiStore.getState()).toMatchObject({ materialsExpanded: false, materialsExpandedRestoreFocus: false })
+    useUiStore.getState().setMaterialsExpanded(true)
+    state.openTab(descriptor, { onOpened: opened })
+    expect(dock.panels).toHaveLength(1)
+    expect(useUiStore.getState().materialsExpanded).toBe(false)
+    useUiStore.getState().setMaterialsExpanded(true)
+    state.openTab(descriptor, { newInstance: true, onOpened: opened })
+    expect(dock.panels).toHaveLength(2)
+    expect(useUiStore.getState().materialsExpanded).toBe(false)
+    expect(opened.mock.calls).toEqual([[dock.panels[0]!.id], [dock.panels[0]!.id], [dock.panels[1]!.id]])
+  })
+
+  test('a missing destination, background open and thrown panel creation retain the expanded browser', async () => {
+    const dock = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    Object.assign(dock, { getGroup: () => undefined })
+    const opened = vi.fn()
+    useUiStore.getState().setMaterialsExpanded(true)
+    state.openTab(pdfA, { target: { courseId: 'c1', groupId: 'removed' }, onOpened: opened })
+    expect(useUiStore.getState().materialsExpanded).toBe(true)
+    expect(opened).not.toHaveBeenCalled()
+    state.openTab(pdfA, { background: true })
+    expect(useUiStore.getState().materialsExpanded).toBe(true)
+    Object.assign(dock.panels[0]!, { group: { id: 'live', panels: dock.panels } })
+    const add = vi.spyOn(dock, 'addPanel').mockImplementation(() => { throw new Error('Panel failure') })
+    expect(() => state.openTab(pdfB, { onOpened: opened })).toThrow('Panel failure')
+    expect(useUiStore.getState().materialsExpanded).toBe(true)
+    expect(opened).not.toHaveBeenCalled()
+    add.mockRestore()
+  })
+
+  test('window changes and window overview close expansion without changing the shared rail', async () => {
+    const first = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachWindowApi('c1', first.asApi()); await settle()
+    useUiStore.getState().setMaterialsExpanded(true)
+    state.setWindowsOverviewOpen(true)
+    expect(useUiStore.getState().materialsExpanded).toBe(false)
+    state.setWindowsOverviewOpen(false)
+    useUiStore.getState().setMaterialsExpanded(true)
+    state.createWindow()
+    expect(useUiStore.getState()).toMatchObject({ materialsExpanded: false, rightRailOpen: true, rightRailTab: 'materials' })
+  })
+
+  test('a queued hydration delivers its exact panel once without closing before success', async () => {
+    const dock = liveDock(), state = useWorkspaceStore.getState(), opened = vi.fn()
+    let resolveLayout!: (value: { layout: null }) => void
+    invokeMock.mockImplementation(channel => channel === 'layout:get'
+      ? new Promise(resolve => { resolveLayout = resolve }) as never
+      : Promise.resolve({ ok: true }) as never)
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi())
+    useUiStore.getState().setMaterialsExpanded(true)
+    state.openTab(pdfA, { onOpened: opened })
+    expect(opened).not.toHaveBeenCalled()
+    expect(useUiStore.getState().materialsExpanded).toBe(true)
+    resolveLayout({ layout: null }); await settle()
+    expect(opened).toHaveBeenCalledExactlyOnceWith(dock.panels[0]!.id)
+    expect(useUiStore.getState().materialsExpanded).toBe(false)
   })
 })
 

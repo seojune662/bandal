@@ -61,6 +61,7 @@ const PUSH_CHANNELS = [
   'chat:message',
   'chat:configurationChanged',
   'materials:changed',
+  'pdf:markupChanged',
   'share:changed',
   'search:changed',
   // -- picture-in-picture ---------------------------------------------------

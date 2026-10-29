@@ -2,18 +2,19 @@ import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
-import { MaterialTree, TreeNode, type MaterialTreeProps } from './MaterialTree'
+import { MaterialTree, TreeNode, VirtualMaterialTree, type MaterialTreeProps } from './MaterialTree'
 import { MaterialFileIcon } from './materialIcons'
 import { findMaterialNode, materialBaseName, materialParentPath } from './materialPaths'
 import type { MaterialView } from './materialViewPreference'
+import { materialTimestamp, materialTypeLabel } from './materialPresentation'
 
 const MaterialPreviewContent = lazy(() => import('./preview/MaterialPreviewContent').then(module => ({ default: module.MaterialPreviewContent })))
-const VIEW_LABELS: Record<MaterialView, string> = { icons: '아이콘', list: '목록', columns: '열', gallery: '갤러리' }
+const VIEW_LABELS: Record<MaterialView, string> = { icons: '아이콘', list: '목록', columns: '열', gallery: '갤러리', compact: '간단히' }
 
 function ViewIcon({ view }: { view: MaterialView }): JSX.Element {
   return <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {view === 'icons' ? <><rect x="3" y="3" width="5" height="5" rx="1" /><rect x="12" y="3" width="5" height="5" rx="1" /><rect x="3" y="12" width="5" height="5" rx="1" /><rect x="12" y="12" width="5" height="5" rx="1" /></>
-      : view === 'list' ? <><path d="M7 4h10M7 10h10M7 16h10M3 4h.1M3 10h.1M3 16h.1" /></>
+      : (view === 'list' || view === 'compact') ? <><path d="M7 4h10M7 10h10M7 16h10M3 4h.1M3 10h.1M3 16h.1" /></>
         : view === 'columns' ? <><rect x="2.5" y="3" width="15" height="14" rx="1.5" /><path d="M7.5 3v14M12.5 3v14" /></>
           : <><rect x="3" y="3" width="14" height="10" rx="1.5" /><path d="M3 16h3M8.5 16h3M14 16h3" /></>}
   </svg>
@@ -67,21 +68,21 @@ function CardPreview({ courseId, node }: { courseId: string; node: MaterialNode 
     if (node.kind === 'dir') return
     if (typeof IntersectionObserver === 'undefined') { setVisible(true); return }
     const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
+      setVisible(entries.some(entry => entry.isIntersecting))
     }, { root: root.current?.closest('.materials-body') ?? null, rootMargin: '80px' })
     if (root.current) observer.observe(root.current)
     return () => observer.disconnect()
   }, [node.kind])
   return <div ref={root} className="material-card-preview" data-kind={node.kind} aria-hidden="true">
     {node.kind === 'dir' ? <><MaterialFileIcon kind="dir" /><small>{node.children?.length ?? 0}개 항목</small></>
-      : visible ? <Suspense fallback={<MaterialFileIcon kind={node.kind} />}><MaterialPreviewContent courseId={courseId} node={node} /></Suspense>
+      : visible ? <Suspense fallback={<MaterialFileIcon kind={node.kind} />}><MaterialPreviewContent courseId={courseId} node={node} compact /></Suspense>
         : <MaterialFileIcon kind={node.kind} />}
   </div>
 }
 
 function metadata(node: MaterialNode): string {
   if (node.kind === 'dir') return `${node.children?.length ?? 0}개 항목`
-  const date = node.mtime ? new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(node.mtime) : ''
+  const date = materialTimestamp(node) ? new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(materialTimestamp(node)) : ''
   const size = node.size === undefined ? '' : node.size < 1024 ? `${node.size} B` : node.size < 1024 * 1024 ? `${Math.ceil(node.size / 1024)} KB` : `${(node.size / (1024 * 1024)).toFixed(1)} MB`
   return [date, size].filter(Boolean).join(' · ')
 }
@@ -101,12 +102,14 @@ interface MaterialBrowserProps extends MaterialTreeProps {
   directory: string
   onDirectoryChange: (relPath: string) => void
   searching?: boolean
+  expanded?: boolean
+  rootTitle?: string
 }
 
-export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectoryChange, searching = false, ...props }: MaterialBrowserProps): JSX.Element {
+export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectoryChange, searching = false, expanded = false, rootTitle = '전체 자료', ...props }: MaterialBrowserProps): JSX.Element {
   const directoryNode = findMaterialNode(props.nodes, directory)
-  const validDirectory = !searching && directoryNode?.kind === 'dir' ? directoryNode.relPath : ''
-  const nodes = validDirectory === '' ? props.nodes : directoryNode?.children ?? []
+  const validDirectory = !searching && directoryNode?.kind === 'dir' ? directoryNode.relPath : rootRelPath
+  const nodes = searching || validDirectory === rootRelPath ? props.nodes : directoryNode?.children ?? []
   const selected = findMaterialNode(props.nodes, props.selectedRelPath)
   const columns = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -114,17 +117,18 @@ export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectory
     const element = columns.current
     if (element) element.scrollTo?.({ left: element.scrollWidth, behavior: 'smooth' })
   }, [view, validDirectory, selected?.relPath])
-  if (view === 'list') return <MaterialTree {...props} />
+  if (view === 'compact' && !searching) return <MaterialTree {...props} />
   const navigate = (relPath: string): void => {
     onDirectoryChange(relPath)
     const node = findMaterialNode(props.nodes, relPath)
-    if (node) props.onSelect(node)
+    if (node && view === 'columns') props.onSelect(node)
   }
   const trail = validDirectory.split('/').filter(Boolean).map((_, index, parts) => parts.slice(0, index + 1).join('/')).filter(path => !rootRelPath || path.startsWith(rootRelPath + '/'))
-  const item = (node: MaterialNode, appearance: 'icon' | 'gallery' | 'column'): JSX.Element => <TreeNode
-    {...props} key={node.relPath} node={node} depth={0} flat appearance={appearance} selectOnly={appearance !== 'icon'}
+  const item = (node: MaterialNode, appearance: 'icon' | 'gallery' | 'column' | 'list', index?: number): JSX.Element => <TreeNode
+    {...props} key={node.relPath} node={node} depth={0} flat appearance={appearance} {...(index === undefined ? {} : { virtualIndex: index })} selectOnly={appearance === 'gallery' || appearance === 'column'}
     expandedPaths={Object.fromEntries(trail.map(path => [path, true]))}
-    preview={appearance === 'column' ? undefined : <><CardPreview courseId={props.courseId} node={node} /><small className="material-card-metadata">{metadata(node)}</small></>}
+    preview={appearance === 'column' ? undefined : <><CardPreview courseId={props.courseId} node={node} />{appearance !== 'list' && <small className="material-card-metadata">{metadata(node)}</small>}</>}
+    details={appearance === 'list' ? <span className="material-row__details"><small>{metadata(node)}</small><span><span className="material-type-badge">{materialTypeLabel(node)}</span>{searching && <small className="material-row__path">{materialParentPath(node.relPath) || rootTitle}</small>}</span></span> : undefined}
     onToggleFolder={navigate}
     onSelect={node => {
       if (appearance === 'column' && node.kind !== 'dir' && materialParentPath(node.relPath) !== validDirectory) onDirectoryChange(materialParentPath(node.relPath))
@@ -132,24 +136,27 @@ export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectory
     }}
   />
   const galleryNode = nodes.find(node => node.relPath === props.selectedRelPath && node.kind !== 'dir') ?? nodes.find(node => node.kind !== 'dir')
-  const columnPaths = ['', ...trail]
+  const columnPaths = [rootRelPath, ...trail]
+  const listView = view === 'list' || view === 'compact'
   return <div className="materials-browser" data-view={view}>
     {!searching && <nav className="materials-breadcrumbs" aria-label="자료 폴더 경로">
-      <button type="button" aria-label="전체 자료" onClick={() => navigate(rootRelPath)}><Icon name="folder" /><span>전체 자료</span></button>
+      <>{validDirectory !== rootRelPath && <button type="button" aria-label="상위 폴더로" onClick={() => navigate(materialParentPath(validDirectory).length < rootRelPath.length ? rootRelPath : materialParentPath(validDirectory))}><Icon name="chevronLeft" /></button>}<button type="button" aria-label="전체 자료" onClick={() => navigate(rootRelPath)}><Icon name="folder" /><span>{rootTitle}</span></button></>
       {trail.map(path => <span key={path}><Icon name="chevronRight" /><button type="button" aria-current={path === validDirectory ? 'location' : undefined} onClick={() => navigate(path)}>{materialBaseName(path)}</button></span>)}
     </nav>}
     {view === 'columns' ? <div ref={columns} className="materials-columns" aria-label="자료 열 보기">
       {columnPaths.map(path => {
-        const children = path === '' ? props.nodes : findMaterialNode(props.nodes, path)?.children ?? []
-        return <section className="materials-column" key={path} aria-label={path === '' ? '전체 자료' : materialBaseName(path)}><header>{path === '' ? '전체 자료' : materialBaseName(path)}</header>
-          <ul className="materials-items" role="tree" aria-label={path === '' ? '전체 자료 파일' : `${materialBaseName(path)} 파일`}>{children.map(node => item(node, 'column'))}</ul>
+        const children = path === rootRelPath ? props.nodes : findMaterialNode(props.nodes, path)?.children ?? []
+        return <section className="materials-column" key={path} aria-label={path === rootRelPath ? '전체 자료' : materialBaseName(path)}><header>{path === rootRelPath ? '전체 자료' : materialBaseName(path)}</header>
+          <ul className="materials-items" role="tree" aria-label={path === rootRelPath ? '전체 자료 파일' : `${materialBaseName(path)} 파일`}>{children.map(node => item(node, 'column'))}</ul>
           {children.length === 0 && <p className="materials-empty-folder">빈 폴더</p>}
         </section>
       })}
       {selected && selected.kind !== 'dir' && <SelectedPreview courseId={props.courseId} node={selected} className="materials-column-preview" />}
     </div> : <>
       {view === 'gallery' && galleryNode && <SelectedPreview courseId={props.courseId} node={galleryNode} className="materials-gallery-preview" />}
-      <ul className={`materials-items materials-items--${view}`} role="tree" aria-label={searching ? '자료 검색 결과' : view === 'icons' ? '자료 아이콘 보기' : '자료 갤러리 보기'}>{nodes.map(node => item(node, view === 'icons' ? 'icon' : 'gallery'))}</ul>
+      {listView ? <VirtualMaterialTree {...props} rows={nodes.map(node => ({ node, depth: 0 }))} initialHeight={expanded ? 116 : 100}
+        className="materials-items materials-items--list" label={searching ? '자료 검색 결과' : '자료 목록'} renderRow={(node, index) => item(node, 'list', index)} />
+        : <ul className={`materials-items materials-items--${view}`} role="tree" aria-label={searching ? '자료 검색 결과' : view === 'icons' ? '자료 아이콘 보기' : '자료 갤러리 보기'}>{nodes.map(node => item(node, view === 'icons' ? 'icon' : 'gallery'))}</ul>}
       {nodes.length === 0 && <p className="materials-empty-folder">이 폴더에 자료를 드래그해서 추가하세요.</p>}
       <p className="materials-item-count">{nodes.length}개 항목{view === 'gallery' && nodes.length > 0 ? ' · 두 번 클릭해서 열기' : ''}</p>
     </>}

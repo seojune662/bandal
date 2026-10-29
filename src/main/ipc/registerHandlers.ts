@@ -64,6 +64,7 @@ import { setMaterialMediaHandler } from '../features/materials/mediaRegistration
 import { traceIpc } from '../performanceTrace'
 import { createFolderAvailability } from '../features/courses/folderAvailability'
 import { createBackgroundClient } from '../background/client'
+import { createPdfSearchClient } from '../features/search/pdfSearchClient'
 import { startBackgroundCheckpoints } from '../db/backgroundCheckpoint'
 import { createMaterialPathLock, withMaterialPathLockWait } from '../features/materials/materialPathLock'
 import { createBackgroundMaterialsWatcher } from '../background/materialsWatcher'
@@ -175,6 +176,7 @@ import { speechModel } from '../features/recordings/modelCatalog'
 import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
 import { createBoundPDFRepositories, createPDFDocumentBindings, retryPDFMutation } from '../features/pdf/pdfDocumentBinding'
 import { createPDFOriginalPreserver, createPDFRevisionReader } from '../features/pdf/pdfOriginals'
+import { createPDFPreviewReader } from '../features/pdf/pdfPreview'
 import { createPdfExporter } from '../features/pdf'
 import { createBoardRepo } from '../features/board'
 import {
@@ -381,12 +383,14 @@ const dragIconCache = new Map<string, NativeImage>()
  * already on the wire, short enough that ⌘Q still feels instant.
  */
 const QUIT_DRAIN_MS = 150
+let invalidateContentSearch: (courseId: string) => void = () => undefined
 
 /** Sends a push event to every open window. */
 export function broadcast<K extends PushChannel>(
   channel: K,
   payload: PushPayload<K>
 ): void {
+  if (channel === 'materials:changed') invalidateContentSearch((payload as PushPayload<'materials:changed'>).courseId)
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed() || win.webContents.isDestroyed()) continue
     try {
@@ -449,7 +453,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const pdfBindings = createPDFDocumentBindings(db, (courseId, relPath) => pdfRevision(pdfPath(courseId, relPath)),
     createPDFOriginalPreserver(join(deps.userDataPath, 'PDFOriginals'), pdfPath, pdfRevision))
   const materialPathLock = createMaterialPathLock(join(deps.userDataPath, 'material-path-lock.db'))
-  const { annotations: annotationsRepo, drawings: drawingsRepo } = createBoundPDFRepositories(db, pdfBindings, materialPathLock)
+  const { annotations: annotationsRepo, drawings: drawingsRepo } = createBoundPDFRepositories(db, pdfBindings, materialPathLock,
+    change => broadcast('pdf:markupChanged', change))
+  const pdfPreview = createPDFPreviewReader({ db, revisionFor: (courseId, relPath) => pdfRevision(pdfPath(courseId, relPath)), checkBinding: pdfBindings.check })
   const legacyPackSettlers = new Map<string, { resolve(): void; reject(error: Error): void }>()
   const legacyGuardSessions = new Map<string, string>()
   const settleStudyTurn = (info: { sessionId: string; reason: 'success' | 'error' | 'interrupted'; error?: AgentTurnFailure }): void => {
@@ -1028,6 +1034,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   }
   handle('pdfNotes:create', req => withMaterialLock(() => pdfNotes.create(req)))
   handle('pdfNotes:info', async req => { const info = await pdfNotes.info(req); pdfBindings.check({ ...req, documentRevision: info.documentRevision }); return info })
+  handle('pdf:previewSnapshot', req => pdfPreview(req))
   handle('pdf:restructure', req => withMaterialLock(() => pdfNotes.restructure(req)))
   handle('pdfNotes:migrateLegacy', req => withMaterialPathLockWait(materialPathLock, () => pdfNotes.migrateLegacy(req)))
   handle('pdfNotes:migrationStatus', req => pdfNotes.migrationStatus(req))
@@ -3274,6 +3281,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // All full-text cache reads/writes belong to the background process and a
   // separate database, including pages already extracted by the renderer.
   const searchRefreshedAt = new Map<string, number>()
+  const pdfSearch = createPdfSearchClient(courseId => broadcast('search:changed', { courseId }))
+  invalidateContentSearch = courseId => { pdfSearch.invalidate(courseId); searchRefreshedAt.delete(courseId) }
+  app.once('will-quit', () => { invalidateContentSearch = () => undefined })
   const searchRefreshes = new Map<string, Promise<unknown>>()
   const refreshSearch = (courseId: string): void => {
     if (searchRefreshes.has(courseId) || Date.now() - (searchRefreshedAt.get(courseId) ?? 0) < 2000) return
@@ -3285,14 +3295,17 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     searchRefreshes.set(courseId, task)
   }
   handle('search:query', async (req) => {
+    const folder = coursesRepo.getFolder(req.courseId)
+    const indexing = pdfSearch.refresh({ dbPath: searchCachePath, courseId: req.courseId, folder, rootRelPath: req.rootRelPath ?? '' })
     const hits = await background.request('searchQuery', {
-      ...req, dbPath: searchCachePath, folder: coursesRepo.getFolder(req.courseId)
+      ...req, dbPath: searchCachePath, folder
     }, 0)
     refreshSearch(req.courseId)
-    return { hits }
+    return { hits, indexing }
   })
   handle('search:indexPdfPages', async (req) => {
     await background.request('searchIndexPdf', { ...req, dbPath: searchCachePath, folder: coursesRepo.getFolder(req.courseId) }, 1)
+    broadcast('search:changed', { courseId: req.courseId })
     return OK
   })
 

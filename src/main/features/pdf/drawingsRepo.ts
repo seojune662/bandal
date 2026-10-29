@@ -20,7 +20,7 @@ import {
 } from '../drawingValidation'
 
 export interface DrawingsRepo {
-  listForFile(courseId: string, relPath: string): Drawing[]
+  listForFile(courseId: string, relPath: string, page?: number): Drawing[]
   create(input: CreateDrawingInput): Drawing
   update(input: UpdateDrawingInput): Drawing
   softDelete(ids: string[]): void
@@ -75,16 +75,17 @@ export function createDrawingsRepo(db: Database, options: { documentRevision?: (
   }
 
   return {
-    listForFile(courseIdInput, relPathInput) {
+    listForFile(courseIdInput, relPathInput, pageInput) {
       const courseId = requireId(courseIdInput, 'courseId')
       const relPath = requireNonEmptyString(relPathInput, 'relPath')
+      const page = pageInput === undefined ? null : requireInt(pageInput, 'page', 1)
       const rows = db
         .prepare(
           `SELECT * FROM pdf_drawings
-           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
+           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL AND (? IS NULL OR page = ?)
            ORDER BY page ASC, created_at ASC`
         )
-        .all(courseId, relPath) as DrawingRow[]
+        .all(courseId, relPath, page, page) as DrawingRow[]
       return rows.map(rowToDrawing)
     },
 

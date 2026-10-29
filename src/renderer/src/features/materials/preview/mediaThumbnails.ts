@@ -1,4 +1,5 @@
 import type { DrawingBox } from '../../../../../shared/types/drawing'
+import type { PDFPreviewSnapshot } from '../../../../../shared/types/pdfPreview'
 import { invoke } from '../../../lib/ipc'
 import { mediaUrlFor } from '../mediaUrl'
 import { runThumbnailTask } from './thumbnailQueue'
@@ -8,6 +9,7 @@ export interface MediaThumbnail {
   aspect?: number
   pageCount?: number
   durationSeconds?: number
+  surface?: 'dark' | 'light'
 }
 
 interface ImageThumbnailSource {
@@ -152,6 +154,20 @@ export async function loadPdfThumbnail(
   return runThumbnailTask(signal, () => renderPdfThumbnail(key, courseId, relPath, signal, pageNumber, crop, documentRevision))
 }
 
+/** Saved markup owns an immutable recovery original. Untouched PDFs do not:
+ * read their live file, then verify its revision again before caching pixels.
+ * Never weaken revision URLs used by saved clips and annotated documents. */
+export function loadPdfPreviewThumbnail(courseId: string, relPath: string, snapshot: PDFPreviewSnapshot, signal: AbortSignal): Promise<MediaThumbnail> {
+  const revision = snapshot.documentRevision
+  const preserved = snapshot.drawings.length > 0 || snapshot.annotations.length > 0
+  const key = JSON.stringify(['pdf', courseId, relPath, revision, 1, undefined])
+  return runThumbnailTask(signal, () => renderPdfThumbnail(key, courseId, relPath, signal, 1, undefined, preserved ? revision : undefined,
+    preserved ? undefined : async () => {
+      const current = await invoke('pdf:previewSnapshot', { courseId, relPath })
+      if (current.documentRevision !== revision) throw new Error('PDF changed while rendering its preview')
+    }))
+}
+
 async function renderPdfThumbnail(
   key: string,
   courseId: string,
@@ -159,7 +175,8 @@ async function renderPdfThumbnail(
   signal: AbortSignal,
   pageNumber: number,
   crop?: DrawingBox,
-  documentRevision?: string
+  documentRevision?: string,
+  verifyRenderedRevision?: () => Promise<void>
 ): Promise<MediaThumbnail> {
   // Recheck after queueing: another independent request may have just cached it.
   const previous = cached(key)
@@ -205,7 +222,13 @@ async function renderPdfThumbnail(
       output.height = Math.max(1, Math.round(Math.min(1 - crop.y, crop.height) * canvas.height))
       output.getContext('2d')?.drawImage(canvas, x, y, output.width, output.height, 0, 0, output.width, output.height)
     }
-    return remember(key, { dataUrl: output.toDataURL('image/png'), pageCount: pdf.numPages, aspect: output.height / output.width })
+    const metadata = await pdf.getMetadata().catch(() => null)
+    const keywords = metadata?.info && typeof metadata.info === 'object' && 'Keywords' in metadata.info
+      ? String(metadata.info.Keywords ?? '') : ''
+    const surface = /(?:^|[ ,;])surface=dark(?:$|[ ,;])/.test(keywords) ? 'dark' : 'light'
+    await verifyRenderedRevision?.()
+    signal.throwIfAborted()
+    return remember(key, { dataUrl: output.toDataURL('image/png'), pageCount: pdf.numPages, aspect: output.height / output.width, surface })
   } finally {
     signal.removeEventListener('abort', abort)
     await loading.destroy().catch(() => undefined)

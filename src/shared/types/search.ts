@@ -18,6 +18,16 @@ export interface SearchHit {
   score: number
 }
 
+/** Progress for the requested folder; failures do not hide successful matches. */
+export interface ContentSearchIndexStatus {
+  phase: 'idle' | 'indexing' | 'ready' | 'partial'
+  processedFiles: number
+  totalFiles: number
+  indexedPages: number
+  currentRelPath?: string
+  failures: Array<{ relPath: string; reason: string }>
+}
+
 export type StudyGapKind =
   /** Material that exists in the course folder but was never opened. */
   | 'never-opened'

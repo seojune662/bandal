@@ -8,7 +8,7 @@ import type { ChatEventBatch, PushChannel, PushPayload } from '../src/shared/ipc
 import type { IpcAdapter } from '../src/renderer/src/lib/ipc'
 import type { ChatMessage } from '../src/shared/types/chat'
 import { data, commit, settings, stamp, id, key, ko, PDF, NOTE, courseId as defaultCourseId } from './state'
-import { PDF_FINGERPRINT } from './sample'
+import { PDF_DOCUMENT_REVISION, PDF_SAMPLE_BYTES, PDF_SEARCH_PAGES } from './sample'
 
 type Handlers = { [K in IpcChannel]?: (req: IpcRequest<K>) => IpcResponse<K> | Promise<IpcResponse<K>> }
 const listeners = new Map<string, Set<(value: never) => void>>()
@@ -17,13 +17,21 @@ export function emit<K extends PushChannel>(channel: K, value: PushPayload<K>): 
 }
 const ok = { ok: true } as const
 const materialChanged = (course: string) => emit('materials:changed', { courseId: course })
+const markupChanged = ({ courseId, relPath }: { courseId: string; relPath: string }) => emit('pdf:markupChanged', { courseId, relPath, documentRevision: PDF_DOCUMENT_REVISION })
+function requireSamplePdf(courseId: string, relPath: string, revision?: string): void {
+  if (relPath !== PDF || !data.courses.some(course => course.id === courseId)) throw new Error('PDF 자료를 찾을 수 없습니다.')
+  if (revision !== undefined && revision !== PDF_DOCUMENT_REVISION) throw new Error('PDF 원본이 변경됐어요. 다시 열어 주세요.')
+}
+function samplePdfNode(course: string) {
+  return { relPath: PDF, name: PDF, kind: 'pdf' as const, size: PDF_SAMPLE_BYTES, mtime: Date.parse(data.courses.find(entry => entry.id === course)?.createdAt ?? '') || 0 }
+}
 function readNote(course: string, path: string) {
   const note = data.notes[key(course, path)]
   if (!note) throw new Error(ko ? '필기를 찾을 수 없습니다.' : 'Note not found.')
   return structuredClone(note)
 }
 function nodeList(course: string) {
-  return [{ relPath: PDF, name: PDF, kind: 'pdf' as const, size: 36000, mtime: Date.now() },
+  return [samplePdfNode(course),
     ...Object.values(data.notes).filter(note => note.courseId === course).map(note => ({ relPath: note.relPath, name: note.relPath, kind: 'note' as const, size: note.markdown.length, mtime: note.mtime }))]
 }
 function writeNote(course: string, path: string, markdown: string) {
@@ -85,6 +93,7 @@ const handlers: Handlers = {
   'share:list': () => [],
   'materials:readFile': ({ courseId, relPath }) => ({ encoding: 'utf8', data: readNote(courseId, relPath).markdown }),
   'materials:hoverPreview': ({ courseId, relPath }) => {
+    if (relPath === PDF) { requireSamplePdf(courseId, relPath); return { ...samplePdfNode(courseId), content: { kind: 'pdf' } } }
     const note = readNote(courseId, relPath)
     return { name: relPath.split('/').at(-1) ?? relPath, relPath, size: new TextEncoder().encode(note.markdown).length, mtime: note.mtime,
       content: { kind: 'markdown', text: note.markdown.slice(0, 1200), truncated: note.markdown.length > 1200 } }
@@ -115,18 +124,24 @@ const handlers: Handlers = {
     return { relPath: nextPath, mtime: data.notes[key(courseId, nextPath)]!.mtime, title, markdown }
   },
   // The demo always serves the same landscape sample PDF; its revision is stable.
-  'pdfNotes:info': () => ({ documentRevision: PDF_FINGERPRINT, paper: null, surface: 'light', orientation: 'landscape' }),
+  'pdfNotes:info': ({ courseId, relPath }) => { requireSamplePdf(courseId, relPath); return { documentRevision: PDF_DOCUMENT_REVISION, paper: null, surface: 'light', orientation: 'landscape' } },
+  'pdf:previewSnapshot': ({ courseId, relPath }) => {
+    requireSamplePdf(courseId, relPath)
+    return { documentRevision: PDF_DOCUMENT_REVISION,
+      drawings: data.drawings.filter(row => row.courseId === courseId && row.relPath === relPath && row.page === 1),
+      annotations: data.annotations.filter(row => row.courseId === courseId && row.relPath === relPath && row.page === 1) }
+  },
   'pdfNotes:migrateLegacy': () => ({ migrated: [], failed: [] }),
   'pdf:getViewState': ({ courseId, relPath }) => data.views[key(courseId, relPath)] ?? null,
   'pdf:setViewState': req => { const view = { ...req, updatedAt: stamp() }; commit(next => { next.views[key(req.courseId, req.relPath)] = view }); return view },
   'annotations:listForFile': ({ courseId, relPath }) => data.annotations.filter(a => a.courseId === courseId && a.relPath === relPath),
-  'annotations:create': input => { const entry = { ...input, id: id(), comment: input.comment ?? null, createdAt: stamp(), updatedAt: stamp() }; commit(next => { next.annotations.push(entry) }); return entry },
-  'annotations:update': input => { commit(next => { Object.assign(next.annotations.find(a => a.id === input.id)!, input, { updatedAt: stamp() }) }); return data.annotations.find(a => a.id === input.id)! },
-  'annotations:delete': ({ id }) => { commit(next => { next.annotations = next.annotations.filter(a => a.id !== id) }); return ok },
+  'annotations:create': input => { requireSamplePdf(input.courseId, input.relPath, input.documentRevision); const entry = { ...input, id: id(), comment: input.comment ?? null, createdAt: stamp(), updatedAt: stamp() }; commit(next => { next.annotations.push(entry) }); markupChanged(entry); return entry },
+  'annotations:update': input => { const entry = data.annotations.find(a => a.id === input.id); if (!entry) throw new Error('필기를 찾을 수 없습니다.'); requireSamplePdf(entry.courseId, entry.relPath, input.documentRevision); commit(next => { Object.assign(next.annotations.find(a => a.id === input.id)!, input, { updatedAt: stamp() }) }); markupChanged(entry); return data.annotations.find(a => a.id === input.id)! },
+  'annotations:delete': ({ id, documentRevision }) => { const entry = data.annotations.find(a => a.id === id); if (entry) requireSamplePdf(entry.courseId, entry.relPath, documentRevision); commit(next => { next.annotations = next.annotations.filter(a => a.id !== id) }); if (entry) markupChanged(entry); return ok },
   'drawings:listForFile': ({ courseId, relPath }) => data.drawings.filter(a => a.courseId === courseId && a.relPath === relPath),
-  'drawings:create': input => { const entry = { ...input, id: id(), createdAt: stamp(), updatedAt: stamp() }; commit(next => { next.drawings.push(entry) }); return entry },
-  'drawings:update': input => { commit(next => { Object.assign(next.drawings.find(a => a.id === input.id)!, input, { updatedAt: stamp() }) }); return data.drawings.find(a => a.id === input.id)! },
-  'drawings:delete': ({ ids }) => { commit(next => { next.drawings = next.drawings.filter(a => !ids.includes(a.id)) }); return ok },
+  'drawings:create': input => { requireSamplePdf(input.courseId, input.relPath, input.documentRevision); const entry = { ...input, id: id(), createdAt: stamp(), updatedAt: stamp() }; commit(next => { next.drawings.push(entry) }); markupChanged(entry); return entry },
+  'drawings:update': input => { const entry = data.drawings.find(a => a.id === input.id); if (!entry) throw new Error('필기를 찾을 수 없습니다.'); requireSamplePdf(entry.courseId, entry.relPath, input.documentRevision); commit(next => { Object.assign(next.drawings.find(a => a.id === input.id)!, input, { updatedAt: stamp() }) }); markupChanged(entry); return data.drawings.find(a => a.id === input.id)! },
+  'drawings:delete': ({ ids, documentRevision }) => { const changed = new Map(data.drawings.filter(row => ids.includes(row.id)).map(row => [key(row.courseId, row.relPath), row])); for (const entry of changed.values()) requireSamplePdf(entry.courseId, entry.relPath, documentRevision); commit(next => { next.drawings = next.drawings.filter(a => !ids.includes(a.id)) }); for (const entry of changed.values()) markupChanged(entry); return ok },
   'links:listFor': ({ courseId, relPath }) => ({ outgoing: data.links.filter(l => l.courseId === courseId && 'relPath' in l.source.payload && l.source.payload.relPath === relPath), incoming: data.links.filter(l => l.courseId === courseId && 'relPath' in l.target.payload && l.target.payload.relPath === relPath) }),
   'links:listForDescriptor': ({ courseId, descriptor }) => ({ outgoing: data.links.filter(l => l.courseId === courseId && JSON.stringify(l.source) === JSON.stringify(descriptor)), incoming: data.links.filter(l => l.courseId === courseId && JSON.stringify(l.target) === JSON.stringify(descriptor)) }),
   'links:forMaterial': () => ({ notes: [], boards: [] }),
@@ -211,7 +226,22 @@ const handlers: Handlers = {
   'mcp:list': () => ({ servers: [], availability: { available: false, reason: '웹 체험에서는 계정과 외부 도구를 연결하지 않습니다.' } }),
   'agentTools:changes': ({ turnId }) => ({ turnId, actions: [] }),
   'search:indexPdfPages': () => ok,
-  'search:query': ({ courseId, query }) => ({ hits: Object.values(data.notes).filter(n => n.courseId === courseId && n.markdown.includes(query)).map(n => ({ kind: 'note' as const, relPath: n.relPath, page: null, snippet: n.markdown.slice(0, 180), score: 1 })) })
+  'search:query': ({ courseId, query, rootRelPath = '', limit = 30 }) => {
+    const inside = (path: string) => !rootRelPath || path === rootRelPath || path.startsWith(rootRelPath + '/')
+    const notes = Object.values(data.notes).filter(note => note.courseId === courseId && inside(note.relPath))
+    const pdfIncluded = inside(PDF) && data.courses.some(course => course.id === courseId)
+    const needle = query.normalize('NFC').trim().toLocaleLowerCase()
+    const documents = [
+      ...notes.map(note => ({ kind: 'note' as const, relPath: note.relPath, page: null, text: note.markdown })),
+      ...(pdfIncluded ? PDF_SEARCH_PAGES.map(page => ({ kind: 'pdf' as const, relPath: PDF, page: page.page, text: page.text })) : [])
+    ]
+    const hits = needle ? documents.flatMap(document => {
+      const text = document.text.normalize('NFC'), index = text.toLocaleLowerCase().indexOf(needle)
+      return index < 0 ? [] : [{ kind: document.kind, relPath: document.relPath, page: document.page, snippet: text.slice(Math.max(0, index - 50), index + needle.length + 110), score: 1 }]
+    }).sort((a, b) => a.relPath.localeCompare(b.relPath, 'ko') || (a.page ?? 0) - (b.page ?? 0)).slice(0, Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 30) : []
+    const files = notes.length + Number(pdfIncluded)
+    return { hits, indexing: { phase: 'ready', processedFiles: files, totalFiles: files, indexedPages: pdfIncluded ? PDF_SEARCH_PAGES.length : 0, failures: [] } }
+  }
 }
 
 /** Only this adapter is demo-specific. All visible app components are production code. */

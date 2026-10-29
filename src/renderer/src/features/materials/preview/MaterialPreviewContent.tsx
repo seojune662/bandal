@@ -9,12 +9,9 @@ import { markdownPreviewFragment } from './markdownPreview'
 import { loadImageThumbnail, loadPdfThumbnail, loadVideoThumbnail, type MediaThumbnail } from './mediaThumbnails'
 import './previewContent.css'
 import { PdfNotePreviewContent } from './PdfNotePreviewContent'
+import { PreviewFallbackKind, PreviewMessage } from './PreviewMessage'
 
 export { WhiteboardPreviewContent } from './WhiteboardPreviewContent'
-
-function PreviewMessage({ children }: { children: string }): JSX.Element {
-  return <p className="material-preview-content__message">{children}</p>
-}
 
 function MarkdownPreview({ text }: { text: string }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
@@ -114,9 +111,7 @@ function PreviewBody({ courseId, preview }: { courseId: string; preview: Materia
         : content.text.trim().length === 0 ? <PreviewMessage>아직 내용이 없어요</PreviewMessage> : <p className="material-preview-content__text">{content.text}</p>}
       <span className="material-preview-content__caption">첫 슬라이드 · 총 {content.slideCount}장</span>
     </>
-    case 'pdf': return preview.relPath.startsWith('노트/')
-      ? <PdfNotePreviewContent courseId={courseId} relPath={preview.relPath} />
-      : <MediaPreview key={`${preview.relPath}:${preview.mtime}:${preview.size}`} courseId={courseId} preview={preview} />
+    case 'pdf': return <PdfNotePreviewContent key={`${preview.relPath}:${preview.mtime}:${preview.size}`} courseId={courseId} relPath={preview.relPath} />
     case 'image': case 'video': return <MediaPreview key={`${preview.relPath}:${preview.mtime}:${preview.size}`} courseId={courseId} preview={preview} />
     case 'recording': return <RecordingPreview courseId={courseId} relPath={preview.relPath} />
     case 'unsupported': return <PreviewMessage>{content.message}</PreviewMessage>
@@ -127,9 +122,10 @@ export interface MaterialPreviewContentProps {
   courseId: string
   node: MaterialNode
   onMetadata?: (metadata: { size: number; mtime: number }) => void
+  compact?: boolean
 }
 
-export function MaterialPreviewContent({ courseId, node, onMetadata }: MaterialPreviewContentProps): JSX.Element {
+export function MaterialPreviewContent({ courseId, node, onMetadata, compact = false }: MaterialPreviewContentProps): JSX.Element {
   const key = JSON.stringify([courseId, node.relPath, node.mtime, node.size])
   const [loaded, setLoaded] = useState<{ key: string; value: MaterialHoverPreview | 'error' } | null>(null)
   const [live, setLive] = useState<{ key: string; text: string } | null>(null)
@@ -152,11 +148,11 @@ export function MaterialPreviewContent({ courseId, node, onMetadata }: MaterialP
     return () => { active = false; unsubscribe?.() }
   }, [courseId, key, node.relPath, node.kind, peerId])
   const current = loaded?.key === key ? loaded.value : null
-  return <div className="material-preview-content">
+  return <PreviewFallbackKind.Provider value={compact ? node.kind : null}><div className={`material-preview-content${compact ? ' material-preview-content--compact' : ''}`}>
     {live?.key === key
       ? <MarkdownPreview text={live.text} />
       : current === null ? <PreviewMessage>미리보기 불러오는 중…</PreviewMessage>
         : current === 'error' ? <PreviewMessage>미리보기를 불러올 수 없어요</PreviewMessage>
           : <PreviewBody courseId={courseId} preview={current} />}
-  </div>
+  </div></PreviewFallbackKind.Provider>
 }

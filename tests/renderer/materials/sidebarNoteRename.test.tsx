@@ -80,11 +80,11 @@ vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   closeResourceTabs: vi.fn(), reconcileWorkspaceMaterialRename: vi.fn(() => 1),
   useWorkspaceStore: Object.assign((selector: (state: any) => unknown) => selector(sidebarWorkspace), { getState: () => sidebarWorkspace })
 }))
-vi.mock('../../../src/renderer/src/features/materials/MaterialTree', async () => {
+vi.mock('../../../src/renderer/src/features/materials/MaterialViews', async () => {
   const ReactModule = await import('react')
   return {
-    MaterialSearchResults: () => null,
-    MaterialTree: ({ onRename }: { onRename: (node: unknown, name: string) => Promise<unknown> }) => ReactModule.createElement('button', {
+    MaterialViewMenu: () => null,
+    MaterialBrowser: ({ onRename }: { onRename: (node: unknown, name: string) => Promise<unknown> }) => ReactModule.createElement('button', {
       onClick: () => void onRename({ kind: 'note', name: 'moving.md', relPath: 'moving.md' }, 'renamed.md')
     }, 'rename source note')
   }

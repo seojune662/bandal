@@ -87,6 +87,25 @@ interface SearchIndexDeps {
   logger?: Pick<Console, 'warn'>
 }
 
+export interface PdfSearchDocumentState {
+  identity: string
+  revision: string
+  indexedThrough: number
+  pageCount: number
+  status: 'indexing' | 'ready' | 'failed'
+  error: string | null
+}
+
+export function searchRootPath(value = ''): string {
+  if (typeof value !== 'string' || value.startsWith('/') || value.includes('\\') || /[\u0000-\u001f]/.test(value) || (value !== '' && value.split('/').some(part => !part || part === '.' || part === '..'))) throw new ValidationError('Invalid search folder')
+  return value
+}
+
+export function pdfSearchFileIdentity(path: string): string {
+  const info = statSync(path, { bigint: true })
+  return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String).join(':')
+}
+
 export interface SearchIndex {
   /** Refreshes changed notes/text files for the course. */
   refreshTextFiles(courseId: string): void
@@ -97,7 +116,13 @@ export interface SearchIndex {
     relPath: string
     pages: { page: number; text: string }[]
   }): void
-  query(courseId: string, query: string, limit?: number): SearchHit[]
+  query(courseId: string, query: string, limit?: number, rootRelPath?: string): SearchHit[]
+  pdfState(courseId: string, relPath: string): PdfSearchDocumentState | undefined
+  beginPdf(courseId: string, relPath: string, identity: string, revision: string, pageCount: number): void
+  writePdfPage(courseId: string, relPath: string, identity: string, revision: string, page: number, text: string): void
+  finishPdf(courseId: string, relPath: string, error?: string): void
+  removePdf(courseId: string, relPath: string): void
+  rootIsCurrent(courseId: string): boolean
   /** Drops rows for files that no longer exist. */
   prune(courseId: string): void
 }
@@ -308,10 +333,15 @@ export function createSearchIndex(
   // This is a derived cache, but its folder binding must survive restarts:
   // the same course/relative path can point to unrelated content after relink.
   db.exec('CREATE TABLE IF NOT EXISTS course_content_roots (course_id TEXT PRIMARY KEY, folder TEXT NOT NULL)')
+  db.exec(`CREATE TABLE IF NOT EXISTS course_pdf_search_state (
+    course_id TEXT NOT NULL, rel_path TEXT NOT NULL, identity TEXT NOT NULL, revision TEXT NOT NULL,
+    indexed_through INTEGER NOT NULL DEFAULT 0, page_count INTEGER NOT NULL,
+    status TEXT NOT NULL, error TEXT, PRIMARY KEY(course_id,rel_path))`)
   const cachedRoots = new Map<string, string>()
   const selectRoot = db.prepare('SELECT folder FROM course_content_roots WHERE course_id = ?')
   const resetRoot = db.transaction((id: string, folder: string) => {
     db.prepare(`DELETE FROM ${SEARCH_TABLE} WHERE course_id = ?`).run(id)
+    db.prepare('DELETE FROM course_pdf_search_state WHERE course_id = ?').run(id)
     db.prepare('INSERT OR REPLACE INTO course_content_roots (course_id, folder) VALUES (?, ?)').run(id, folder)
   })
   function courseRoot(id: string): string {
@@ -425,6 +455,54 @@ export function createSearchIndex(
     replacePages()
   }
 
+  function pdfState(courseId: string, relPath: string): PdfSearchDocumentState | undefined {
+    courseRoot(requireId(courseId, 'courseId'))
+    return db.prepare(`SELECT identity,revision,indexed_through AS indexedThrough,page_count AS pageCount,status,error
+      FROM course_pdf_search_state WHERE course_id=? AND rel_path=?`).get(courseId, relPath) as PdfSearchDocumentState | undefined
+  }
+  function removePdf(courseId: string, relPath: string): void {
+    db.transaction(() => {
+      db.prepare(`DELETE FROM ${SEARCH_TABLE} WHERE course_id=? AND rel_path=? AND kind='pdf'`).run(courseId, relPath)
+      db.prepare('DELETE FROM course_pdf_search_state WHERE course_id=? AND rel_path=?').run(courseId, relPath)
+    })()
+  }
+  function beginPdf(courseId: string, relPath: string, identity: string, revision: string, pageCount: number): void {
+    const root = deps.getCourseFolder(requireId(courseId, 'courseId'))
+    if (!selectRoot.get(courseId)) courseRoot(courseId)
+    resolveInsideReal(root, relPath)
+    db.transaction(() => {
+      if ((selectRoot.get(courseId) as {folder: string} | undefined)?.folder !== root) throw new Error('과목 폴더 연결이 변경됐어요.')
+      removePdf(courseId, relPath)
+      db.prepare(`INSERT INTO course_pdf_search_state(course_id,rel_path,identity,revision,page_count,status) VALUES(?,?,?,?,?,'indexing')`)
+        .run(courseId, relPath, identity, revision, pageCount)
+    })()
+  }
+  function writePdfPage(courseId: string, relPath: string, identity: string, revision: string, page: number, text: string): void {
+    // The query process may have discarded this revision between two pages.
+    // Its removal and this write must not interleave into orphaned stale text.
+    db.transaction(() => {
+      const root = deps.getCourseFolder(courseId)
+      const state = db.prepare('SELECT identity,revision FROM course_pdf_search_state WHERE course_id=? AND rel_path=?').get(courseId, relPath) as {identity: string; revision: string} | undefined
+      if ((selectRoot.get(courseId) as {folder: string} | undefined)?.folder !== root || state?.identity !== identity || state.revision !== revision || pdfSearchFileIdentity(resolveInsideReal(root, relPath)) !== identity) throw new Error('PDF 원본이 변경되어 검색 색인을 다시 준비합니다.')
+      indexPdfPages({ courseId, relPath, pages: [{ page, text }] })
+      db.prepare('UPDATE course_pdf_search_state SET indexed_through=?,status=\'indexing\',error=NULL WHERE course_id=? AND rel_path=?').run(page, courseId, relPath)
+    })()
+  }
+  function finishPdf(courseId: string, relPath: string, error?: string): void {
+    db.prepare('UPDATE course_pdf_search_state SET status=?,error=? WHERE course_id=? AND rel_path=?').run(error ? 'failed' : 'ready', error ?? null, courseId, relPath)
+  }
+
+  // Never return text from replaced bytes while the independent PDF lane is
+  // still working through an earlier file. Metadata checks do not parse PDFs.
+  function pruneChangedPdfs(courseId: string, root: string, scope: string): void {
+    const states = db.prepare(`SELECT rel_path,identity FROM course_pdf_search_state WHERE course_id=?
+      AND (?='' OR substr(rel_path,1,length(?)+1)=?||'/')`).all(courseId, scope, scope, scope) as Array<{rel_path: string; identity: string}>
+    for (const state of states) {
+      try { if (pdfSearchFileIdentity(resolveInsideReal(root, state.rel_path)) === state.identity) continue } catch { /* removed or unreadable */ }
+      removePdf(courseId, state.rel_path)
+    }
+  }
+
   function* pruneBatches(courseId: string): Generator<void> {
     const id = requireId(courseId, 'courseId')
     const root = courseRoot(id)
@@ -461,13 +539,16 @@ export function createSearchIndex(
     }
   }
 
-  function query(courseId: string, queryText: string, limit?: number): SearchHit[] {
+  function query(courseId: string, queryText: string, limit?: number, rootRelPath = ''): SearchHit[] {
     const id = requireId(courseId, 'courseId')
     const needle = contentSearchKey(
       requireNonEmptyString(queryText, 'query').trim()
     )
     const resolvedLimit = validateLimit(limit)
-    courseRoot(id)
+    const scope = searchRootPath(rootRelPath)
+    const root = courseRoot(id)
+    if (scope) resolveInsideReal(root, scope)
+    pruneChangedPdfs(id, root, scope)
 
     // Text files are cheap and mutable outside Bandal, so every search gets a
     // fresh view. Pruning also removes cached PDF pages after an out-of-band
@@ -481,12 +562,14 @@ export function createSearchIndex(
           `SELECT rel_path, kind, page, body
            FROM ${SEARCH_TABLE}
            WHERE ${SEARCH_TABLE} MATCH ? AND course_id = ?
+             AND (?='' OR substr(rel_path,1,length(?)+1)=?||'/')
            ORDER BY bm25(${SEARCH_TABLE}) ASC
            LIMIT ?`
         )
         .all(
           quoteFtsPhrase(needle),
           id,
+          scope, scope, scope,
           Math.min(resolvedLimit * FTS_OVERFETCH_FACTOR, MAX_LIMIT * FTS_OVERFETCH_FACTOR)
         ) as SearchRow[]
     }
@@ -498,9 +581,9 @@ export function createSearchIndex(
         .prepare(
           `SELECT rel_path, kind, page, body
            FROM ${SEARCH_TABLE}
-           WHERE course_id = ?`
+           WHERE course_id = ? AND (?='' OR substr(rel_path,1,length(?)+1)=?||'/')`
         )
-        .all(id) as SearchRow[]
+        .all(id, scope, scope, scope) as SearchRow[]
     }
 
     return rowsToHits(rows, needle)
@@ -513,5 +596,6 @@ export function createSearchIndex(
       .slice(0, resolvedLimit)
   }
 
-  return { refreshTextFiles, refreshInBackground, indexPdfPages, query, prune }
+  return { refreshTextFiles, refreshInBackground, indexPdfPages, query, prune, pdfState, beginPdf, writePdfPage, finishPdf, removePdf,
+    rootIsCurrent: courseId => (selectRoot.get(courseId) as {folder: string} | undefined)?.folder === deps.getCourseFolder(courseId) }
 }

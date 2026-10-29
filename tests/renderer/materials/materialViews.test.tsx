@@ -129,3 +129,37 @@ test('inline rename remains usable in icon view', async () => {
   act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
   expect(props.onCancelRename).toHaveBeenCalledOnce()
 })
+
+test('readable list shows thumbnails and metadata, enters folders and returns without a tree', async () => {
+  await render('list')
+  expect(row('memo.md').querySelector('.material-card-preview')).not.toBeNull()
+  expect(row('memo.md').querySelector('.material-row__details')?.textContent).toContain('마크다운')
+  await act(async () => click(row('Week 1')))
+  expect(row('Week 1/lesson.pdf')).not.toBeNull()
+  expect(row('memo.md')).toBeNull()
+  await act(async () => click(host.querySelector('[aria-label="상위 폴더로"]')!))
+  expect(row('memo.md')).not.toBeNull()
+  expect(host.querySelector('.material-tree')).toBeNull()
+})
+
+test('compact retains expandable inline tree and scoped list cannot escape its project root', async () => {
+  await render('compact')
+  click(row('Week 1'))
+  expect(props.onToggleFolder).toHaveBeenCalledWith('Week 1')
+  expect(row('memo.md')).not.toBeNull()
+  await act(async () => root.render(<MaterialBrowser {...props} nodes={[{ kind: 'dir', name: 'Empty', relPath: 'projects/a/Empty', children: [] }]} view="list" rootRelPath="projects/a" directory="projects/a/Empty" onDirectoryChange={props.onToggleFolder} />))
+  click(host.querySelector('[aria-label="상위 폴더로"]')!)
+  expect(props.onToggleFolder).toHaveBeenLastCalledWith('projects/a')
+  expect(host.textContent).toContain('이 폴더에 자료를 드래그')
+})
+
+test('a large readable list mounts a bounded set of previews and keyboard End reaches its last row', async () => {
+  props.nodes = Array.from({ length: 1200 }, (_, index) => ({ name: `file-${index}.md`, relPath: `file-${index}.md`, kind: 'note' }))
+  await render('list')
+  expect(host.querySelector('[data-total-rows]')?.getAttribute('data-total-rows')).toBe('1200')
+  expect(host.querySelectorAll('[data-material-row]')).toHaveLength(30)
+  await act(async () => {
+    row('file-0.md').dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }))
+  })
+  expect(document.activeElement?.getAttribute('data-material-path')).toBe('file-1199.md')
+})

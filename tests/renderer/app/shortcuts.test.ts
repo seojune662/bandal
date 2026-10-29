@@ -1,4 +1,5 @@
 import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
+import { useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
@@ -300,6 +301,27 @@ describe('runShortcutAction — shortcut-help', () => {
       expect(openSettings).toHaveBeenCalledWith('shortcuts')
     } finally {
       spy.mockRestore()
+    }
+  })
+})
+
+describe('expanded materials shortcuts', () => {
+  test('find targets materials search and editor tab commands cannot reach the background workspace', () => {
+    const focus = vi.fn(), select = vi.fn(), closeActiveTab = vi.fn(), activateTabAt = vi.fn()
+    vi.stubGlobal('document', { querySelector: vi.fn(() => ({ focus, select })) })
+    const workspace = vi.spyOn(useWorkspaceStore, 'getState').mockReturnValue({ ...useWorkspaceStore.getState(), closeActiveTab, activateTabAt })
+    try {
+      useUiStore.getState().setMaterialsExpanded(true)
+      runShortcutAction({ type: 'browser-find' })
+      expect(focus).toHaveBeenCalledOnce()
+      expect(select).toHaveBeenCalledOnce()
+      runShortcutAction({ type: 'activate-tab', index: 1 })
+      expect(activateTabAt).not.toHaveBeenCalled()
+      runShortcutAction({ type: 'close-tab' })
+      expect(closeActiveTab).not.toHaveBeenCalled()
+      expect(useUiStore.getState().materialsExpanded).toBe(false)
+    } finally {
+      workspace.mockRestore(); useUiStore.getState().closeMaterialsExpanded(); vi.unstubAllGlobals()
     }
   })
 })

@@ -15,6 +15,7 @@ import {
   type SearchIndex
 } from '../../../src/main/features/search'
 import { createTestDb, type TestDb } from '../helpers/testDb'
+import { pdfSearchFileIdentity as requireIdentity } from '../../../src/main/features/search/searchIndex'
 
 describe('course content search index', () => {
   let ctx: TestDb
@@ -330,6 +331,39 @@ describe('course content search index', () => {
         pages: [{ page: 1, text: 'x' }]
       })
     ).toThrow()
+  })
+
+  test('applies a literal folder boundary before FTS overfetch and final limits', () => {
+    mkdirSync(join(courseFolder, 'target_%'))
+    mkdirSync(join(courseFolder, 'target_%other'))
+    for (let i = 0; i < 50; i++) writeFileSync(join(courseFolder, `${i}.md`), 'needle '.repeat(30))
+    writeFileSync(join(courseFolder, 'target_%other', 'excluded.md'), 'needle '.repeat(100))
+    writeFileSync(join(courseFolder, 'target_%', 'wanted.md'), 'a long contextual needle')
+    expect(index.query('course-1', 'needle', 1, 'target_%').map(hit => hit.relPath)).toEqual(['target_%/wanted.md'])
+    expect(() => index.query('course-1', 'needle', 1, '../target')).toThrow(ValidationError)
+  })
+
+  test('scopes short Korean fallback searches to nested descendants', () => {
+    mkdirSync(join(courseFolder, 'project', 'nested'), { recursive: true })
+    mkdirSync(join(courseFolder, 'project2'))
+    writeFileSync(join(courseFolder, 'project', 'nested', 'note.md'), '복습 정리'.normalize('NFD'))
+    writeFileSync(join(courseFolder, 'project2', 'note.md'), '복습')
+    expect(index.query('course-1', '복습', 10, 'project').map(hit => hit.relPath)).toEqual(['project/nested/note.md'])
+  })
+
+  test('invalidates replaced PDF content before the extraction lane reaches that file', () => {
+    const path = join(courseFolder, 'lecture.pdf')
+    writeFileSync(path, 'first revision')
+    const identity = requireIdentity(path)
+    index.beginPdf('course-1', 'lecture.pdf', identity, 'revision-a', 5)
+    index.indexPdfPages({ courseId: 'course-1', relPath: 'lecture.pdf', pages: [{ page: 5, text: 'obsolete term' }] })
+    index.finishPdf('course-1', 'lecture.pdf')
+    expect(index.query('course-1', 'obsolete')).toHaveLength(1)
+    writeFileSync(path, 'replacement revision with fewer pages')
+    expect(index.query('course-1', 'obsolete')).toEqual([])
+    expect(index.pdfState('course-1', 'lecture.pdf')).toBeUndefined()
+    expect(() => index.writePdfPage('course-1', 'lecture.pdf', identity, 'revision-a', 2, 'stale late page')).toThrow('변경')
+    expect(index.query('course-1', 'stale late')).toEqual([])
   })
 
   test('ignores hidden folders and unsupported binaries', () => {

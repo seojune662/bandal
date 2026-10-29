@@ -1,0 +1,27 @@
+/* Keep the rail's grid reservation and the live document layout unchanged. */
+.app-shell[data-materials-expanded='true'] > .shell-materials-rail {
+  position: fixed;
+  inset: var(--chrome-height) 0 0 auto;
+  z-index: 96;
+  width: min(980px, calc(100vw - 72px));
+  overflow: visible;
+  box-shadow: -12px 0 36px var(--backdrop, #10101824);
+}
+
+.right-sidebar[data-expanded='true'] {
+  width: 100%;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.materials-expanded-backdrop {
+  position: fixed;
+  inset: var(--chrome-height) 0 0;
+  z-index: 95;
+  border: 0;
+  background: var(--backdrop, #10101838);
+  cursor: default;
+}
+
+@media (max-width: 600px) {
+  .app-shell[data-materials-expanded='true'] > .shell-materials-rail { width: 100vw; }
+}

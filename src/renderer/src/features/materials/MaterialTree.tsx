@@ -189,8 +189,9 @@ function InlineNameEditor({
 }
 
 export interface TreeNodeProps {
-  appearance?: 'icon' | 'column' | 'gallery'
+  appearance?: 'icon' | 'column' | 'gallery' | 'list'
   preview?: ReactNode
+  details?: ReactNode
   selectOnly?: boolean
   flat?: boolean
   virtualIndex?: number
@@ -220,6 +221,7 @@ export interface TreeNodeProps {
 export function TreeNode({
   appearance,
   preview,
+  details,
   selectOnly = false,
   flat = false,
   virtualIndex,
@@ -283,6 +285,7 @@ export function TreeNode({
           className="material-row__download-spinner is-spinning"
         />
       )}
+      {details}
     </>
   )
 
@@ -321,7 +324,7 @@ export function TreeNode({
           {rowContents}
         </div>
       ) : (
-        <MaterialRowAffordance target={{ courseId, node }} previewEnabled={appearance === undefined || appearance === 'column'}>
+        <MaterialRowAffordance target={{ courseId, node }} previewEnabled={appearance === undefined || appearance === 'column' || appearance === 'list'}>
         <button
           type="button"
           className={rowClass}
@@ -571,16 +574,28 @@ function flattenVisible(nodes: MaterialNode[], expanded: Record<string, boolean>
   return rows
 }
 
-function VirtualMaterialTree({ rows, ...props }: MaterialTreeProps & { rows: FlatMaterial[] }): JSX.Element {
+export function VirtualMaterialTree({ rows, renderRow, className = 'material-tree', label = '자료 파일 트리', initialHeight = 32, ...props }: MaterialTreeProps & {
+  rows: FlatMaterial[]
+  renderRow?: (node: MaterialNode, index: number) => ReactNode
+  className?: string
+  label?: string
+  initialHeight?: number
+}): JSX.Element {
   const root = useRef<HTMLUListElement>(null)
-  const [window, setWindow] = useState({ start: 0, end: 60, height: 32 })
+  const [window, setWindow] = useState({ start: 0, end: 30, height: initialHeight })
+  const focusIndex = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    if (focusIndex.current === null) return
+    const row = root.current?.querySelector<HTMLButtonElement>(`[data-material-index="${focusIndex.current}"] button`)
+    if (row) { focusIndex.current = null; row.focus() }
+  }, [window])
   const scrollToIndex = (index: number): void => {
     const list = root.current, body = list?.closest<HTMLElement>('.materials-body')
     if (!list || !body) return
     const listTop = list.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop
     body.scrollTop = listTop + index * window.height - body.clientHeight / 2
+    focusIndex.current = index
     setWindow(current => ({ ...current, start: Math.max(0, index - 20), end: Math.min(rows.length, index + 40) }))
-    requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>(`[data-material-index="${index}"] button`)?.focus())
   }
   useEffect(() => {
     const list = root.current, body = list?.closest<HTMLElement>('.materials-body')
@@ -591,26 +606,26 @@ function VirtualMaterialTree({ rows, ...props }: MaterialTreeProps & { rows: Fla
       frame = requestAnimationFrame(() => {
         frame = null
         const row = list.querySelector<HTMLElement>('.material-row')
-        const height = row?.getBoundingClientRect().height || 32
+        const height = row?.getBoundingClientRect().height || initialHeight
         const top = Math.max(0, body.getBoundingClientRect().top - list.getBoundingClientRect().top)
         const start = Math.max(0, Math.floor(top / height) - 12)
         const end = Math.min(rows.length, Math.ceil((top + body.clientHeight) / height) + 12)
         setWindow(current => current.start === start && current.end === end && current.height === height ? current : { start, end, height })
       })
     }
-    const observer = new ResizeObserver(update)
-    observer.observe(body)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    observer?.observe(body)
     body.addEventListener('scroll', update, { passive: true })
     update()
-    return () => { if (frame !== null) cancelAnimationFrame(frame); observer.disconnect(); body.removeEventListener('scroll', update) }
-  }, [rows.length])
+    return () => { if (frame !== null) cancelAnimationFrame(frame); observer?.disconnect(); body.removeEventListener('scroll', update) }
+  }, [rows.length, initialHeight])
   useEffect(() => {
     if (!props.editingRelPath) return
     const index = rows.findIndex(row => row.node.relPath === props.editingRelPath)
     if (index >= 0 && (index < window.start || index >= window.end)) scrollToIndex(index)
   }, [props.editingRelPath])
   const start = Math.min(window.start, Math.max(0, rows.length - 1)), end = Math.max(start + 1, window.end)
-  return <ul ref={root} className="material-tree" data-total-rows={rows.length} role="tree" aria-label="자료 파일 트리"
+  return <ul ref={root} className={className} data-total-rows={rows.length} role="tree" aria-label={label}
     onKeyDownCapture={event => {
       if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || (event.target as HTMLElement).tagName !== 'BUTTON') return
       const element = (event.target as HTMLElement).closest<HTMLElement>('[data-material-index]')
@@ -622,7 +637,7 @@ function VirtualMaterialTree({ rows, ...props }: MaterialTreeProps & { rows: Fla
     }}>
     <li role="presentation" aria-hidden style={{ height: start * window.height }} />
     {rows.slice(start, end).map(({ node, depth }, index) =>
-      <TreeNode {...props} key={node.relPath} node={node} depth={depth} flat virtualIndex={start + index} />)}
+      renderRow ? renderRow(node, start + index) : <TreeNode {...props} key={node.relPath} node={node} depth={depth} flat virtualIndex={start + index} />)}
     <li role="presentation" aria-hidden style={{ height: Math.max(0, rows.length - end) * window.height }} />
   </ul>
 }

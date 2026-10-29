@@ -17,7 +17,7 @@ import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireInt, requireNonEmptyString } from '../../db/validate'
 
 export interface AnnotationsRepo {
-  listForFile(input: { courseId: string; relPath: string; documentRevision?: string }): Annotation[]
+  listForFile(input: { courseId: string; relPath: string; documentRevision?: string; page?: number }): Annotation[]
   create(input: CreateAnnotationInput): Annotation
   update(input: UpdateAnnotationInput): Annotation
   softDelete(input: { id: string; documentRevision?: string }): { ok: true }
@@ -119,13 +119,14 @@ export function createAnnotationsRepo(db: Database): AnnotationsRepo {
     listForFile(input) {
       const courseId = requireId(input.courseId, 'courseId')
       const relPath = requireNonEmptyString(input.relPath, 'relPath')
+      const page = input.page === undefined ? null : requireInt(input.page, 'page', 1)
       const rows = db
         .prepare(
           `SELECT * FROM annotations
-           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
+           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL AND (? IS NULL OR page = ?)
            ORDER BY page ASC, created_at ASC`
         )
-        .all(courseId, relPath) as AnnotationRow[]
+        .all(courseId, relPath, page, page) as AnnotationRow[]
       return rows.map(rowToAnnotation)
     },
 

@@ -34,6 +34,7 @@ vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
 }))
 
 import { openMaterialInCourse, openMaterialInWorkspace } from '../../../src/renderer/src/features/workspace/openMaterial'
+import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 const originalTarget = { courseId: 'course-1', workspace: { kind: 'course' as const, courseId: 'course-1' }, windowId: 'main', groupId: 'source-group' }
 
 describe('openMaterialInCourse', () => {
@@ -42,6 +43,7 @@ describe('openMaterialInCourse', () => {
     openTabMock.mockReset()
     selectCourseMock.mockReset(); showCourseWorkspaceMock.mockReset()
     pendingTargetMock.mockReset()
+    useUiStore.getState().closeMaterialsExpanded()
     materials.activeCourseId = 'course-1'
     invokeMock.mockResolvedValue({ ok: true })
     workspace.activeCourseId = 'course-1'; workspace.activeWorkspaceKey = 'course-1'; workspace.activeWindowId = 'main'; workspace.activeWorkspace = {kind: 'course', courseId: 'course-1'}; workspace.surface = 'course'
@@ -95,6 +97,31 @@ describe('openMaterialInCourse', () => {
     })
   })
 
+  test('external file reveal closes expanded materials only after success and keeps failures open', async () => {
+    let finish!: () => void
+    invokeMock.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve }))
+    useUiStore.getState().setMaterialsExpanded(true)
+    openMaterialInCourse('course-1', 'other', 'success.zip')
+    expect(useUiStore.getState().materialsExpanded).toBe(true)
+    finish(); await Promise.resolve()
+    expect(useUiStore.getState().materialsExpanded).toBe(false)
+    invokeMock.mockRejectedValueOnce(new Error('Reveal failed'))
+    useUiStore.getState().setMaterialsExpanded(true)
+    openMaterialInCourse('course-1', 'other', 'failure.zip')
+    await Promise.resolve(); await Promise.resolve()
+    expect(useUiStore.getState().materialsExpanded).toBe(true)
+  })
+
+  test('a delayed reveal from another window does not dismiss its newer browser', async () => {
+    let finish!: () => void
+    invokeMock.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve }))
+    useUiStore.getState().setMaterialsExpanded(true)
+    openMaterialInCourse('course-1', 'other', 'earlier-window.zip', { target: originalTarget })
+    workspace.activeWindowId = 'second'
+    finish(); await Promise.resolve()
+    expect(useUiStore.getState().materialsExpanded).toBe(true)
+  })
+
   test('explicit owner navigation selects the owning course before opening the document', () => {
     openMaterialInCourse('course-1', 'pdf', 'original.pdf', { navigateToOwner: true })
     expect(selectCourseMock).toHaveBeenCalledWith('course-1', { preserveSurface: true })
@@ -135,6 +162,16 @@ describe('openMaterialInCourse', () => {
     expect(openTabMock).toHaveBeenCalledWith({ kind: 'note', payload: { courseId: 'course-1', relPath: 'created.md' } }, { target: originalTarget, newInstance: true })
     expect(selectCourseMock).not.toHaveBeenCalled()
     expect(showCourseWorkspaceMock).not.toHaveBeenCalled()
+  })
+
+  test('search navigation forwards the exact-panel callback without changing its captured destination', () => {
+    const onOpened = vi.fn()
+    openMaterialInCourse('course-1', 'pdf', 'search-result.pdf', { target: originalTarget, newInstance: true, onOpened })
+    expect(openTabMock).toHaveBeenCalledExactlyOnceWith(
+      { kind: 'pdf', payload: { courseId: 'course-1', relPath: 'search-result.pdf' } },
+      { target: originalTarget, newInstance: true, onOpened }
+    )
+    expect(onOpened).not.toHaveBeenCalled()
   })
 
   test.each<WorkspaceRef>([

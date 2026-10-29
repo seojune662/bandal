@@ -130,8 +130,21 @@ test('restoring 50 tabs reads only the selected note', async () => {
     for (let i = 0; i < 50; i++) writeFileSync(join(course!.folderPath, `note-${i}.md`), `# note-${i}\n\n내용 ${i}\n`)
     await page.getByRole('button', { name: '자료 새로고침' }).click()
     await page.locator('[data-material-path="note-0.md"]').click()
-    await expect(page.locator('.milkdown .ProseMirror')).toBeVisible()
-    for (let i = 1; i < 50; i++) await page.locator(`[data-material-path="note-${i}.md"]`).click()
+    const editor = page.locator('.milkdown .ProseMirror:visible')
+    await expect(editor).toBeFocused()
+    // Readable rows are virtualized. Move through the real list so the next
+    // row is mounted instead of assuming all fifty files exist in the DOM.
+    for (let i = 1; i < 50; i++) {
+      await page.locator(`[data-material-path="note-${i - 1}.md"]`).focus()
+      await page.keyboard.press('ArrowDown')
+      const next = page.locator(`[data-material-path="note-${i}.md"]`)
+      await expect(next).toBeFocused()
+      await next.press('Enter')
+      // Opening a note hands focus to its async editor. Finish that handoff
+      // before returning to the list, or ArrowDown can reach the old editor.
+      await expect(editor.locator('p')).toHaveText(`내용 ${i}`)
+      await expect(editor).toBeFocused()
+    }
     await expect(page.locator('.milkdown .ProseMirror:visible')).toContainText('내용 49')
     await expect.poll(async () => {
       const { layout } = await page.evaluate(id => window.bandal.invoke('layout:get', { courseId: id }), course!.id)
@@ -157,7 +170,7 @@ test('a flat folder renders a bounded list and keyboard navigation reaches the l
     const first = page.locator('[data-material-path="note-0000.md"]')
     await expect(first).toBeVisible()
     expect(await page.locator('[data-material-row]').count()).toBeLessThan(100)
-    await expect(page.locator('.material-tree')).toHaveAttribute('data-total-rows', '1200')
+    await expect(page.locator('.materials-items--list')).toHaveAttribute('data-total-rows', '1200')
     await first.focus()
     await page.keyboard.press('End')
     await expect(page.locator('[data-material-path="note-1199.md"]')).toBeFocused()
@@ -166,19 +179,20 @@ test('a flat folder renders a bounded list and keyboard navigation reaches the l
   } finally { await bandal.close() }
 })
 
-test('PDF search uses the background cache without writing the user database', async () => {
+test('an unopened PDF is searched through the background cache without writing the user database', async () => {
   const bandal = await launchBandal()
   try {
     const { page } = bandal
     const course = await page.evaluate(() => window.bandal.invoke('courses:create', { name: '검색 캐시', color: 'blue' }))
     const pdf = await PDFDocument.create()
-    pdf.addPage().drawText('Isolated cache')
+    pdf.addPage().drawText('BackgroundSearchEvidence')
     writeFileSync(join(course.folderPath, 'search.pdf'), await pdf.save())
-    await page.evaluate(id => window.bandal.invoke('search:indexPdfPages', {
-      courseId: id, relPath: 'search.pdf', pages: [{ page: 1, text: '백그라운드검색검증' }]
-    }), course.id)
-    const result = await page.evaluate(id => window.bandal.invoke('search:query', { courseId: id, query: '검색검증' }), course.id)
-    expect(result.hits).toEqual(expect.arrayContaining([expect.objectContaining({ relPath: 'search.pdf', page: 1 })]))
+    // The first query starts extraction of the actual source bytes; no viewer
+    // or manually injected index entry is needed to make this PDF searchable.
+    await expect.poll(async () => {
+      const result = await page.evaluate(id => window.bandal.invoke('search:query', { courseId: id, query: 'BackgroundSearchEvidence' }), course.id)
+      return result.hits
+    }, { timeout: 30_000 }).toEqual(expect.arrayContaining([expect.objectContaining({ relPath: 'search.pdf', page: 1 })]))
     const Sqlite = createRequire(__filename)('better-sqlite3-node') as typeof import('better-sqlite3')
     const db = new Sqlite(join(bandal.userDataDir, 'bandal.db'), { readonly: true })
     try {

@@ -317,12 +317,15 @@ test('library surfaces keep course colors quiet and document actions reachable',
         await expect(page.locator('.new-tab-menu')).toBeVisible()
         await page.keyboard.press('Escape')
       }
-      const colors = await page.locator('.material-row:not([data-kind="dir"]) .material-row__type').evaluateAll(icons => icons.map(icon => getComputedStyle(icon).color))
+      // Thumbnail rows show quiet type labels instead of the old inline icon.
+      const types = page.locator('.material-row:not([data-kind="dir"]) .material-type-badge')
+      await expect(types).toHaveCount(5)
+      const colors = await types.evaluateAll(labels => labels.map(label => getComputedStyle(label).color))
       expect(new Set(colors).size).toBe(1)
     }
     const search = page.locator('aside.app-rail--right input[type="search"]')
     await search.fill('수업')
-    const result = page.locator('.material-result')
+    const result = page.locator('.materials-items--list [data-material-path="수업 노트.md"]')
     await expect(result).toHaveCount(1)
     await expect(result).toBeVisible()
     await expect(result).toBeInViewport()

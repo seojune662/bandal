@@ -57,6 +57,12 @@ import {
 export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'
 export type WorkspaceSurface = 'course' | 'learning-home' | 'study-market' | 'community'
 
+function finishMaterialOpen(descriptor: TabDescriptor, background = false): void {
+  if (!background && ['pdf', 'note', 'image', 'file', 'recording', 'whiteboard', 'learning-resource'].includes(descriptor.kind)) {
+    useUiStore.getState().closeMaterialsExpanded({ returnFocus: false })
+  }
+}
+
 interface WorkspaceState {
   /** Global home keeps the selected course and its live layout intact. */
   surface: WorkspaceSurface
@@ -114,6 +120,8 @@ interface WorkspaceState {
       target?: WorkspaceTarget
       /** Recheck request ownership when a delayed open is replayed after hydration. */
       shouldOpen?: () => boolean
+      /** The exact created/reused panel, including delayed and duplicate opens. */
+      onOpened?: (panelId: string) => void
     }
   ) => void
   /** Opens one PDF and its page-matched note as a persisted 50:50 pair. */
@@ -202,7 +210,7 @@ const windowCollections = new Map<string, WorkspaceWindows>()
 const envelopeWorkspaces = new Set<string>()
 const requestedWindowSelections = new Map<string, string>()
 const closingWindows = new Set<string>()
-interface OwnedWorkspaceOpen { requestId: string; key: string; descriptor: TabDescriptor; background: boolean; followSavedSelection: boolean; newInstance?: boolean; groupId?: string; shouldOpen?: () => boolean }
+interface OwnedWorkspaceOpen { requestId: string; key: string; descriptor: TabDescriptor; background: boolean; followSavedSelection: boolean; newInstance?: boolean; groupId?: string; shouldOpen?: () => boolean; onOpened?: (panelId: string) => void }
 const ownedWorkspaceOpens = new Map<string, OwnedWorkspaceOpen>()
 let suppressWorkspacePublish = false
 const windowRemovedListeners = new Set<(workspaceKey: string, windowId: string) => void>()
@@ -508,6 +516,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
   }
   const requestTransition = (workspace: WorkspaceRef | null, windowId?: string): void => {
     const key = workspace === null ? null : workspaceWindowKey(workspaceKey(workspace), windowId ?? collectionFor(workspaceKey(workspace)).activeWindowId)
+    if (key !== get().activeWindowKey) useUiStore.getState().closeMaterialsExpanded({ returnFocus: false })
     const intent = ++transitionIntent
     if (requestedTransitionKey && requestedTransitionKey !== key) pendingOpens.delete(requestedTransitionKey)
     requestedTransitionKey = key
@@ -892,6 +901,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     toggleWindowsOverview: () => get().setWindowsOverviewOpen(!get().windowsOverviewOpen),
     setWindowsOverviewOpen: (open) => {
       if (open && (!get().activeWorkspace || get().hydration !== 'ready')) return
+      if (open) useUiStore.getState().closeMaterialsExpanded({ returnFocus: false })
       set({ windowsOverviewOpen: open }); syncActivePanel()
     },
 
@@ -908,7 +918,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         const staged: OwnedWorkspaceOpen = { requestId: crypto.randomUUID(), key: destination.courseId, descriptor: copy,
           background: options?.background === true, followSavedSelection: false,
           ...(options?.newInstance ? { newInstance: true } : {}), ...(destination.groupId ? { groupId: destination.groupId } : {}),
-          ...(options?.shouldOpen ? { shouldOpen: options.shouldOpen } : {}) }
+          ...(options?.shouldOpen ? { shouldOpen: options.shouldOpen } : {}), ...(options?.onOpened ? { onOpened: options.onOpened } : {}) }
         ownedWorkspaceOpens.set(staged.requestId, staged)
         void materializeOwnedWorkspaceOpen(staged)
         return
@@ -920,7 +930,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
           const copy = options?.newInstance ? duplicateTabDescriptor(descriptor) : descriptor
           const id = options?.newInstance && copy.kind !== 'browser' ? createDuplicatePanelId(copy) : newPanelId(copy, destination.courseId)
           const layout = appendRetainedTab(runtimeLayouts.get(destination.courseId), copy, id, { groupId: destination.groupId, background: options?.background, newInstance: options?.newInstance })
-          if (layout) { get().saveRetainedLayout(destination.courseId, layout); return }
+          if (layout) {
+            get().saveRetainedLayout(destination.courseId, layout)
+            options?.onOpened?.(options?.newInstance ? id : Object.entries(tabsFromLayout(layout)).find(([, tab]) => tabPanelId(tab) === tabPanelId(copy))?.[0] ?? id)
+            return
+          }
         }
         if (!target || (destination.groupId && !group) || (destination.courseId !== null && !hydratedCourses.has(destination.courseId))) {
           showToast('원래 작업 영역을 찾을 수 없어요. 만든 자료는 원래 과목에서 열 수 있어요.')
@@ -935,6 +949,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         } else target.addPanel({ id, component: copy.kind, title: tabTitle(copy), params: { descriptor: copy },
           ...(group ? { position: { referenceGroup: group.id, index: group.panels.length } } : {}), inactive: options?.background === true })
         get().saveRetainedLayout(destination.courseId, target.toJSON())
+        options?.onOpened?.(existing?.id ?? id)
         return
       }
       if (!destination && !replayingOpens && options?.background !== true && get().surface !== 'course') get().showWorkspace(get().activeWorkspace)
@@ -961,6 +976,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         // can change, so refresh the descriptor before focusing it.
         existing.api.updateParameters({ ...existing.params, descriptor })
         if (options?.background !== true) existing.api.setActive()
+        finishMaterialOpen(descriptor, options?.background)
+        options?.onOpened?.(existing.id)
         return
       }
       // [R3] "현재 탭 옆에 열기" 설정: 새 탭을 활성 그룹의 끝이 아니라
@@ -991,6 +1008,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         inactive: options?.background === true,
         ...position
       })
+      finishMaterialOpen(descriptor, options?.background)
       // dockview activates a new panel by default. ⌘-clicking five 공지 links
       // would otherwise yank focus five times and leave the student on the
       // last one.
@@ -998,6 +1016,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         focusedPanel.api.setActive()
         void added
       }
+      options?.onOpened?.(added.id)
     },
 
     openPdfNotePair: (pdfDescriptor, noteDescriptor, connectionId, initialPage) => {
@@ -1065,6 +1084,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       })
       pdfPanel.api.setActive()
       notePanel.api.setActive()
+      finishMaterialOpen(noteDescriptor)
     },
 
     saveRetainedLayout: (courseId, layout) => {
@@ -1670,13 +1690,18 @@ async function materializeOwnedWorkspaceOpen(open: OwnedWorkspaceOpen): Promise<
         if (open.background) previous?.api.setActive()
       }
       state.saveRetainedLayout(open.key, target.toJSON())
-      if (state.activeWindowKey === open.key) state.notifyLayoutChanged()
+      if (state.activeWindowKey === open.key) {
+        state.notifyLayoutChanged()
+        finishMaterialOpen(open.descriptor, open.background)
+      }
+      open.onOpened?.(existing?.id ?? id)
     } else {
       const raw = runtimeLayouts.get(open.key)
       const layout = appendRetainedTab(raw === null || raw === undefined || typeof raw === 'object' && Object.keys(raw).length === 0 ? emptyWindowLayout() : raw, open.descriptor, id,
         { groupId: open.groupId, background: open.background, newInstance: open.newInstance })
       if (!layout) throw new Error('원래 작업 영역을 읽지 못했습니다.')
       state.saveRetainedLayout(open.key, layout)
+      open.onOpened?.(open.newInstance ? id : Object.entries(tabsFromLayout(layout)).find(([, tab]) => tabPanelId(tab) === tabPanelId(open.descriptor))?.[0] ?? id)
     }
   } catch (error) {
     console.error('[workspace] 탭을 원래 공간에 열지 못했습니다.', error)

@@ -21,6 +21,10 @@
   font-size: 12px;
 }
 
+.material-preview-content--compact .material-preview-content__caption { display: none; }
+.material-preview-content__fallback { display: grid; flex: 1; min-height: 56px; place-items: center; color: var(--text-muted); }
+.material-preview-content__fallback svg { width: 28px; height: 28px; }
+
 .material-preview-content__text,
 .material-preview-content__markdown {
   min-height: 0;

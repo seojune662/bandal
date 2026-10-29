@@ -146,6 +146,7 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
     '학생이 보던 페이지의 기록. 에이전트가 학생의 시점을 바꿔칠 자리가 아니다.',
   'canvas:open': '캔버스 세션 수명. 렌더러가 관리한다.',
   'canvas:hoverPreview': '자료 행의 첫 페이지 미리보기를 위한 제한된 읽기 전용 조회다.',
+  'pdf:previewSnapshot': '자료 썸네일의 동일 원본 버전과 저장된 첫 페이지 필기를 조회한다. 에이전트는 기존 PDF 읽기 도구를 사용한다.',
   'search:indexPdfPages': '색인 배관. 검색이 알아서 부른다.',
   'study:tools': '학습 계획 러너의 내부 표면.',
   'study:run': '위와 같음 — 에이전트가 자기를 재귀 호출할 자리다.',

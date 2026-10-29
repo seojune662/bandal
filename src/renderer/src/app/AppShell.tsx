@@ -142,6 +142,32 @@ export function AppShell(): JSX.Element {
   const isSettingsOpen = useUiStore((state) => state.isSettingsOpen)
   const settingsPresent = usePresence(isSettingsOpen, 160)
   useLayoutEffect(() => settingsPresent ? acquirePointerPassthrough() : undefined, [settingsPresent])
+  const materialsExpandedRequested = useUiStore(state => state.materialsExpanded)
+  const rightRailTab = useUiStore(state => state.rightRailTab)
+  const activeWindowKey = useWorkspaceStore(state => state.activeWindowKey)
+  const windowsOverviewOpen = useWorkspaceStore(state => state.windowsOverviewOpen)
+  const materialsExpanded = materialsExpandedRequested && materialsRailVisible && rightRailTab === 'materials' &&
+    !settingsPresent && !isBoardOverlayOpen && !isLinkGraphOpen && !windowsOverviewOpen
+  const previousMaterialsWindow = useRef(activeWindowKey)
+  useLayoutEffect(() => {
+    if (previousMaterialsWindow.current !== activeWindowKey || materialsExpandedRequested && !materialsExpanded) {
+      useUiStore.getState().closeMaterialsExpanded({ returnFocus: false })
+    }
+    previousMaterialsWindow.current = activeWindowKey
+  }, [activeWindowKey, materialsExpanded, materialsExpandedRequested])
+  useLayoutEffect(() => materialsExpanded ? acquirePointerPassthrough() : undefined, [materialsExpanded])
+  useLayoutEffect(() => {
+    if (!materialsExpanded) return
+    const navigation = document.querySelector<HTMLElement>('.global-navigation')
+    if (!navigation) return
+    const inert = navigation.getAttribute('inert'), hidden = navigation.getAttribute('aria-hidden')
+    navigation.setAttribute('inert', '')
+    navigation.setAttribute('aria-hidden', 'true')
+    return () => {
+      if (inert === null) navigation.removeAttribute('inert'); else navigation.setAttribute('inert', inert)
+      if (hidden === null) navigation.removeAttribute('aria-hidden'); else navigation.setAttribute('aria-hidden', hidden)
+    }
+  }, [materialsExpanded])
   const settingsCategory = useUiStore((state) => state.settingsCategory)
   const openSettings = useUiStore((state) => state.openSettings)
   const closeSettings = useUiStore((state) => state.closeSettings)
@@ -421,6 +447,7 @@ export function AppShell(): JSX.Element {
     <div
       className="app-shell"
       data-settings={settingsPresent ? 'open' : 'closed'}
+      data-materials-expanded={materialsExpanded || undefined}
       data-board={isBoardOverlayOpen ? 'open' : 'closed'}
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
       data-course-rail={leftRailOpen && courseRailVisible ? 'open' : 'closed'}
@@ -428,17 +455,17 @@ export function AppShell(): JSX.Element {
       data-right-rail={materialsRailVisible ? 'open' : 'closed'}
     >
       <GlobalNavigation />
-      <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailVisible || settingsPresent}
-        {...{ inert: !leftRailOpen || !courseRailVisible || settingsPresent ? '' : undefined }}>
+      <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailVisible || settingsPresent || materialsExpanded}
+        {...{ inert: !leftRailOpen || !courseRailVisible || settingsPresent || materialsExpanded ? '' : undefined }}>
         <HomeSidebar hidden={leftRailPanel === 'plugins'}>
           <CourseSidebar hidden={leftRailPanel !== 'courses'} />
           {learningMounted && <LearningSpacesPanel hidden={leftRailPanel !== 'learning'} />}
         </HomeSidebar>
         {launcherMounted && <FeatureLauncherPanel hidden={leftRailPanel !== 'plugins'} />}
       </div>
-      {leftRailOpen && courseRailVisible && !settingsPresent && <RailResizer side="left" />}
+      {leftRailOpen && courseRailVisible && !settingsPresent && !materialsExpanded && <RailResizer side="left" />}
 
-      <main className="app-workspace" aria-label="작업 공간" {...{ inert: settingsPresent ? '' : undefined }}>
+      <main className="app-workspace" aria-label="작업 공간" aria-hidden={settingsPresent || materialsExpanded || undefined} {...{ inert: settingsPresent || materialsExpanded ? '' : undefined }}>
         <WorkspaceHost />
         <RecordingIndicator />
       </main>
@@ -447,7 +474,8 @@ export function AppShell(): JSX.Element {
         {...{ inert: !materialsRailVisible || settingsPresent ? '' : undefined }}>
         <RightSidebar course={selectedCourse} />
       </div>
-      {materialsRailVisible && !settingsPresent && <RailResizer side="right" />}
+      {materialsRailVisible && !settingsPresent && !materialsExpanded && <RailResizer side="right" />}
+      {materialsExpanded && <button type="button" tabIndex={-1} className="materials-expanded-backdrop" aria-hidden="true" onClick={() => useUiStore.getState().closeMaterialsExpanded()} />}
 
       <Suspense fallback={null}>
         <BrowserWebviewLayer />

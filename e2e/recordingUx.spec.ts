@@ -143,6 +143,8 @@ test('saved WAV opens its own tab; folding, scrolling and playback are independe
         .evaluate((audio: HTMLAudioElement) => audio.playbackRate)
     ).toBe(1.5)
     await page.screenshot({ path: 'e2e/test-results/recording-ux-review.png' })
+    // The default material list enters a folder instead of expanding a tree.
+    await page.getByRole('button', { name: '상위 폴더로', exact: true }).click()
     await page
       .locator(`[data-material-path="${second.audioRelPath.slice(0, -10)}"]`)
       .click()
@@ -152,6 +154,8 @@ test('saved WAV opens its own tab; folding, scrolling and playback are independe
         .locator('.recording:visible')
         .getByRole('heading', { name: second.title, exact: true })
     ).toBeVisible()
+    await page.getByRole('button', { name: '상위 폴더로', exact: true }).click()
+    await page.locator(`[data-material-path="${first.audioRelPath.slice(0, -10)}"]`).click()
     await page.locator(`[data-material-path="${first.audioRelPath}"]`).click()
     await expect(
       page

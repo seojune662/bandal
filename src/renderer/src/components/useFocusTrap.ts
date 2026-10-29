@@ -19,6 +19,11 @@ const FOCUSABLE_SELECTOR = [
 
 const activeTraps = new WeakMap<Document, HTMLElement[]>()
 
+/** Modal shortcuts must respect the same visible stack as Tab and Escape. */
+export function activeFocusTrap(document: Document): HTMLElement | null {
+  return activeTraps.get(document)?.findLast(trap => !isHidden(trap)) ?? null
+}
+
 export interface FocusTrapOptions {
   active: boolean
   initialFocus?: 'first' | RefObject<HTMLElement>
@@ -140,7 +145,7 @@ export function useFocusTrap<T extends HTMLElement>(
     activeTraps.set(ownerDocument, traps)
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      const current = traps.findLast(trap => !isHidden(trap))
+      const current = activeFocusTrap(ownerDocument)
       if (current !== container) return
       if (event.key === 'Escape' && !event.defaultPrevented) {
         const escape = onEscapeRef.current

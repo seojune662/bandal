@@ -1,1 +1,4 @@
 export const PDF_FINGERPRINT = "a2414f9252a10130c4de78ca8fa6522f"
+export const PDF_DOCUMENT_REVISION = "df99dabe18f18e0786eaeaa1f552bf195fa14bbe232e50f2d701ae083e1ea037"
+export const PDF_SAMPLE_BYTES = 28590
+export const PDF_SEARCH_PAGES = [{"page":1,"text":"자료구조 / 03 \n해시 테이블과 충돌 해결 \n키를 배열의 인덱스로 바꾸어, 원하는 값을 빠르게 찾습니다. \n01 해시 함수 \nh(key) → index \n같은 키는 같은 인덱스로 연결됩니다. \n0   김민수 \n1   박지우 \n2   이서연 \n3   최유진 \n4   정하늘 \n평균 탐색 시간 \nO(1) \n충돌 해결 방식과 적재율에 따라 실제 비용은 달라집니다. \n01"},{"page":2,"text":"자료구조 / 03 \n서로 다른 키, 같은 인덱스 \n키를 배열의 인덱스로 바꾸어, 원하는 값을 빠르게 찾습니다. \n01 해시 함수 \nh(key) → index \n같은 키는 같은 인덱스로 연결됩니다. \n0   김민수 \n1   박지우 \n2   이서연 \n3   최유진 \n4   정하늘 \n평균 탐색 시간 \nO(1) \n충돌 해결 방식과 적재율에 따라 실제 비용은 달라집니다. \n02"},{"page":3,"text":"자료구조 / 03 \n시간 복잡도 정리 \n키를 배열의 인덱스로 바꾸어, 원하는 값을 빠르게 찾습니다. \n01 해시 함수 \nh(key) → index \n같은 키는 같은 인덱스로 연결됩니다. \n0   김민수 \n1   박지우 \n2   이서연 \n3   최유진 \n4   정하늘 \n평균 탐색 시간 \nO(1) \n충돌 해결 방식과 적재율에 따라 실제 비용은 달라집니다. \n03"}]

@@ -1,6 +1,7 @@
 import { PDFDocument, rgb } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
   const doc = await PDFDocument.create(); doc.registerFontkit(fontkit)
   const regular = await doc.embedFont(readFileSync(process.env.BANDAL_CAPTURE_FONT ?? '/System/Library/Fonts/Supplemental/Arial Unicode.ttf'), { subset: true })
   const bold = regular
@@ -29,5 +30,15 @@ import { readFileSync, writeFileSync } from 'node:fs'
 const bytes = await doc.save(); writeFileSync('web-demo/public/sample.pdf', bytes)
 const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
 const pdf = await getDocument({data:new Uint8Array(bytes),useSystemFonts:true}).promise
-writeFileSync('web-demo/sample.ts', 'export const PDF_FINGERPRINT = '+JSON.stringify(pdf.fingerprints[0])+'\n')
+const pages = []
+for (let page = 1; page <= pdf.numPages; page++) {
+  const content = await (await pdf.getPage(page)).getTextContent()
+  pages.push({ page, text: content.items.map(item => 'str' in item ? item.str + (item.hasEOL ? '\n' : ' ') : '').join('').trim() })
+}
+writeFileSync('web-demo/sample.ts', [
+  'export const PDF_FINGERPRINT = ' + JSON.stringify(pdf.fingerprints[0]),
+  'export const PDF_DOCUMENT_REVISION = ' + JSON.stringify(createHash('sha256').update(bytes).digest('hex')),
+  'export const PDF_SAMPLE_BYTES = ' + bytes.length,
+  'export const PDF_SEARCH_PAGES = ' + JSON.stringify(pages)
+].join('\n') + '\n')
 await pdf.destroy()

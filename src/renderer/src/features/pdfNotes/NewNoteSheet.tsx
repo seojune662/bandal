@@ -1,5 +1,5 @@
 import { sameWorkspace, workspaceMaterialRoot } from '../../../../shared/types/workspace'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -8,6 +8,7 @@ import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { useMaterialsStore } from '../../stores/materialsStore'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import './noteSheet.css'
 
 type Paper = 'blank' | 'lines' | 'grid' | 'dots'
@@ -26,12 +27,7 @@ function NewNoteSheet({ courseId, target, dirRelPath, onClose, onCreated }: { di
   const [paper, setPaper] = useState<Paper>(settingsSnapshot().tabs.notePaper)
   const [orientation, setOrientation] = useState<Orientation>(settingsSnapshot().tabs.noteOrientation)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  useEffect(() => { dialog.current?.querySelector<HTMLInputElement>('input[type=text]')?.focus() }, [])
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) { event.preventDefault(); onClose() } }
-    window.addEventListener('keydown', key, true)
-    return () => window.removeEventListener('keydown', key, true)
-  }, [onClose, busy])
+  useFocusTrap(dialog, { active: true, returnFocus: !busy, onEscape: busy ? undefined : onClose })
   const create = async (): Promise<void> => {
     if (busy) return
     creating = true; setBusy(true); setError('')
@@ -51,7 +47,7 @@ function NewNoteSheet({ courseId, target, dirRelPath, onClose, onCreated }: { di
   return <div className="ipad-note-sheet__backdrop" onPointerDown={event => { if (!busy && event.target === event.currentTarget) onClose() }}>
     <div ref={dialog} className="ipad-note-sheet" role="dialog" aria-modal="true" aria-label="새 노트" data-bandal-native-overlay="true">
       <h2>새 노트</h2>
-      <label>제목<input type="text" value={title} autoFocus onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void create() }} /></label>
+      <label>제목<input type="text" value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void create() }} /></label>
       <fieldset><legend>종이</legend>
         {papers.map(([value, label]) => <label key={value} className="ipad-note-sheet__option" data-paper={value}>
           <input type="radio" name="ipad-note-paper" value={value} checked={paper === value} onChange={() => setPaper(value)} />

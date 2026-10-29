@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyAddedLinesChanged, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyAddedLinesChanged, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyPdfSearchEntryAdded, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 
 test('workspace AI, annotation and project navigation retain their focused desktop checks', () => {
   for (const [input, expected] of [
@@ -782,6 +782,76 @@ test('isolated hover worker entry retains focused preview checks without global 
   assert.ok(!plan.e2e.includes('e2e/appleCalendar.spec.ts'))
 })
 
+function pdfSearchBuildEntry() {
+  const anchor = "          backgroundHost: resolve(__dirname, 'src/main/background/host.ts'),\n"
+  const entry = "          pdfSearchHost: resolve(__dirname, 'src/main/features/search/pdfSearchHost.ts'),\n"
+  const before = `export default defineConfig({\n  main: {\n    plugins: [externalizeDepsPlugin()],\n    build: {\n      rollupOptions: {\n        input: {\n${anchor}          index: resolve(__dirname, 'src/main/index.ts')\n        }\n      }\n    }\n  }\n})\n`
+  return { before, after: before.replace(anchor, anchor + entry), anchor, entry }
+}
+
+test('PDF search build narrowing accepts only the exact new worker entry', () => {
+  const { before, after, anchor, entry } = pdfSearchBuildEntry()
+  assert.equal(onlyPdfSearchEntryAdded(before, after), true)
+  assert.equal(onlyPdfSearchEntryAdded(before, after.replaceAll('\n', '\r\n')), true)
+  assert.equal(onlyPdfSearchEntryAdded(after, before), false)
+  assert.equal(onlyPdfSearchEntryAdded(before, before), false)
+  assert.equal(onlyPdfSearchEntryAdded(after, after), false)
+  for (const changed of [
+    after.replace('externalizeDepsPlugin()', 'anotherPlugin()'),
+    after.replace("'src/main/index.ts'", "'src/main/other.ts'"),
+    after.replace("'src/main/features/search/pdfSearchHost.ts'", "'src/main/features/search/otherHost.ts'"),
+    after.replace(entry, entry + entry),
+    after.replace(anchor + entry, entry + anchor),
+    after + 'configureAnotherBuild()\n'
+  ]) assert.equal(onlyPdfSearchEntryAdded(before, changed), false)
+})
+
+test('entry-only PDF search changes keep worker units and full packaged search flows', () => {
+  const { before, after, entry } = pdfSearchBuildEntry()
+  const directory = mkdtempSync(join(tmpdir(), 'bandal-affected-pdf-search-'))
+  const originalDirectory = process.cwd()
+  const write = value => writeFileSync(join(directory, 'electron.vite.config.ts'), value)
+  const git = (...args) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' })
+  const commit = () => {
+    git('add', 'electron.vite.config.ts')
+    git('-c', 'user.name=Affected Tests', '-c', 'user.email=tests@example.invalid', '-c', 'commit.gpgsign=false', '-c', `core.hooksPath=${join(directory, 'no-hooks')}`, 'commit', '-qm', 'fixture')
+  }
+  try {
+    git('init', '-q')
+    write(before)
+    commit()
+    process.chdir(directory)
+    write(after)
+    const files = changedFiles('HEAD').files
+    assert.ok(!files.includes('electron.vite.config.ts'))
+    const plan = planChecks(files)
+    assert.equal(plan.full, false)
+    assert.deepEqual(plan.types, ['tsconfig.node.json'])
+    assert.deepEqual(plan.unitInputs, ['pdfSearchHost.ts', 'pdfSearchClient.ts', 'pdfSearchIndexer.ts'].map(file => `src/main/features/search/${file}`))
+    assert.deepEqual(new Set(plan.e2e), new Set(['e2e/materialViews.spec.ts', 'e2e/coursePerformance.spec.ts']))
+    assert.equal(plan.e2eGrep, null)
+    for (const key of ['communityBackend', 'studyMarketBackend', 'paddleBillingBackend', 'appleBillingBackend', 'accountDeletionBackend', 'syncAccessBackend']) assert.equal(plan[key], false, key)
+    // A concurrent preload edit must not restrict the worker runtime test to
+    // the unrelated course-switch scenario.
+    assert.equal(planChecks([...files, 'src/preload/index.ts']).e2eGrep, null)
+    for (const value of [
+      after.replace('externalizeDepsPlugin()', 'anotherPlugin()'),
+      after.replace(entry, entry + entry),
+      after.replace("'src/main/features/search/pdfSearchHost.ts'", "'src/main/features/search/otherHost.ts'")
+    ]) {
+      write(value)
+      assert.equal(planChecks(changedFiles('HEAD').files).full, true)
+    }
+    write(after)
+    commit()
+    write(before)
+    assert.equal(planChecks(changedFiles('HEAD').files).full, true)
+  } finally {
+    process.chdir(originalDirectory)
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('English guide rendering, persistence and entry points retain first-use packaged coverage', () => {
   for (const name of ['EnglishReadingGuide.tsx', 'englishReadingGuide.css', 'englishReadingGuideState.ts', 'LearningCreateDialog.tsx', 'LearningTab.tsx']) {
     const plan = planChecks([`src/renderer/src/features/learning/${name}`])
@@ -807,6 +877,21 @@ test('material views and native source/share changes retain their packaged flows
     assert.ok(plan.e2e.includes(`e2e/${spec}.spec.ts`), file)
     assert.ok(!plan.e2e.includes('e2e/appleCalendar.spec.ts'), file)
   }
+})
+
+test('expanded materials keep native occlusion, keyboard and successful-open packaged coverage', () => {
+  for (const input of [
+    'app/AppShell.tsx', 'app/RightSidebar.tsx', 'app/shortcuts.ts',
+    'stores/uiStore.ts', 'stores/workspaceStore.ts',
+    'features/materials/materialsExpanded.css', 'features/materials/MaterialsSidebar.tsx',
+    'features/pdfNotes/NewNoteSheet.tsx', 'features/workspace/openMaterial.ts',
+    'features/browser/nativeHostVisibility.ts', 'features/browser/webviewPassthrough.ts', 'features/browser/useNativePageOcclusion.ts'
+  ]) {
+    const plan = planChecks([`src/renderer/src/${input}`])
+    assert.equal(plan.full, false, input)
+    assert.ok(plan.e2e.includes('e2e/materialExpanded.spec.ts'), input)
+  }
+  assert.ok(!planChecks(['src/renderer/src/features/materials/materialStatus.ts']).e2e.includes('e2e/materialExpanded.spec.ts'))
 })
 
 test('isolated registrations narrow scope only when all existing host lines are unchanged', () => {
@@ -1039,7 +1124,7 @@ test('launcher entries select context and rail checks without unrelated appearan
   const feature = planChecks(['src/renderer/src/features/launcher/featureActions.ts', 'src/renderer/src/stores/workflowPacksStore.ts'])
   assert.deepEqual(feature.e2e, ['e2e/featureLauncher.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts'])
   const shell = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/app/AppShell.tsx'])
-  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts', 'e2e/railUx.spec.ts', 'e2e/workspaceWindows.spec.ts']))
+  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts', 'e2e/railUx.spec.ts', 'e2e/workspaceWindows.spec.ts', 'e2e/materialExpanded.spec.ts']))
   assert.ok(!shell.scriptTests.includes('scripts/check-contrast.mjs'))
   assert.deepEqual(planChecks(['src/renderer/src/features/settings/PacksPanel.tsx']).e2e, ['e2e/featureLauncher.spec.ts', 'e2e/pluginCenter.spec.ts'])
   const mixed = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/styles/tokens.css'])
@@ -1115,7 +1200,7 @@ test('workspace styles, state and tab types cover dragging across app surfaces',
     const plan = planChecks([file])
     const specs = ['tabs', 'tabDrag', 'workspaceLayout', 'workspaceNarrowTabs', 'workspaceCourseDrop', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance', 'courseTabMove', 'tabMoveSessions', 'courseMovePreview']
     if (file !== 'src/shared/tabs.ts') specs.push('workspaceWindows')
-    if (file.endsWith('workspaceStore.ts')) specs.push('learningManagement', 'learningNavigation')
+    if (file.endsWith('workspaceStore.ts')) specs.push('learningManagement', 'learningNavigation', 'materialExpanded')
     assert.deepEqual(new Set(plan.e2e), new Set(specs.map(spec => `e2e/${spec}.spec.ts`)), file)
     assert.equal(plan.full, false, file)
   }

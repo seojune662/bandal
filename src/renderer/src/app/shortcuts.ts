@@ -26,6 +26,7 @@ import {
   settingsSnapshot
 } from '../stores/settingsSnapshot'
 import { useUiStore } from '../stores/uiStore'
+import { activeFocusTrap } from '../components/useFocusTrap'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { chordMap as pluginChordMap, usePluginsStore } from '../stores/pluginsStore'
 import { runPluginCommand } from '../features/plugins/pluginCommands'
@@ -221,6 +222,22 @@ export function runShortcutAction(
   action: ShortcutAction,
   originTabId?: string
 ): void {
+  if (useUiStore.getState().materialsExpanded) {
+    const trap = activeFocusTrap(document)
+    if (trap && !trap.matches('.right-sidebar[data-expanded="true"]')) return
+    if (action.type === 'browser-find' || action.type === 'quick-search') {
+      const search = document.querySelector<HTMLInputElement>('#right-panel-materials #material-search')
+      search?.focus(); search?.select()
+      return
+    }
+    if (action.type === 'close-tab') {
+      useUiStore.getState().closeMaterialsExpanded()
+      return
+    }
+    // An inert editor must not receive commands through the window listener
+    // or through a delayed native-page shortcut. Imports belong to this panel.
+    if (!['settings', 'toggle-right-rail', 'toggle-board', 'import-materials'].includes(action.type)) return
+  }
   switch (action.type) {
     case 'new-tab':
       openNewTabMenu()
@@ -520,6 +537,11 @@ export function useGlobalShortcuts(): void {
       })
       if (action === null) return
       event.preventDefault()
+      if (useUiStore.getState().materialsExpanded) {
+        cancelCycle()
+        runShortcutAction(action)
+        return
+      }
       const primaryModifier = window.bandal?.platform === 'darwin' ? event.metaKey : event.ctrlKey
       if (action.type === 'new-tab' && primaryModifier && chordFromKeyboardEvent(event) === 'mod+t') {
         if (!event.repeat) useNewTabMenu.getState().advanceCycle()

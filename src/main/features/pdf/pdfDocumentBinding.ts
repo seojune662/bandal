@@ -6,6 +6,7 @@ import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString } from '../../db/validate'
 import { createDrawingsRepo } from './drawingsRepo'
 import { createAnnotationsRepo } from '../annotations/annotationsRepo'
+import type { PDFMarkupChanged } from '../../../shared/types/pdfPreview'
 
 export interface PDFDocumentBinding {
   materialID: string
@@ -35,7 +36,8 @@ export async function retryPDFMutation<T>(action: () => T, options: {attempts?: 
 /** Every consumer (IPC, exports and tools) shares these guarded repositories.
  * The native revision callback runs only for a genuinely new create receipt;
  * retrying a committed operation retains its original idempotent semantics. */
-export function createBoundPDFRepositories(db: any, bindings: ReturnType<typeof createPDFDocumentBindings>, pathLock?: MaterialPathLock) {
+export function createBoundPDFRepositories(db: any, bindings: ReturnType<typeof createPDFDocumentBindings>, pathLock?: MaterialPathLock,
+  onChanged?: (change: PDFMarkupChanged) => void) {
   const rawAnnotations = createAnnotationsRepo(db), rawDrawings = createDrawingsRepo(db, {
     documentRevision: (courseId, relPath) => bindings.check({ courseId, relPath }).documentRevision
   })
@@ -61,6 +63,9 @@ export function createBoundPDFRepositories(db: any, bindings: ReturnType<typeof 
   }
   const protect = <T>(kind: string, req: any, action: () => T, table?: 'annotations' | 'pdf_drawings'): T => {
     const source = sourceFor(req,table)
+    const sources = table && Array.isArray(req.ids)
+      ? req.ids.map((id: string) => sourceFor({ id }, table)).filter(Boolean) as Array<{ courseId: string; relPath: string }>
+      : source ? [source] : []
     const release = pathLock?.tryAcquire()
     if (pathLock && !release) {
       // Never write a row between the projector's snapshot and replacement.
@@ -76,6 +81,20 @@ export function createBoundPDFRepositories(db: any, bindings: ReturnType<typeof 
     try {
       const result = action()
       resolvePendingPdfMutation(db,kind,req)
+      if (onChanged) {
+        const published = new Set<string>()
+        for (const changed of sources) {
+          const key = JSON.stringify([changed.courseId, changed.relPath])
+          if (published.has(key) || !/\.pdf$/i.test(changed.relPath)) continue
+          published.add(key)
+          // Notification failure must never turn a committed stroke into a
+          // failed save or make callers replay a successful mutation.
+          try {
+            const documentRevision = bindings.check(changed).documentRevision
+            onChanged({ ...changed, documentRevision })
+          } catch (error) { console.warn('[pdf-preview] Saved markup notification failed', error) }
+        }
+      }
       return result
     } catch (error) {
       if (source && typeof req.documentRevision === 'string' && /^[a-f0-9]{64}$/.test(req.documentRevision)) {

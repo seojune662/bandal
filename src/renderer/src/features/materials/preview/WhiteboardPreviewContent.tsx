@@ -47,7 +47,7 @@ export function BoardShape({ courseId, shape, loadReference, aspect = PAGE_ASPEC
     if (endpoints === null) return null
     return <g stroke={color} strokeWidth={shape.style.width} opacity={shape.style.opacity} strokeLinecap="round" strokeLinejoin="round" fill="none">
       <line x1={endpoints[0].x} y1={endpoints[0].y} x2={endpoints[1].x} y2={endpoints[1].y} />
-      {shape.kind === 'arrow' && <polyline points={arrowHeadPoints(endpoints[0], endpoints[1], shape.style.width, PAGE_ASPECT)} />}
+      {shape.kind === 'arrow' && <polyline points={arrowHeadPoints(endpoints[0], endpoints[1], shape.style.width, aspect)} />}
     </g>
   }
   const box = shape.data.box

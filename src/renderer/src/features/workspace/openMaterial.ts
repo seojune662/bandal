@@ -14,6 +14,7 @@ import { invoke } from '../../lib/ipc'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { capturePendingWorkspaceTarget, useWorkspaceStore } from '../../stores/workspaceStore'
 import { useCoursesStore } from '../../stores/coursesStore'
+import { useUiStore } from '../../stores/uiStore'
 import { descriptorFor } from './tabIdentity'
 import { isViewableFile } from '../file/fileFormats'
 import { captureActiveWorkspaceTarget } from './captureWorkspaceTarget'
@@ -24,6 +25,7 @@ interface OpenMaterialOptions {
   workspace?: WorkspaceRef | null
   navigateToOwner?: boolean
   target?: WorkspaceTarget
+  onOpened?: (panelId: string) => void
 }
 
 export const MATERIAL_OPEN_DEDUPE_MS = 5 * 60 * 1000
@@ -106,20 +108,28 @@ export function openMaterialInCourse(
       current.activePanelId === initialWorkspace.activePanelId &&
       useCoursesStore.getState().selectedCourseId === initialCourse
   }
+  const finishReveal = (): void => {
+    const current = useWorkspaceStore.getState()
+    if (stillRequested() && sameWorkspace(current.activeWorkspace, destination) &&
+        current.activeWindowId === (target?.windowId ?? initialWorkspace.activeWindowId)) {
+      useUiStore.getState().closeMaterialsExpanded()
+    }
+  }
   const openTab = (descriptor: TabDescriptor): void => {
     const courses = useCoursesStore.getState()
     if (!courses.courses.some(course => course.id === courseId)) {
       showToast('원본 과목을 찾을 수 없어요.', 'danger')
       return
     }
+    const openOptions = { ...(options?.newInstance === true ? { newInstance: true } : {}), ...(options?.onOpened ? { onOpened: options.onOpened } : {}) }
     if (target) {
-      useWorkspaceStore.getState().openTab(descriptor, { target, ...(options?.newInstance === true ? { newInstance: true } : {}) })
+      useWorkspaceStore.getState().openTab(descriptor, { target, ...openOptions })
       return
     }
     if (courses.selectedCourseId !== destination.courseId) courses.selectCourse(destination.courseId, { preserveSurface: true })
     useWorkspaceStore.getState().showWorkspace(destination)
-    if (options?.newInstance === true) {
-      useWorkspaceStore.getState().openTab(descriptor, { newInstance: true })
+    if (options?.newInstance === true || options?.onOpened) {
+      useWorkspaceStore.getState().openTab(descriptor, openOptions)
       return
     }
     useWorkspaceStore.getState().openTab(descriptor)
@@ -134,7 +144,7 @@ export function openMaterialInCourse(
         }))
         recordMaterialOpened(courseId, relPath)
       } else {
-        void invoke('materials:reveal', { courseId, relPath }).catch(() =>
+        void invoke('materials:reveal', { courseId, relPath }).then(finishReveal).catch(() =>
           showToast('파일을 열지 못했습니다.', 'danger'))
       }
     }).catch(() => { if (stillRequested()) showToast('녹음 파일을 열지 못했습니다.', 'danger') })
@@ -160,7 +170,10 @@ export function openMaterialInCourse(
   }
   // Unsupported files are handed off to Finder.
   void invoke('materials:reveal', { courseId, relPath })
-    .then(() => recordMaterialOpened(courseId, relPath))
+    .then(() => {
+      recordMaterialOpened(courseId, relPath)
+      finishReveal()
+    })
     .catch((error: unknown) => {
       console.error('[Bandal] 파일 위치를 열지 못했습니다.', error)
       showToast('파일 위치를 열지 못했습니다.', 'danger')

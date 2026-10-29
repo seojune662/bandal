@@ -1,5 +1,6 @@
 import type { BrowserPageEvent } from '../types/browserNative'
 import type { BrowserAuthStatus } from '../types/browserAuth'
+import type { PDFMarkupChanged } from '../types/pdfPreview'
 /**
  * Push events: main → renderer, one-way, delivered via webContents.send and
  * subscribed through `window.bandal.on(channel, cb)`.
@@ -222,6 +223,7 @@ export interface PushEvents {
   'agentTools:unavailable': { courseId: string; sessionId: string }
   'search:changed': { courseId: string }
   'materials:changed': MaterialsChanged
+  'pdf:markupChanged': PDFMarkupChanged
   // -- picture-in-picture ---------------------------------------------------
   'pip:state': PipState
   'pip:error': { message: string }

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { extname } from 'node:path'
 import { extractMaterialText } from '../materials/textExtract'
+import { loadPdfTextRuntime } from '../search/pdfTextRuntime'
 
 const MAX_SOURCE_BYTES = 50 * 1024 * 1024
 const DEFAULT_MAX_CHARS = 200_000
@@ -15,28 +16,6 @@ export interface LearningMaterialSource {
   contentHash: string
 }
 export interface LearningMaterialSourceOptions { maxChars?: number; maxPages?: number; signal?: AbortSignal }
-
-// PDF.js creates one identity matrix at import time even for text-only parsing.
-// This shim deliberately offers no rendering methods. Rendering must use the renderer.
-class TextOnlyDOMMatrix {
-  a = 1; b = 0; c = 0; d = 1; e = 0; f = 0
-  constructor(transform?: unknown) {
-    if (transform !== undefined) throw new Error('학습 자료 추출에서는 PDF 그리기 변환을 사용할 수 없어요.')
-  }
-}
-let pdfRuntime: Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> | undefined
-
-async function loadPdfRuntime(): Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> {
-  if (!pdfRuntime) pdfRuntime = (async () => {
-    const globals = globalThis as Record<string, unknown>
-    if (globals['DOMMatrix'] === undefined) globals['DOMMatrix'] = TextOnlyDOMMatrix
-    // Bundled as a lazy module, avoiding a worker URL/file outside the packaged app.
-    const worker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
-    globals['pdfjsWorker'] = { WorkerMessageHandler: worker.WorkerMessageHandler }
-    return import('pdfjs-dist/legacy/build/pdf.mjs')
-  })()
-  return pdfRuntime
-}
 
 function checkCancelled(signal?: AbortSignal): void {
   if (!signal?.aborted) return
@@ -70,7 +49,7 @@ export async function extractLearningMaterialSource(
     return { text: marker ? text.slice(0, marker.index) : text, pages: [], truncated: marker !== null, contentHash }
   }
 
-  const pdfjs = await loadPdfRuntime()
+  const pdfjs = await loadPdfTextRuntime()
   checkCancelled(options.signal)
   const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false,
     disableFontFace: true, useSystemFonts: true, isOffscreenCanvasSupported: false,

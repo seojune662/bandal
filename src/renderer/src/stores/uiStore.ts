@@ -23,6 +23,11 @@ interface UiState {
   rightRailOpen: boolean
   rightRailTab: 'materials' | 'ai'
   rightRailScope: string | null
+  /** A temporary presentation of the same materials rail, never a saved width. */
+  materialsExpanded: boolean
+  materialsExpandedRestoreFocus: boolean
+  setMaterialsExpanded: (expanded: boolean) => void
+  closeMaterialsExpanded: (options?: { returnFocus?: boolean }) => void
   setRightRailScope: (scope: string | null) => void
   moveRightRailScope: (from: string, to: string) => void
   setRightRailTab: (tab: 'materials' | 'ai') => void
@@ -91,6 +96,12 @@ export const useUiStore = create<UiState>()((set, get) => ({
   rightRailOpen: true,
   rightRailTab: 'materials',
   rightRailScope: null,
+  materialsExpanded: false,
+  materialsExpandedRestoreFocus: true,
+  setMaterialsExpanded: expanded => set(expanded
+    ? { materialsExpanded: true, materialsExpandedRestoreFocus: true, rightRailOpen: true, rightRailTab: 'materials', isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false }
+    : { materialsExpanded: false, materialsExpandedRestoreFocus: true }),
+  closeMaterialsExpanded: options => set({ materialsExpanded: false, materialsExpandedRestoreFocus: options?.returnFocus ?? true }),
   moveRightRailScope: (from, to) => {
     if (from === to) return
     const current = get()
@@ -104,15 +115,15 @@ export const useUiStore = create<UiState>()((set, get) => ({
     if (scope === current.rightRailScope) return
     saveRightRail(current.rightRailScope, { open: current.rightRailOpen, tab: current.rightRailTab })
     const saved = scope ? rightRails[scope] : undefined
-    set({ rightRailScope: scope, rightRailOpen: saved?.open ?? true, rightRailTab: saved?.tab ?? 'materials' })
+    set({ rightRailScope: scope, rightRailOpen: saved?.open ?? true, rightRailTab: saved?.tab ?? 'materials', materialsExpanded: false })
   },
   setRightRailTab: tab => {
     saveRightRail(get().rightRailScope, { open: true, tab })
-    set({ rightRailTab: tab, rightRailOpen: true })
+    set({ rightRailTab: tab, rightRailOpen: true, ...(tab === 'ai' ? { materialsExpanded: false } : {}) })
   },
   showAssistant: () => {
     saveRightRail(get().rightRailScope, { open: true, tab: 'ai' })
-    set({ rightRailTab: 'ai', rightRailOpen: true, isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false })
+    set({ rightRailTab: 'ai', rightRailOpen: true, materialsExpanded: false, isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false })
   },
   setHomeTab: tab => {
     try { localStorage.setItem('bandal:home-tab', tab) } catch { /* Optional UI preference. */ }
@@ -123,10 +134,10 @@ export const useUiStore = create<UiState>()((set, get) => ({
   isSettingsOpen: false,
   settingsCategory: null,
   toggleLinkGraph: () =>
-    set((state) => ({ isLinkGraphOpen: !state.isLinkGraphOpen })),
+    set((state) => ({ isLinkGraphOpen: !state.isLinkGraphOpen, materialsExpanded: false })),
   closeLinkGraph: () => set({ isLinkGraphOpen: false }),
   openSettings: (category) =>
-    set({ isSettingsOpen: true, settingsCategory: category ?? null }),
+    set({ isSettingsOpen: true, settingsCategory: category ?? null, materialsExpanded: false }),
   closeSettings: () => set({ isSettingsOpen: false }),
 
   initTheme: async () => {
@@ -200,11 +211,11 @@ export const useUiStore = create<UiState>()((set, get) => ({
   toggleRightRail: () => {
     const state = get()
     saveRightRail(state.rightRailScope, { open: !state.rightRailOpen, tab: state.rightRailTab })
-    set({ rightRailOpen: !state.rightRailOpen })
+    set({ rightRailOpen: !state.rightRailOpen, materialsExpanded: false })
   },
 
   toggleBoardOverlay: () => {
-    set((state) => ({ isBoardOverlayOpen: !state.isBoardOverlayOpen }))
+    set((state) => ({ isBoardOverlayOpen: !state.isBoardOverlayOpen, materialsExpanded: false }))
   },
 
   closeBoardOverlay: () => {

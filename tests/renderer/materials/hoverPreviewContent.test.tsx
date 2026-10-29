@@ -11,9 +11,13 @@ const harness = vi.hoisted(() => ({
   remoteEdit: null as ((text: string) => void) | null,
   thumbnail: vi.fn(),
   reference: vi.fn(),
-  unsubscribe: vi.fn()
+  unsubscribe: vi.fn(),
+  pushes: new Map<string, (event: { courseId: string; relPath?: string }) => void>()
 }))
-vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: harness.invoke, onPush: () => () => undefined }))
+vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: harness.invoke, onPush: (channel: string, listener: (event: { courseId: string; relPath?: string }) => void) => {
+  harness.pushes.set(channel, listener)
+  return () => { if (harness.pushes.get(channel) === listener) harness.pushes.delete(channel) }
+} }))
 vi.mock('../../../src/renderer/src/features/notes/noteSessionRegistry', () => ({ readOpenNoteSnapshots: () => harness.snapshots }))
 vi.mock('../../../src/renderer/src/features/notes/noteDocChannel', () => ({
   noteFileKey: (courseId: string, path: string) => `${courseId}:${path}`,
@@ -27,6 +31,7 @@ vi.mock('../../../src/renderer/src/features/materials/preview/markdownPreview', 
 }))
 vi.mock('../../../src/renderer/src/features/materials/preview/mediaThumbnails', () => ({
   loadPdfThumbnail: harness.thumbnail,
+  loadPdfPreviewThumbnail: harness.thumbnail,
   loadVideoThumbnail: harness.thumbnail,
   loadImageThumbnail: harness.thumbnail,
   loadReferencedThumbnail: harness.reference
@@ -47,6 +52,7 @@ beforeEach(() => {
   harness.remoteEdit = null
   harness.thumbnail.mockReset()
   harness.reference.mockReset()
+  harness.pushes.clear()
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -92,13 +98,58 @@ describe('material hover preview content', () => {
 
   test('keeps a successfully loaded PDF visible beyond the loading timeout', async () => {
     vi.useFakeTimers()
-    harness.invoke.mockResolvedValue({ ...result('first.pdf', ''), content: { kind: 'pdf' } })
+    harness.invoke.mockImplementation(channel => Promise.resolve(channel === 'pdf:previewSnapshot'
+      ? { documentRevision: 'a'.repeat(64), drawings: [], annotations: [] }
+      : { ...result('first.pdf', ''), content: { kind: 'pdf' } }))
     harness.thumbnail.mockResolvedValue({ dataUrl: 'data:image/png;base64,preview', pageCount: 7 })
     await act(async () => root.render(<MaterialPreviewContent courseId="c" node={{ name: 'first.pdf', relPath: 'first.pdf', kind: 'pdf' }} />))
     expect(container.querySelector('img')?.getAttribute('src')).toContain('base64,preview')
     await act(async () => vi.advanceTimersByTime(11000))
     expect(container.textContent).toBe('1 / 7쪽')
     expect(container.querySelector('img')).not.toBeNull()
+  })
+
+  test('composites all saved first-page ink on an ordinary lecture PDF and refreshes only matching markup', async () => {
+    vi.useFakeTimers()
+    let count = 175
+    const shape = { id: '', courseId: 'c', relPath: 'lecture.pdf', page: 1, kind: 'rect', data: { box: { x: .1, y: .2, width: .3, height: .2 } }, style: { color: 'ink', width: .003, opacity: 1 }, createdAt: '', updatedAt: '' }
+    harness.invoke.mockImplementation(channel => Promise.resolve(channel === 'pdf:previewSnapshot'
+      ? { documentRevision: 'a'.repeat(64), drawings: Array.from({ length: count }, (_, n) => ({ ...shape, id: String(n) })), annotations: [] }
+      : { ...result('lecture.pdf', ''), content: { kind: 'pdf' } }))
+    harness.thumbnail.mockResolvedValue({ dataUrl: 'data:image/png;base64,lecture', pageCount: 8, surface: 'dark' })
+    await act(async () => root.render(<MaterialPreviewContent courseId="c" node={{ name: 'lecture.pdf', relPath: 'lecture.pdf', kind: 'pdf' }} />))
+    expect(container.querySelectorAll('svg[aria-label="저장된 필기"] rect')).toHaveLength(175)
+    expect(container.querySelector('[data-surface]')?.getAttribute('data-surface')).toBe('dark')
+    expect(harness.thumbnail).toHaveBeenCalledWith('c', 'lecture.pdf', expect.objectContaining({ documentRevision: 'a'.repeat(64), drawings: expect.any(Array) }), expect.any(AbortSignal))
+    const calls = harness.invoke.mock.calls.length
+    await act(async () => { harness.pushes.get('pdf:markupChanged')?.({ courseId: 'c', relPath: 'elsewhere.pdf' }); vi.advanceTimersByTime(200) })
+    expect(harness.invoke).toHaveBeenCalledTimes(calls)
+    count = 176
+    await act(async () => { harness.pushes.get('pdf:markupChanged')?.({ courseId: 'c', relPath: 'lecture.pdf' }); vi.advanceTimersByTime(200) })
+    expect(container.querySelectorAll('svg[aria-label="저장된 필기"] rect')).toHaveLength(176)
+  })
+
+  test('clears a previously visible composite when original verification fails', async () => {
+    vi.useFakeTimers()
+    let replaced = false
+    harness.invoke.mockImplementation(channel => {
+      if (channel === 'pdf:previewSnapshot') return replaced ? Promise.reject(new Error('Original changed')) : Promise.resolve({ documentRevision: 'a'.repeat(64), drawings: [], annotations: [] })
+      return Promise.resolve({ ...result('lecture.pdf', ''), content: { kind: 'pdf' } })
+    })
+    harness.thumbnail.mockResolvedValue({ dataUrl: 'data:image/png;base64,old-original', pageCount: 2 })
+    await act(async () => root.render(<MaterialPreviewContent courseId="c" node={{ name: 'lecture.pdf', relPath: 'lecture.pdf', kind: 'pdf' }} />))
+    expect(container.querySelector('img')).not.toBeNull()
+    replaced = true
+    await act(async () => { harness.pushes.get('materials:changed')?.({ courseId: 'c' }); vi.advanceTimersByTime(200) })
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toContain('미리보기를 불러올 수 없어요')
+  })
+
+  test('compact unsupported previews use a file icon instead of an unreadable message', async () => {
+    harness.invoke.mockResolvedValue({ ...result('archive.zip', ''), content: { kind: 'unsupported', message: '지원하지 않는 형식입니다' } })
+    await act(async () => root.render(<MaterialPreviewContent compact courseId="c" node={{ name: 'archive.zip', relPath: 'archive.zip', kind: 'other' }} />))
+    expect(container.textContent).toBe('')
+    expect(container.querySelector('.material-preview-content__fallback svg')).not.toBeNull()
   })
 
   test('shows first-page whiteboard content including local image references', async () => {

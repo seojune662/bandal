@@ -7,5 +7,5 @@ export interface BackgroundTasks {
   scan: { input: { folder: string; limits: MaterialsScanLimits }; output: MaterialWalk }
   searchRefresh: { input: { dbPath: string; courseId: string; folder: string }; output: null }
   searchIndexPdf: { input: { dbPath: string; courseId: string; folder: string; relPath: string; pages: { page: number; text: string }[] }; output: null }
-  searchQuery: { input: { dbPath: string; courseId: string; folder: string; query: string; limit?: number; fresh?: boolean }; output: SearchHit[] }
+  searchQuery: { input: { dbPath: string; courseId: string; folder: string; query: string; limit?: number; fresh?: boolean; rootRelPath?: string }; output: SearchHit[] }
 }

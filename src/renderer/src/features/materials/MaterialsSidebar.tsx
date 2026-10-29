@@ -3,8 +3,8 @@ import { workspaceMaterialTree, workspaceSearchResults, workspaceDestination } f
 import { ProjectMaterials, requestProjectImport } from '../learning/ProjectMaterials'
 import { useDismissableMenu } from '../../components/useDismissableMenu'
 const materialScrollPositions = new Map<string, number>()
-const materialUiStates = new Map<string, { query: string; directory: string; selected: string | null; view: MaterialView; filesOpen: boolean }>()
-import { useCallback, useEffect, useRef, useState } from 'react'
+const materialUiStates = new Map<string, { query: string; directory: string; selected: string | null; view: MaterialView; filesOpen: boolean; searchAll: boolean }>()
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
@@ -27,9 +27,12 @@ import { openMaterialInCourse, openMaterialInWorkspace } from '../workspace/open
 import { captureActiveWorkspaceTarget } from '../workspace/captureWorkspaceTarget'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { MaterialDeleteDialog } from './MaterialDeleteDialog'
-import { MaterialSearchResults, type MaterialTreeProps } from './MaterialTree'
+import { type MaterialTreeProps } from './MaterialTree'
 import { MaterialBrowser, MaterialViewMenu } from './MaterialViews'
-import { readMaterialView, rememberMaterialView, type MaterialView } from './materialViewPreference'
+import { readMaterialView, rememberMaterialView, readMaterialSort, rememberMaterialSort, type MaterialView } from './materialViewPreference'
+import { sortMaterials } from './materialPresentation'
+import { useMaterialContentSearch } from './useMaterialContentSearch'
+import { MaterialContentResults } from './MaterialContentResults'
 import { ExternalSourcesPanel } from './ExternalSourcesPanel'
 import {
   MaterialsContextMenu,
@@ -79,6 +82,8 @@ const SEARCH_DEBOUNCE_MS = 240
 
 interface MaterialsSidebarProps {
   course: Course | null
+  expanded?: boolean
+  onToggleExpanded?: () => void
 }
 
 interface EditingState {
@@ -192,15 +197,15 @@ function closeDeletedTabs(courseId: string, node: MaterialNode): void {
   }
 }
 
-export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element {
+export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }: MaterialsSidebarProps): JSX.Element {
   const workspace = useWorkspaceStore(state => state.activeWorkspace)
   const windowKey = useWorkspaceStore(state => state.activeWindowKey)
   const materialRoot = workspaceMaterialRoot(workspace)
   const scopeKey = workspace ? workspaceKey(workspace) : course?.id ?? 'empty'
   const allTree = useMaterialsStore((state) => state.tree)
-  const tree = workspaceMaterialTree(allTree, materialRoot)
+  const [sortOrder, setSortOrder] = useState(readMaterialSort)
+  const tree = useMemo(() => sortMaterials(workspaceMaterialTree(allTree, materialRoot), sortOrder), [allTree, materialRoot, sortOrder])
   const allSearchResults = useMaterialsStore((state) => state.searchResults)
-  const searchResults = workspaceSearchResults(allSearchResults, materialRoot)
   const expandedPaths = useMaterialsStore((state) => state.expandedPaths)
   const isLoading = useMaterialsStore((state) => state.isLoading)
   const isSearching = useMaterialsStore((state) => state.isSearching)
@@ -215,7 +220,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const [filesOpen, setFilesOpen] = useState(() => materialUiStates.get(scopeKey)?.filesOpen ?? true)
   const [view, setView] = useState<MaterialView>(() => materialUiStates.get(scopeKey)?.view ?? readMaterialView())
   const [browserDirectory, setBrowserDirectory] = useState(() => materialUiStates.get(scopeKey)?.directory ?? materialRoot)
+  const [searchAll, setSearchAll] = useState(() => materialUiStates.get(scopeKey)?.searchAll ?? false)
   const [query, setQuery] = useState(() => materialUiStates.get(scopeKey)?.query ?? '')
+  const searchRoot = searchAll || view === 'compact' ? materialRoot : browserDirectory
+  const searchResults = workspaceSearchResults(allSearchResults, searchRoot)
+  const contentSearch = useMaterialContentSearch(course && !course.missing ? course.id : null, query, searchRoot)
   const [projectName, setProjectName] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const importMenu = useRef<HTMLDivElement>(null)
@@ -233,8 +242,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const [linkTarget, setLinkTarget] = useState<MaterialNode | null>(null)
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [selectedRelPath, setSelectedRelPath] = useState<string | null>(() => materialUiStates.get(scopeKey)?.selected ?? null)
-  const latestUi = useRef({ query, directory: browserDirectory, selected: selectedRelPath, view, filesOpen })
-  latestUi.current = { query, directory: browserDirectory, selected: selectedRelPath, view, filesOpen }
+  const latestUi = useRef({ query, directory: browserDirectory, selected: selectedRelPath, view, filesOpen, searchAll })
+  latestUi.current = { query, directory: browserDirectory, selected: selectedRelPath, view, filesOpen, searchAll }
   useEffect(() => () => { materialUiStates.set(scopeKey, latestUi.current) }, [scopeKey])
   const [pasteFocused, setPasteFocused] = useState(false)
   const [isDropActive, setDropActive] = useState(false)
@@ -261,6 +270,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     return () => { cancelAnimationFrame(restore); body.removeEventListener('scroll', save) }
   }, [scopeKey])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileImportHandler = useRef<((files: File[]) => void) | null>(null)
   const downloadPendingRef = useRef(false)
   useLegacyNoteMigration(course?.id ?? null)
   const activeCourseIdRef = useRef<string | null>(course?.id ?? null)
@@ -338,14 +348,17 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     })
     const unsubscribe = onPush('materials:changed', (payload) => {
       if (payload.courseId === courseId) {
-        void loadTree(courseId, { silent: true })
+        void loadTree(courseId, { silent: true }).then(() => {
+          const activeQuery = latestUi.current.query.trim()
+          if (activeQuery && activeScopeRef.current === scopeKey) void search(courseId, activeQuery)
+        })
       }
     })
     return () => {
       unsubscribe()
       void invoke('materials:unwatch', { courseId }).catch(() => undefined)
     }
-  }, [course?.id, course?.folderPath, course?.missing, loadTree])
+  }, [course?.id, course?.folderPath, course?.missing, loadTree, scopeKey, search])
 
   useEffect(() => {
     const normalizedQuery = query.trim()
@@ -362,6 +375,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     }, SEARCH_DEBOUNCE_MS)
     return () => window.clearTimeout(timeout)
   }, [clearSearch, course, query, search])
+
+  useEffect(() => {
+    const live = useMaterialsStore.getState()
+    if (isLoading || live.isLoading || live.activeCourseId !== course?.id || browserDirectory === materialRoot) return
+    if (findMaterialNode(live.tree, browserDirectory)?.kind !== 'dir') { setBrowserDirectory(materialRoot); setSelectedRelPath(null) }
+  }, [tree, isLoading, browserDirectory, materialRoot, course?.id])
 
   const searching = query.trim().length > 0
   const pendingSearch = isDebouncing || isSearching
@@ -398,10 +417,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     [ensureAncestorsExpanded, presentationIsCurrent]
   )
 
-  const browsedDirectory = view !== 'list' ? findMaterialNode(tree, browserDirectory) : null
+  const browsedDirectory = view !== 'compact' ? findMaterialNode(tree, browserDirectory) : null
   const importDirRelPath = browsedDirectory?.kind === 'dir' ? browsedDirectory.relPath : materialRoot
-  const selectedNode = findMaterialNode(tree, selectedRelPath) ?? browsedDirectory
-  const pasteDirRelPath = workspaceDestination(targetDirectory(selectedNode), materialRoot)
+  const selectedNode = findMaterialNode(tree, selectedRelPath)
+  const creationTarget = view === 'compact' ? selectedNode : browsedDirectory
+  const pasteDirRelPath = view === 'compact' ? workspaceDestination(targetDirectory(selectedNode), materialRoot) : importDirRelPath
   const pasteDestinationName =
     pasteDirRelPath === ''
       ? `${course?.name ?? '과목'} 루트`
@@ -480,6 +500,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     void importDroppedFiles(courseId, files, dirRelPath ?? importDirRelPath).then(paths => {
       if (activeCourseIdRef.current === courseId && presentationIsCurrent()) handleCreated(paths)
     })
+  }
+
+  const beginFileImport = (): void => {
+    fileImportHandler.current = files => importFiles(files, importDirRelPath)
+    fileInputRef.current?.click()
   }
 
   const downloadFromUrl = async (
@@ -641,6 +666,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     setQuery('')
     clearSearch()
     ensureAncestorsExpanded(target.relPath)
+    if (view !== 'compact') setBrowserDirectory(materialParentPath(target.relPath))
     setEditing({ relPath: target.relPath, reopenAfterRename: false })
   }
 
@@ -764,8 +790,9 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   }
   const materialBrowser = (searching = false): JSX.Element => <MaterialBrowser
     {...browserProps} key={scopeKey} rootRelPath={materialRoot} view={view} directory={browserDirectory}
-    onDirectoryChange={relPath => { setBrowserDirectory(relPath); setSelectedRelPath(relPath || null) }}
-    searching={searching} nodes={searching ? searchResults.map(hit => findMaterialNode(tree, hit.relPath) ?? hit) : tree}
+    expanded={expanded} rootTitle={workspace?.kind === 'project' ? projectName ?? '프로젝트' : course?.name ?? '전체 자료'}
+    onDirectoryChange={relPath => { setBrowserDirectory(relPath); setSelectedRelPath(null); setQuery(''); setSearchAll(false); sidebarRef.current?.querySelector('.materials-body')?.scrollTo?.({ top: 0 }) }}
+    searching={searching} nodes={searching ? sortMaterials(searchResults.map(hit => findMaterialNode(tree, hit.relPath) ?? hit), sortOrder) : tree}
   />
 
   return (
@@ -773,6 +800,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     <aside
       ref={sidebarRef}
       className="app-rail app-rail--right"
+      data-materials-expanded={expanded || undefined}
       role="region"
       tabIndex={0}
       aria-label="자료 사이드바. 포커스한 뒤 Command V로 자료 붙여넣기"
@@ -937,11 +965,48 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           {course !== null && (
             <span className="materials-heading__course" title={course.name}>
               <CourseMark color={course.color} />
-              {workspace?.kind === 'project' ? projectName ?? course.name : course.name}
+              {view !== 'compact' && browserDirectory !== materialRoot ? materialBaseName(browserDirectory) : workspace?.kind === 'project' ? projectName ?? course.name : course.name}
             </span>
           )}
         </div>
-        <div className="materials-heading__actions">
+        {onToggleExpanded && <div className="materials-heading__actions"><Tooltip label={expanded ? '자료 좁게 보기' : '자료 넓게 보기'}><button type="button" className="bare-icon-button" aria-label={expanded ? '자료 좁게 보기' : '자료 넓게 보기'} onClick={onToggleExpanded}><span aria-hidden="true">{expanded ? '↙' : '↗'}</span></button></Tooltip>{expanded && <button type="button" className="bare-icon-button" aria-label="자료 닫기" onClick={onToggleExpanded}><Icon name="x" /></button>}</div>}
+      </div>
+
+      <div className="rail-search">
+        <Icon name="search" className="rail-search__icon" />
+        <label className="sr-only" htmlFor="material-search">
+          파일 검색
+        </label>
+        <input
+          id="material-search"
+          type="search"
+          placeholder="자료 검색"
+          value={query}
+          disabled={course === null}
+          onChange={(event) => { setQuery(event.target.value); setSelectedRelPath(null) }}
+        />
+        {query.length > 0 && (
+          <button
+            type="button"
+            className="rail-search__clear"
+            aria-label="검색어 지우기"
+            onClick={() => { setQuery(''); setSelectedRelPath(null) }}
+          >
+            <Icon name="x" />
+          </button>
+        )}
+      </div>
+
+      <div className="materials-toolbar">
+        <span className="materials-toolbar__count">{pendingSearch ? '검색 중…' : searching ? `파일 ${searchResults.length} · 본문 ${contentSearch.hits.length}` : `${(browsedDirectory?.children ?? tree).length}개`}</span>
+        <label className="materials-sort"><span className="sr-only">자료 정렬</span><select aria-label="자료 정렬" value={sortOrder} onChange={event => { const next = event.target.value as typeof sortOrder; setSortOrder(next); rememberMaterialSort(next) }}><option value="name">이름순</option><option value="modified">최근 수정순</option><option value="kind">종류순</option></select></label>
+                <MaterialViewMenu value={view} onChange={next => {
+                  setView(next); rememberMaterialView(next)
+                  if (selectedRelPath !== null) {
+                    if (view === 'compact') { const node = findMaterialNode(tree, selectedRelPath); setBrowserDirectory(node?.kind === 'dir' ? node.relPath : materialParentPath(selectedRelPath)); if (node?.kind === 'dir') setSelectedRelPath(null) }
+                    if (next === 'compact') ensureAncestorsExpanded(selectedRelPath)
+                  }
+                }} />        <div className="materials-heading__actions">
           <input
             ref={fileInputRef}
             type="file"
@@ -950,12 +1015,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             tabIndex={-1}
             aria-hidden="true"
             onChange={(event) => {
-              if (course === null || course.missing) return
               const input = event.currentTarget
               const files = Array.from(input.files ?? [])
               input.value = ''
               if (files.length === 0) return
-              importFiles(files)
+              fileImportHandler.current?.(files)
+              fileImportHandler.current = null
             }}
           />
           <div className="materials-create-menu materials-import-menu" ref={importMenu}><Tooltip label="자료 가져오기">
@@ -965,15 +1030,15 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               data-tour="materials-import"
               aria-label="자료 가져오기"
               disabled={course === null || course.missing || isPasting}
-              onClick={() => workspace?.kind === 'project' ? setImportOpen(value => !value) : fileInputRef.current?.click()}
+              onClick={() => workspace?.kind === 'project' ? setImportOpen(value => !value) : beginFileImport()}
             >
               <MaterialsIcon name="fileImport" />
             </button>
           </Tooltip>
-          {importOpen && <div className="context-menu" role="menu" aria-label="자료 가져오기"><button role="menuitem" onClick={() => { setImportOpen(false); fileInputRef.current?.click() }}>파일 가져오기</button><button role="menuitem" onClick={() => { setImportOpen(false); requestProjectImport('url') }}>글 URL 가져오기</button><button role="menuitem" onClick={() => { setImportOpen(false); requestProjectImport('markdown') }}>기존 학습 자료 변환</button></div>}</div>
+          {importOpen && <div className="context-menu" role="menu" aria-label="자료 가져오기"><button role="menuitem" onClick={() => { setImportOpen(false); beginFileImport() }}>파일 가져오기</button><button role="menuitem" onClick={() => { setImportOpen(false); requestProjectImport('url') }}>글 URL 가져오기</button><button role="menuitem" onClick={() => { setImportOpen(false); requestProjectImport('markdown') }}>기존 학습 자료 변환</button></div>}</div>
           <div className="materials-create-menu" ref={createMenu}>
             <Tooltip label="생성하기"><button type="button" className="bare-icon-button" aria-label="생성하기" aria-haspopup="menu" aria-expanded={createOpen} disabled={course === null || course.missing || isPasting} onClick={() => setCreateOpen(value => !value)}><Icon name="plus" /></button></Tooltip>
-            {createOpen && <div className="context-menu" role="menu" aria-label="자료 생성"><button role="menuitem" onClick={() => { setCreateOpen(false); if (course) openNewNoteSheet(course.id, captureActiveWorkspaceTarget(), undefined, workspaceDestination(targetDirectory(selectedNode), materialRoot)) }}><TabKindIcon kind="whiteboard" /> 새 노트</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFile(selectedNode) }}><Icon name="fileText" /> 새 마크다운</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFolder(selectedNode) }}><Icon name="folder" /> 새 폴더</button></div>}
+            {createOpen && <div className="context-menu" role="menu" aria-label="자료 생성"><button role="menuitem" onClick={() => { setCreateOpen(false); if (course) openNewNoteSheet(course.id, captureActiveWorkspaceTarget(), undefined, workspaceDestination(targetDirectory(creationTarget), materialRoot)) }}><TabKindIcon kind="whiteboard" /> 새 노트</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFile(creationTarget) }}><Icon name="fileText" /> 새 마크다운</button><button role="menuitem" onClick={() => { setCreateOpen(false); void createFolder(creationTarget) }}><Icon name="folder" /> 새 폴더</button></div>}
           </div>
           <Tooltip label="자료 새로고침">
             <button
@@ -990,31 +1055,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           </Tooltip>
         </div>
       </div>
-
-      <div className="rail-search">
-        <Icon name="search" className="rail-search__icon" />
-        <label className="sr-only" htmlFor="material-search">
-          파일 검색
-        </label>
-        <input
-          id="material-search"
-          type="search"
-          placeholder="자료 검색"
-          value={query}
-          disabled={course === null}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        {query.length > 0 && (
-          <button
-            type="button"
-            className="rail-search__clear"
-            aria-label="검색어 지우기"
-            onClick={() => setQuery('')}
-          >
-            <Icon name="x" />
-          </button>
-        )}
-      </div>
+      {searching && <div className="materials-search-scope" role="group" aria-label="검색 범위"><button aria-pressed={!searchAll} onClick={() => { setSearchAll(false); setSelectedRelPath(null) }}>현재 폴더</button><button aria-pressed={searchAll} onClick={() => { setSearchAll(true); setSelectedRelPath(null) }}>전체 자료에서 검색</button></div>}
 
       {error !== null && (
         <div className="rail-error" role="alert">
@@ -1108,17 +1149,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             <section
               className="materials-files-group"
               aria-label="자료 파일"
-              onContextMenu={(event) => handleContextMenu(event, view === 'list' ? null : findMaterialNode(tree, browserDirectory))}
+              onContextMenu={(event) => handleContextMenu(event, view === 'compact' ? null : findMaterialNode(tree, browserDirectory))}
             >
               <div className="materials-group-heading">
                 <button className="materials-section-toggle" aria-expanded={filesOpen || searching} onClick={() => setFilesOpen(!filesOpen)}><span aria-hidden="true">{filesOpen || searching ? '⌄' : '›'}</span>파일</button>
-                <MaterialViewMenu value={view} onChange={next => {
-                  setView(next); rememberMaterialView(next)
-                  if (selectedRelPath !== null) {
-                    if (view === 'list') setBrowserDirectory(materialParentPath(selectedRelPath))
-                    if (next === 'list') ensureAncestorsExpanded(selectedRelPath)
-                  }
-                }} />
+
                 {downloadingDirRelPath === '' && (
                   <span className="materials-download-status" role="status">
                     <Icon name="refresh" className="is-spinning" />
@@ -1152,31 +1187,20 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                   <span />
                 </div>
               ) : searching ? (
-                searchResults.length === 0 ? (
-                  <div className="rail-zero-result">
-                    <p>일치하는 자료가 없어요</p>
-                    <button type="button" onClick={() => setQuery('')}>
-                      전체 자료 보기
-                    </button>
-                  </div>
-                ) : view !== 'list' ? materialBrowser(true) : (
-                  <MaterialSearchResults
-                    courseId={course.id}
-                    results={searchResults}
-                    selectedRelPath={selectedRelPath}
-                    onSelect={(node) => setSelectedRelPath(node.relPath)}
-                    onContextMenu={handleContextMenu}
-                    onDragEnd={() => setDropTargetDirRelPath(null)}
-                  />
-                )
+                <><h3 className="materials-search-heading">파일명 <small>{searchResults.length}개</small></h3>
+                  {searchResults.length ? materialBrowser(true) : <p className="rail-zero-result">일치하는 파일명이 없어요.</p>}
+                </>
               ) : tree.length === 0 ? (
                 <div className="empty-state empty-state--materials">
                   <Icon name="folder" className="empty-state__folder" />
+                  <p>자료를 가져오거나 새 노트를 만들어 보세요.</p>
+                  <button type="button" className="button button--secondary" onClick={beginFileImport}>파일 가져오기</button>
                 </div>
               ) : (
                 materialBrowser()
               )}
               </div>
+              {searching && <MaterialContentResults courseId={course.id} query={query} search={contentSearch} />}
             </section>
           </>
         )}

@@ -38,7 +38,7 @@ async function run<K extends keyof BackgroundTasks>(kind: K, input: BackgroundTa
   }
   if (kind === 'searchRefresh') { await search.refreshInBackground(req.courseId); return null }
   if (req.fresh) await search.refreshInBackground(req.courseId)
-  return search.query(req.courseId, req.query, req.limit)
+  return search.query(req.courseId, req.query, req.limit, req.rootRelPath)
 }
 process.parentPort?.on('message', ({ data }: { data: { id: number; kind: keyof BackgroundTasks; input: BackgroundTasks[keyof BackgroundTasks]['input'] } }) => {
   void run(data.kind, data.input).then(
