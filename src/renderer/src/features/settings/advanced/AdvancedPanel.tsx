@@ -8,14 +8,10 @@ import { Icon } from '../SettingsIcon'
 import './advanced-panel.css'
 
 function displayDataRoot(path: string | undefined): string {
-  if (
-    path === undefined ||
-    path.length === 0 ||
-    path.endsWith('/Documents/Bandal')
-  ) {
-    return '~/Documents/Bandal'
-  }
-  return path
+  if (path === undefined || path.length === 0) return '반달 앱 폴더/Courses'
+  // Show the home-relative form for macOS defaults; other paths stay verbatim.
+  const home = /^\/Users\/[^/]+(\/.*)$/.exec(path)
+  return home ? `~${home[1]}` : path
 }
 
 function rejectedMessage(error: unknown, fallback: string): string {

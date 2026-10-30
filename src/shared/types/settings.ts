@@ -281,7 +281,7 @@ export interface Settings {
   /** Preferred AI agent provider. */
   agentProvider: AgentProvider
   /** Where the assistant is presented. */
-  /** Root folder for course data. Defaults to ~/Documents/Bandal. */
+  /** Root folder for course data. Defaults to <userData>/Courses (formerly ~/Documents/Bandal). */
   dataRoot: string
   /** UI language (BCP 47). */
   locale: string

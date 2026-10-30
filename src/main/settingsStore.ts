@@ -29,16 +29,26 @@ function settingsPath(): string {
   return join(app.getPath('userData'), SETTINGS_FILE)
 }
 
+/** Course folders used to live here; iCloud/OneDrive can evict files in Documents. */
+export function legacyDataRoot(): string {
+  return join(homedir(), 'Documents', 'Bandal')
+}
+
+/** Course data lives next to bandal.db, outside any cloud-synced folder. */
+export function defaultDataRoot(): string {
+  return join(app.getPath('userData'), 'Courses')
+}
+
 function defaultsWithPaths(): Settings {
   // [M6-B testability] BANDAL_DATA_ROOT overrides the default course-data
-  // location (~/Documents/Bandal) so E2E runs write into a temp directory.
+  // location so E2E runs write into a temp directory.
   const envDataRoot = process.env['BANDAL_DATA_ROOT']
   return {
     ...DEFAULT_SETTINGS,
     dataRoot:
       envDataRoot !== undefined && envDataRoot !== ''
         ? envDataRoot
-        : join(homedir(), 'Documents', 'Bandal')
+        : defaultDataRoot()
   }
 }
 

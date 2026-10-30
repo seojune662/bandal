@@ -40,6 +40,7 @@ import { configureBrowserIdentity } from './features/browser/browserIdentity'
 import { BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY, BROWSER_AUTH_PROBE_PROTOCOL, initializeBrowserAuthProbe } from './features/browser/authProbe'
 import { writeFileSync } from 'node:fs'
 import { resolveActiveProfile } from './features/account/profileManager'
+import { moveLegacyDataRoot } from './features/dataRoot/legacyDataRoot'
 
 const execFileAsync = promisify(execFile)
 
@@ -190,6 +191,8 @@ if (!app.requestSingleInstanceLock()) {
       finally { initializer.dispose() }
       initDatabase(false)
       markStartup('database-ready')
+      // Before any course service reads dataRoot: copy courses out of ~/Documents/Bandal.
+      await moveLegacyDataRoot(shellWindow)
     } catch (error: unknown) {
       rejectStartup(error)
       reportFatalStartupError('데이터베이스 초기화', error)
