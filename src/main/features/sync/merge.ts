@@ -26,11 +26,8 @@ export interface ConflictCopy {
   rel_path: string
   name: string
   md_hash: string
-  /**
-   * Root path of the losing version's content, null until it arrives. Create the
-   * copy only once this is set: an existing document with the copy's id is never made again.
-   */
-  file: string | null
+  /** Root path of the losing version's content. */
+  file: string
 }
 
 export interface MergedState {
@@ -46,8 +43,11 @@ export interface MergedState {
   conflictCopies: ConflictCopy[]
   /** `doc.upsert` renames that settle path collisions; every device computes the same list. */
   renames: { id: string; name: string }[]
-  /** Not appliable yet: a referenced course, document, PDF, asset or note file is missing. */
-  waiting: { docs: string[]; ink: string[] }
+  /**
+   * Not appliable yet: a referenced course, document, PDF, asset or note file is
+   * missing. A conflict copy also waits for its writer's device file.
+   */
+  waiting: { docs: string[]; ink: string[]; copies: string[] }
 }
 
 interface NoteVersion {
@@ -89,7 +89,7 @@ const nameSafe = (text: string): string => text.replace(/[\u0000-\u001f\u007f-\u
 function emptyState(blocked: MergedState['blocked']): MergedState {
   return {
     blocked, devices: new Map(), courses: new Map(), docs: new Map(), ink: new Map(), notes: new Map(),
-    conflictCopies: [], renames: [], waiting: { docs: [], ink: [] }
+    conflictCopies: [], renames: [], waiting: { docs: [], ink: [], copies: [] }
   }
 }
 
@@ -164,11 +164,16 @@ export function merge(files: readonly ParsedFile[]): MergedState {
     for (const hash of losers) {
       const id = uuidv5(`${doc}:${hash}`, CONFLICT_COPY_NAMESPACE)
       if (state.docs.has(id)) continue
-      const author = authorOf(hash), [stem] = splitName(where.name)
-      const device = nameSafe((state.devices.get(author) ?? author.slice(0, 8)).normalize('NFC'))
+      const author = authorOf(hash), device = state.devices.get(author), file = contentFile(doc, hash, author)
+      // The name needs the writer's device file and the copy needs its text; hold it until both arrive.
+      if (device === undefined || file === null) {
+        state.waiting.copies.push(id)
+        continue
+      }
+      const [stem] = splitName(where.name)
       state.conflictCopies.push({
         id, of: doc, course_id: where.course_id, rel_path: where.rel_path,
-        name: `${stem} (충돌 사본 ${device}).md`, md_hash: hash, file: contentFile(doc, hash, author)?.path ?? null
+        name: `${stem} (충돌 사본 ${nameSafe(device.normalize('NFC'))}).md`, md_hash: hash, file: file.path
       })
     }
   }
@@ -177,7 +182,8 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   const byPath = new Map<string, string[]>()
   for (const [id, entity] of state.docs) {
     const where = place(entity)
-    if (isAlive(entity) && where) push(byPath, JSON.stringify([where.course_id, where.rel_path, where.name]), id)
+    // Names are NFC already; folders and names compare without case, as macOS, iPadOS and Windows store them.
+    if (isAlive(entity) && where) push(byPath, JSON.stringify([where.course_id, where.rel_path.toLowerCase(), where.name.toLowerCase()]), id)
   }
   for (const ids of byPath.values()) {
     for (const id of ids.sort().slice(1)) {
@@ -200,5 +206,6 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   }
   state.waiting.docs = [...waitingDocs].sort()
   state.waiting.ink.sort()
+  state.waiting.copies.sort()
   return state
 }

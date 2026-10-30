@@ -22,6 +22,7 @@ const ink = (author: string, seq: number, doc: string, objects: InkObject[]): Pa
   ({ kind: 'ink', path: `ink/${doc}/1/${author}-${String(seq).padStart(8, '0')}.json.gz`, author, seq, doc, objects, dropped: 0 })
 const logFile = (author: string, seq: number, events: unknown[]): RemoteFile =>
   ({ path: `log/${author}/${String(seq).padStart(8, '0')}.json`, bytes: Buffer.from(JSON.stringify(events)) })
+const rootFile: RemoteFile = { path: 'bandal.json', bytes: Buffer.from('{"format":2}') }
 const course = log(A, 1, [event(1, 'course.upsert', COURSE, { name: '물리', sort: 0, color: 'blue', archived: false })])
 const docId = (n: number): string => `d0000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const mdDoc = (doc: string, t: number, hash: string, fields: Record<string, unknown> = {}): MetaEvent =>
@@ -60,7 +61,7 @@ describe('notes', () => {
     const doc = docId(1)
     const state = merge([root, course, { kind: 'device', path: `devices/${B}.json`, device: B, name: 'Kim/iPad\\2' },
       log(A, 2, [mdDoc(doc, 10, H('0')), mdDoc(doc, 30, H('a'), { md_base: H('0') })]),
-      log(B, 1, [event(21, 'doc.upsert', doc, { md_hash: H('b'), md_base: H('0') })])])
+      log(B, 1, [event(21, 'doc.upsert', doc, { md_hash: H('b'), md_base: H('0') })]), note(B, 2, doc, H('b'))])
     expect(state.conflictCopies.map(copy => copy.name)).toEqual(['노트 (충돌 사본 Kim_iPad\\2).md'])
   })
 
@@ -88,11 +89,11 @@ test('content that has not arrived keeps documents and drawings waiting (M17)', 
     log(A, 2, [event(2, 'doc.upsert', pdfDoc, { course_id: COURSE, type: 'pdf', name: 'a.pdf', rel_path: '', pdf_sha256: PDF }), mdDoc(mdDocId, 3, H('a'))]),
     ink(A, 3, pdfDoc, [image]), ink(A, 4, docId(9), [stroke(2, 6)])]
   const waiting = merge(files)
-  expect(waiting.waiting).toEqual({ docs: [pdfDoc, mdDocId], ink: [image.id, stroke(2, 6).id].sort() })
+  expect(waiting.waiting).toEqual({ docs: [pdfDoc, mdDocId], ink: [image.id, stroke(2, 6).id].sort(), copies: [] })
   expect(waiting.notes.get(mdDocId)).toEqual({ hash: H('a'), file: null })
   const arrived = merge([...files, { kind: 'pdf', path: `pdf/${PDF}.pdf`, hash: PDF }, note(A, 5, mdDocId, H('a')),
     { kind: 'asset', path: `assets/${H('9')}.png`, hash: H('9') }])
-  expect(arrived.waiting).toEqual({ docs: [], ink: [stroke(2, 6).id] })
+  expect(arrived.waiting).toEqual({ docs: [], ink: [stroke(2, 6).id], copies: [] })
 })
 
 test('an unreadable file is skipped whole, a bad item only on its own, and the rest still merges (M18)', () => {
@@ -110,6 +111,25 @@ test('an unreadable file is skipped whole, a bad item only on its own, and the r
   expect(isAlive(merge(parsed).courses.get(COURSE))).toBe(true)
 })
 
+test('a conflict copy waits for its text and for its writer\'s device file', () => {
+  const doc = docId(1), copy = uuidv5(`${doc}:${H('b')}`, CONFLICT_COPY_NAMESPACE)
+  const files: ParsedFile[] = [root, course, note(A, 3, doc, H('a')),
+    log(A, 2, [mdDoc(doc, 10, H('0')), mdDoc(doc, 30, H('a'), { md_base: H('0') })]),
+    log(B, 1, [event(21, 'doc.upsert', doc, { md_hash: H('b'), md_base: H('0') })])]
+  expect(merge(files)).toMatchObject({ conflictCopies: [], waiting: { copies: [copy] } })
+  expect(merge([...files, note(B, 2, doc, H('b'))])).toMatchObject({ conflictCopies: [], waiting: { copies: [copy] } })
+  expect(merge([...files, note(B, 2, doc, H('b')), devices[1]!])).toMatchObject({
+    conflictCopies: [{ id: copy, name: '노트 (충돌 사본 iPad Pro).md', file: `notes/${doc}/${B}-00000002.md` }], waiting: { copies: [] }
+  })
+})
+
+test('without a format-2 bandal.json nothing else is read', () => {
+  const courseLog = logFile(A, 1, [event(1, 'course.upsert', COURSE, { name: '물리' })])
+  expect(readRoot([courseLog, { path: `log/${B}/00000001.json`, bytes: Buffer.from('[') }])).toEqual({ parsed: [], ignored: [], errors: [], pending: [] })
+  expect(readRoot([courseLog, { path: '.bandal.json.icloud', bytes: Buffer.alloc(0) }]).pending).toEqual(['bandal.json'])
+  expect(readRoot([{ path: 'bandal.json', bytes: Buffer.from('{"format":3}') }, courseLog]).parsed).toEqual([{ kind: 'root', path: 'bandal.json', format: 3 }])
+})
+
 test('only format 2 is read (M19)', () => {
   expect(merge([course]).blocked).toBe('missing-root')
   expect(merge([{ ...root, format: 3 } as ParsedFile, course])).toMatchObject({ blocked: 'update-required', courses: new Map() })
@@ -117,7 +137,7 @@ test('only format 2 is read (M19)', () => {
 })
 
 test('unknown ops are ignored and unknown fields are kept (M20)', () => {
-  const { parsed, errors } = readRoot([{ path: `log/${A}/00000001.json`, bytes: Buffer.from(JSON.stringify([
+  const { parsed, errors } = readRoot([rootFile, { path: `log/${A}/00000001.json`, bytes: Buffer.from(JSON.stringify([
     { t: 1, op: 'pages.remap', id: 'not-a-uuid', fields: { pages: [2, 1] } },
     event(2, 'course.upsert', COURSE, { name: '물리', ribbon: { tone: 'gold' } })
   ])) }])
@@ -129,29 +149,29 @@ test('unknown ops are ignored and unknown fields are kept (M20)', () => {
 
 test('a remote path that could leave the course folder drops only its event', () => {
   const doc = docId(1), bad = [{ rel_path: '../밖' }, { name: 'a/b.pdf' }, { name: '..' }, { rel_path: '/abs' }, { rel_path: 'a//b' }, { name: 'a\u0007.pdf' }, { name: 'a\u0085.pdf' }]
-  const { parsed, errors } = readRoot([logFile(A, 1, [...bad.map(fields => event(1, 'doc.upsert', doc, fields)),
+  const { parsed, errors } = readRoot([rootFile, logFile(A, 1, [...bad.map(fields => event(1, 'doc.upsert', doc, fields)),
     event(2, 'doc.upsert', docId(2), { rel_path: '1주차/실습', name: 'Q1\\Q2.pdf' })])])
   expect(errors).toEqual([])
-  expect(parsed[0]).toMatchObject({ dropped: bad.length, events: [{ id: docId(2), fields: { name: 'Q1\\Q2.pdf' } }] })
+  expect(parsed[1]).toMatchObject({ dropped: bad.length, events: [{ id: docId(2), fields: { name: 'Q1\\Q2.pdf' } }] })
 })
 
 test('stamps from 2100 on are dropped so no clock can overflow', () => {
-  const { parsed } = readRoot([logFile(A, 1, [event(MAX_STAMP, 'course.upsert', COURSE, { name: '미래' }), event(MAX_STAMP - 1, 'course.upsert', COURSE, { name: '물리' })])])
-  expect(parsed[0]).toMatchObject({ dropped: 1, events: [{ t: MAX_STAMP - 1 }] })
+  const { parsed } = readRoot([rootFile, logFile(A, 1, [event(MAX_STAMP, 'course.upsert', COURSE, { name: '미래' }), event(MAX_STAMP - 1, 'course.upsert', COURSE, { name: '물리' })])])
+  expect(parsed[1]).toMatchObject({ dropped: 1, events: [{ t: MAX_STAMP - 1 }] })
 })
 
 test('an image object must name its asset by sha256 and ext', () => {
   const doc = docId(1), image = (ref: Record<string, unknown>): InkObject =>
     ({ ...stroke(1, 5), kind: 'image', data: { box: { x: 0, y: 0, width: 0.5, height: 0.5 }, image: { label: 'a.png', ...ref } } })
-  const { parsed } = readRoot([{ path: `ink/${doc}/1/${A}-00000001.json.gz`, bytes: gzipSync(Buffer.from(JSON.stringify([
+  const { parsed } = readRoot([rootFile, { path: `ink/${doc}/1/${A}-00000001.json.gz`, bytes: gzipSync(Buffer.from(JSON.stringify([
     image({ sha256: '../../x', ext: 'png' }), image({ sha256: H('9'), ext: '/../etc' }), image({ sha256: H('9'), ext: 'png' })
   ]))) }])
-  expect(parsed[0]).toMatchObject({ dropped: 2, objects: [{ data: { image: { sha256: H('9') } } }] })
+  expect(parsed[1]).toMatchObject({ dropped: 2, objects: [{ data: { image: { sha256: H('9') } } }] })
 })
 
 test('iCloud placeholders wait for download instead of being ignored', () => {
   const doc = docId(1)
-  expect(readRoot([
+  expect(readRoot([rootFile,
     { path: `log/${A}/.00000001.json.icloud`, bytes: Buffer.alloc(0) },
     { path: `notes/${doc}/.${A}-00000002.md.icloud`, bytes: Buffer.alloc(0) },
     { path: '.cache.txt.icloud', bytes: Buffer.alloc(0) }
@@ -174,7 +194,7 @@ test('a note waits until the assets its snapshot links to arrive', () => {
 })
 
 test('names outside the spec patterns are ignored, including upper-case ids', () => {
-  const { ignored } = readRoot([
+  const { ignored } = readRoot([rootFile,
     { path: `devices/${A.toUpperCase()}.json`, bytes: Buffer.from('{"name":"x"}') },
     { path: `notes/${docId(1)}/${A}-1.md`, bytes: Buffer.from('x') },
     { path: `ink/${docId(1)}/0/${A}-00000001.json.gz`, bytes: gzipSync(Buffer.from('[]')) }

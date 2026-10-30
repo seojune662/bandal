@@ -216,11 +216,24 @@ export function parseFile({ path, bytes }: RemoteFile): ParsedFile | null {
 
 /**
  * Sorts a whole root into parsed files, ignored paths, unreadable paths and
- * iCloud placeholders (`pending`, listed by the path they stand for).
+ * iCloud placeholders (`pending`, listed by the path they stand for). Without a
+ * format-2 `bandal.json` nothing else is read.
  */
 export function readRoot(files: readonly RemoteFile[]): { parsed: ParsedFile[]; ignored: string[]; errors: string[]; pending: string[] } {
-  const parsed: ParsedFile[] = [], ignored: string[] = [], errors: string[] = [], pending: string[] = []
+  const rootFile = files.find(file => file.path === 'bandal.json')
+  let root: ParsedFile | null
+  try {
+    root = rootFile ? parseFile(rootFile) : null
+  } catch {
+    return { parsed: [], ignored: [], errors: ['bandal.json'], pending: [] }
+  }
+  if (root?.kind !== 'root' || root.format !== SYNC_FORMAT) {
+    const waiting = files.some(file => placeholderTarget(file.path) === 'bandal.json')
+    return { parsed: root ? [root] : [], ignored: [], errors: [], pending: waiting ? ['bandal.json'] : [] }
+  }
+  const parsed: ParsedFile[] = [root], ignored: string[] = [], errors: string[] = [], pending: string[] = []
   for (const file of files) {
+    if (file === rootFile) continue
     const target = placeholderTarget(file.path)
     if (target !== null && isSpecPath(target)) {
       pending.push(target)
