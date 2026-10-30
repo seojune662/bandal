@@ -302,6 +302,10 @@
   --course-color: var(--course-orange);
 }
 
+[data-course-color='red'] {
+  --course-color: var(--course-red);
+}
+
 .course-dot[data-course-color] {
   background: var(--course-color);
 }
