@@ -80,6 +80,12 @@ function splitName(name: string): [stem: string, ext: string] {
   return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
 }
 
+/** The name a path collision gives a document or copy: `<stem> (<id first 4>).<ext>`. */
+export function collisionName(name: string, id: string): string {
+  const [stem, ext] = splitName(name)
+  return `${stem} (${id.slice(0, 4)})${ext}`
+}
+
 function push<K, V>(map: Map<K, V[]>, key: K, item: V): void {
   const list = map.get(key)
   if (list) list.push(item)
@@ -200,10 +206,7 @@ export function merge(files: readonly ParsedFile[]): MergedState {
     if (isAlive(entity) && where) push(byPath, pathKey(where.course_id, where.rel_path, where.name), id)
   }
   for (const ids of byPath.values()) {
-    for (const id of ids.sort().slice(1)) {
-      const [stem, ext] = splitName(text(state.docs.get(id), 'name')!)
-      state.renames.push({ id, name: `${stem} (${id.slice(0, 4)})${ext}` })
-    }
+    for (const id of ids.sort().slice(1)) state.renames.push({ id, name: collisionName(text(state.docs.get(id), 'name')!, id) })
   }
   state.renames.sort((a, b) => (a.id < b.id ? -1 : 1))
 
@@ -211,8 +214,8 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   // Copies still waiting for their text take part too, so a late note file never renames a made copy.
   const taken = new Set(byPath.keys())
   for (const copy of copies.sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    const key = pathKey(copy.course_id, copy.rel_path, copy.name), [stem, ext] = splitName(copy.name)
-    const name = taken.has(key) ? `${stem} (${copy.id.slice(0, 4)})${ext}` : copy.name
+    const key = pathKey(copy.course_id, copy.rel_path, copy.name)
+    const name = taken.has(key) ? collisionName(copy.name, copy.id) : copy.name
     taken.add(key)
     if (copy.file === null) state.waiting.copies.push(copy.id)
     else state.conflictCopies.push({ ...copy, name, file: copy.file })

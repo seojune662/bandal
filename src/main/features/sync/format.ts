@@ -188,7 +188,13 @@ export function placeholderTarget(path: string): string | null {
   return match ? `${match[1] ?? ''}${match[2]}` : null
 }
 
-const isSpecPath = (path: string): boolean => path === 'bandal.json' || Object.values(PATHS).some(pattern => pattern.test(path))
+export const isSpecPath = (path: string): boolean => path === 'bandal.json' || Object.values(PATHS).some(pattern => pattern.test(path))
+
+/** A `pdf/` or `assets/` file is named by its SHA-256: it counts as present without reading it. */
+export function contentRef(path: string): Extract<ParsedFile, { kind: 'pdf' | 'asset' }> | null {
+  const match = PATHS.pdf.exec(path) ?? PATHS.asset.exec(path)
+  return match ? { kind: path.startsWith('pdf/') ? 'pdf' : 'asset', path, hash: match[1]! } : null
+}
 
 /** `null` means the path is outside the spec's patterns and must be ignored. */
 export function parseFile({ path, bytes }: RemoteFile): ParsedFile | null {

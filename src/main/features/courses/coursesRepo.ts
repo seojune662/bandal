@@ -26,7 +26,8 @@ import { folderDisplayName, folderState, normalizeFolderPath } from './courseFol
 
 export interface CoursesRepo {
   list(input?: { includeArchived?: boolean; includeDeleted?: boolean }): Course[]
-  create(input: CreateCourseInput): Course
+  /** `synced` keeps a course that arrived through file sync under its own id; IPC never passes it. */
+  create(input: CreateCourseInput, synced?: { id: string; sortOrder?: number; archived?: boolean }): Course
   /** Registers an existing folder on disk; creates/moves nothing. */
   addFromFolder(input: AddCourseFromFolderInput): CourseFolderResult
   /** Repoints a course at another folder (연결 끊김 복구). */
@@ -197,7 +198,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       `INSERT INTO courses
          (id, name, slug, color, folder_path, source, workspace_kind, archived, sort_order,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       course.id,
       course.name,
@@ -206,6 +207,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       course.folderPath,
       course.source,
       course.workspaceKind ?? 'course',
+      course.archived ? 1 : 0,
       course.sortOrder,
       course.createdAt,
       course.updatedAt
@@ -248,7 +250,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       return toCourse(getRowOrThrow(row.id))
     },
 
-    create(input) {
+    create(input, synced) {
       const name = requireNonEmptyString(input.name, 'name').trim()
       const color = requireNonEmptyString(input.color, 'color').trim()
       if (input.workspaceKind !== undefined && !['course', 'study-space'].includes(input.workspaceKind)) throw new ValidationError('올바른 공간 종류를 선택하세요.')
@@ -265,7 +267,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       const now = nowIso()
       try {
         return insertCourse({
-          id: randomUUID(),
+          id: synced?.id ?? randomUUID(),
           name,
           slug,
           color,
@@ -273,10 +275,10 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
           source: 'managed',
           workspaceKind: input.workspaceKind ?? 'course',
           missing: false,
-          archived: false,
+          archived: synced?.archived ?? false,
           // 새 과목은 그룹 없이 시작한다 (INSERT의 group_id 기본값 NULL과 일치).
           groupId: null,
-          sortOrder: nextSortOrder(),
+          sortOrder: synced?.sortOrder ?? nextSortOrder(),
           createdAt: now,
           updatedAt: now
         })
