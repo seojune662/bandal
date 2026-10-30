@@ -4,10 +4,14 @@ export const COURSE_COLORS = [
   'blue',
   'pink',
   'violet',
-  'orange'
+  'orange',
+  'red'
 ] as const
 
 export type CourseColor = (typeof COURSE_COLORS)[number]
+
+/** Unknown stored values keep the colour they always showed: this list predates `red`. */
+const FALLBACK_COLORS: readonly CourseColor[] = ['gold', 'green', 'blue', 'pink', 'violet', 'orange']
 
 const colorLabels: Record<CourseColor, string> = {
   gold: '문골드',
@@ -15,7 +19,8 @@ const colorLabels: Record<CourseColor, string> = {
   blue: '블루',
   pink: '핑크',
   violet: '바이올렛',
-  orange: '오렌지'
+  orange: '오렌지',
+  red: '레드'
 }
 
 export function courseColorLabel(color: CourseColor): string {
@@ -31,5 +36,5 @@ export function normalizeCourseColor(color: string): CourseColor {
   for (const character of color) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0
   }
-  return COURSE_COLORS[hash % COURSE_COLORS.length] ?? 'gold'
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length] ?? 'gold'
 }

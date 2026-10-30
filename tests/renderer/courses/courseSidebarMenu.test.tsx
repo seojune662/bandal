@@ -172,7 +172,7 @@ describe('CourseSidebar course menu', () => {
       '[role="menuitemradio"]'
     )
     expect(menu).not.toBeNull()
-    expect(swatches).toHaveLength(6)
+    expect(swatches).toHaveLength(7)
     expect(menu?.querySelector('[aria-label="세이지"]')?.getAttribute('aria-checked')).toBe(
       'true'
     )

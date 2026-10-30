@@ -703,6 +703,10 @@
   --board-course-color: var(--course-orange);
 }
 
+[data-course-color='red'] {
+  --board-course-color: var(--course-red);
+}
+
 [data-course-color] .board-course-dot,
 .board-course-dot[data-course-color] {
   background: var(--board-course-color);
