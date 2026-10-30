@@ -744,7 +744,7 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/accountProfileBackup.spec.ts')
   }
   if (has(/^src\/(?:renderer\/src\/features\/pdf\/(?:clipTransfer|renderClip|useWhiteboardClipDelivery|ClipOriginalDialog|PdfPageView)\.tsx?$|main\/features\/pdf\/pdfClipSource\.ts$)/)) e2e.add('e2e/pdfClip.spec.ts')
-  if (has(/^src\/(?:main\/features\/(?:account\/|pdf\/(?:pdfNotes|legacyNoteMigration|noteFileTransaction)\.ts)|renderer\/src\/features\/(?:account\/AccountAccessGate\.tsx|pdfNotes\/|materials\/NotesGroup\.tsx|settings\/(?:AccountPanel|BillingSyncPanel|TabsSettingsPanel)\.tsx)|shared\/(?:types\/(?:auth|subscription|pdfNote)\.ts|tabPreferences\.ts))/)) {
+  if (has(/^src\/(?:main\/features\/(?:account\/|pdf\/(?:pdfNotes|legacyNoteMigration|noteFileTransaction)\.ts)|renderer\/src\/features\/(?:pdfNotes\/|materials\/NotesGroup\.tsx|settings\/(?:AccountPanel|BillingSyncPanel|TabsSettingsPanel)\.tsx)|shared\/(?:types\/(?:auth|subscription|pdfNote)\.ts|tabPreferences\.ts))/)) {
     e2e.add('e2e/accountNotes.spec.ts')
     e2e.add('e2e/accountProfileBackup.spec.ts')
   }

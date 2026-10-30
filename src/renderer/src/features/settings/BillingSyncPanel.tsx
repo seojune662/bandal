@@ -22,7 +22,8 @@ function ConflictVersion({ name, version }: { name: string; version: SyncConflic
     {version.text && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{version.text}</p>}
   </div>
 }
-export function BillingSyncPanel(): JSX.Element {
+/** Retired Supabase account sync + Paddle billing. Renders only when main enables the legacy flag. */
+export function BillingSyncPanel(): JSX.Element | null {
   const [billing, setBilling] = useState<BillingState | null>(null)
   const [sync, setSync] = useState<RuntimeSyncState | null>(null)
   const [conflicts, setConflicts] = useState<RuntimeSyncConflict[]>([])
@@ -30,14 +31,12 @@ export function BillingSyncPanel(): JSX.Element {
   const [message, setMessage] = useState('')
   const [consent, setConsent] = useState(false)
   const refresh = useCallback(async () => {
-    const [nextBilling, nextSync] = await Promise.allSettled([invoke('billing:getState', {}), invoke('runtime:syncState', {})])
-    if (nextBilling.status === 'fulfilled' && validBilling(nextBilling.value)) {
-      const next = nextBilling.value
-      setBilling(next)
-    } else setMessage('구독 상태를 확인하지 못했습니다. 오프라인 편집은 계속할 수 있어요.')
-    if (nextSync.status === 'fulfilled') {
-      setSync(nextSync.value)
-    }
+    const nextSync = await invoke('runtime:syncState', {}).catch(() => null)
+    if (nextSync) setSync(nextSync)
+    if (nextSync?.available !== true) return
+    const nextBilling = await invoke('billing:getState', {}).catch(() => null)
+    if (nextBilling && validBilling(nextBilling)) setBilling(nextBilling)
+    else setMessage('구독 상태를 확인하지 못했습니다. 오프라인 편집은 계속할 수 있어요.')
   }, [])
   useEffect(() => {
     let active = true
@@ -60,6 +59,33 @@ export function BillingSyncPanel(): JSX.Element {
     finally { setBusy(false) }
   }
   const external = (url: string) => invoke('shell:openExternal', { url })
+  const recovery = <>
+    {(sync?.conflicts ?? 0) > conflicts.length && <p>충돌 {sync?.conflicts}개 중 {conflicts.length}개를 표시합니다. 표시된 항목을 해결하면 나머지를 확인할 수 있어요.</p>}
+    {conflicts.map(conflict => <div key={conflict.id} className="settings-card"><strong>{conflict.kind === 'pending-ink' ? '페이지 변경 전 필기 보관됨' : '충돌 사본 보관됨'}</strong>
+      <p style={{ overflowWrap: 'anywhere' }}>{conflict.label ?? conflict.recordID ?? '자료 이름 확인 중'}</p>
+      {dateLabel(conflict.createdAt) && <p>보관한 시각: {dateLabel(conflict.createdAt)}</p>}
+      <p>{conflict.message ?? conflict.reason ?? '양쪽 변경을 보존했습니다. 자료와 복구 사본을 확인한 후 사용할 변경을 선택해 주세요.'}</p>
+      {conflict.variants && <div className="sync-conflict-versions">
+        <ConflictVersion name="이 기기의 변경" version={conflict.variants.local} />
+        <ConflictVersion name="다른 기기의 변경" version={conflict.variants.remote} />
+      </div>}
+      <div className="account-sign-in-actions">
+      {(['local', 'remote'] as const).map(choice => <button key={choice} type="button" className="secondary-button" disabled={busy || (conflict.kind !== 'pending-ink' && conflict.variants?.[choice].exists === false)} onClick={() => void run(async () => {
+        const explanation = conflict.kind === 'pending-ink' ? (choice === 'local' ? '변경 전 페이지와 보관된 필기로 복구 노트를 만들까요? 현재 노트는 그대로 보존됩니다.' : '현재 페이지 구성을 유지할까요? 이전 필기는 복구 기록에 보관됩니다.') : `${choice === 'local' ? '이 기기' : '다른 기기'}의 사본을 사용하도록 복구할까요? 양쪽 원본은 복구 기록에 보존됩니다.`
+        if (!window.confirm(`${conflict.label ?? conflict.recordID ?? '선택한 자료'}\n\n${explanation}`)) return
+        setSync(await invoke('runtime:syncResolveConflict', { id: conflict.id, choice }))
+      })}>{conflict.kind === 'pending-ink' ? (choice === 'local' ? '이전 필기로 복구 노트 만들기' : '현재 페이지 유지') : (choice === 'local' ? '이 기기 사본 사용' : '다른 기기 사본 사용')}</button>)}
+    </div></div>)}
+  </>
+  // Account sync is retired, but locally preserved ink (page restructure) must stay recoverable.
+  if (sync?.available !== true) {
+    if ((sync?.conflicts ?? 0) === 0) return null
+    return <section className="settings-card">
+      <div className="settings-card__header"><h2>필기 복구</h2><p>보관해 둔 이전 필기를 확인하고 복구 노트를 만들 수 있어요.</p></div>
+      {recovery}
+      {message && <p role="status">{message}</p>}
+    </section>
+  }
   return <>
     <section className="settings-card">
       <div className="settings-card__header"><h2>반달 구독</h2><p>같은 계정으로 데스크톱과 iPad에서 5 GiB 동기화를 이용합니다.</p></div>
@@ -101,22 +127,7 @@ export function BillingSyncPanel(): JSX.Element {
       <p>복구를 위해 보관된 과거 파일 버전도 용량에 포함됩니다.</p>
       {sync?.blockedReason && <p role="status">{reasons[sync.blockedReason] ?? sync.message ?? sync.blockedReason} 업로드하지 못한 변경은 이 기기에 보관합니다.</p>}
       {sync?.retryAt && <p>다음 재시도: {new Date(sync.retryAt).toLocaleTimeString()}</p>}
-      {(sync?.conflicts ?? 0) > conflicts.length && <p>충돌 {sync?.conflicts}개 중 {conflicts.length}개를 표시합니다. 표시된 항목을 해결하면 나머지를 확인할 수 있어요.</p>}
-      {conflicts.map(conflict => <div key={conflict.id} className="settings-card"><strong>{conflict.kind === 'pending-ink' ? '페이지 변경 전 필기 보관됨' : '충돌 사본 보관됨'}</strong>
-        <p style={{ overflowWrap: 'anywhere' }}>{conflict.label ?? conflict.recordID ?? '자료 이름 확인 중'}</p>
-        {dateLabel(conflict.createdAt) && <p>보관한 시각: {dateLabel(conflict.createdAt)}</p>}
-        <p>{conflict.message ?? conflict.reason ?? '양쪽 변경을 보존했습니다. 자료와 복구 사본을 확인한 후 사용할 변경을 선택해 주세요.'}</p>
-        {conflict.variants && <div className="sync-conflict-versions">
-          <ConflictVersion name="이 기기의 변경" version={conflict.variants.local} />
-          <ConflictVersion name="다른 기기의 변경" version={conflict.variants.remote} />
-        </div>}
-        <div className="account-sign-in-actions">
-        {(['local', 'remote'] as const).map(choice => <button key={choice} type="button" className="secondary-button" disabled={busy || (conflict.kind !== 'pending-ink' && conflict.variants?.[choice].exists === false)} onClick={() => void run(async () => {
-          const explanation = conflict.kind === 'pending-ink' ? (choice === 'local' ? '변경 전 페이지와 보관된 필기로 복구 노트를 만들까요? 현재 노트는 그대로 보존됩니다.' : '현재 페이지 구성을 유지할까요? 이전 필기는 복구 기록에 보관됩니다.') : `${choice === 'local' ? '이 기기' : '다른 기기'}의 사본을 사용하도록 복구할까요? 양쪽 원본은 복구 기록에 보존됩니다.`
-          if (!window.confirm(`${conflict.label ?? conflict.recordID ?? '선택한 자료'}\n\n${explanation}`)) return
-          setSync(await invoke('runtime:syncResolveConflict', { id: conflict.id, choice }))
-        })}>{conflict.kind === 'pending-ink' ? (choice === 'local' ? '이전 필기로 복구 노트 만들기' : '현재 페이지 유지') : (choice === 'local' ? '이 기기 사본 사용' : '다른 기기 사본 사용')}</button>)}
-      </div></div>)}
+      {recovery}
     </section>
     {message && <p role="status">{message}</p>}
   </>

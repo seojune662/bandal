@@ -15,7 +15,7 @@ Object.defineProperty(process, 'resourcesPath', { value: '/resources', configura
 
 type Internal = { prepareGeometry(exchange: string): Promise<void>; perform(command: string, exchange: string, extra?: string[]): Promise<Array<Record<string, unknown>>>; boundUserID: string | null }
 const instances: IPadCompanion[] = []
-afterEach(() => { instances.splice(0).forEach(instance => instance.dispose()); vi.clearAllMocks() })
+afterEach(() => { instances.splice(0).forEach(instance => instance.dispose()); vi.clearAllMocks(); vi.unstubAllEnvs() })
 function fixture() {
   const runtime = new IPadCompanion({ db: { prepare: () => ({ all: () => [], get: () => undefined }) } as unknown as Database,
     userDataPath: '/profile', getClient: () => ({ auth: { getSession: mocks.getSession } }) as never, changed: vi.fn() })
@@ -65,7 +65,18 @@ test('a previous pause retains the process until later backup drain sees its exi
   expect(drained).toBe(true)
 })
 
+test('account sync is retired unless the legacy flag is set', async () => {
+  const f = fixture()
+  expect(f.runtime.state()).toMatchObject({ available: false, enabled: false })
+  await expect(f.runtime.setEnabled(true)).rejects.toThrow('계정 동기화는 종료됐습니다')
+  await expect(f.runtime.synchronize(true)).rejects.toThrow('계정 동기화는 종료됐습니다')
+  expect(f.runtime.enabled).toBe(false)
+  expect(mocks.getSession).not.toHaveBeenCalled()
+  expect(mocks.spawn).not.toHaveBeenCalled()
+})
+
 test('a session read that completes after pause never starts a sync cycle', async () => {
+  vi.stubEnv('BANDAL_LEGACY_IPAD_SYNC', '1')
   const f = fixture()
   f.runtime.enabled = true
   let release!: (value: unknown) => void

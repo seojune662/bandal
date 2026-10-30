@@ -1,5 +1,4 @@
 import { app, shell } from 'electron'
-import { createLocalAccessStore } from './localAccessStore'
 import { runtimeSafeStorage } from '../../lib/safeStorageGate'
 import { createAuthService } from './authService'
 import { createSessionStore, sessionFilePath } from './sessionStore'
@@ -12,14 +11,11 @@ export function createAccountRuntime(onChanged: (state: AuthState) => void) {
     const filePath = sessionFilePath(app.getPath('userData'))
     const storage = createSessionStore({ filePath, encryptor: runtimeSafeStorage() })
     const client = createSupabaseClient({ storage })
-    const localAccess = createLocalAccessStore(app.getPath('userData'))
-    const auth = createAuthService({ localAccess, client, onChanged, destroySession: () => storage.clear(), openExternal: url => shell.openExternal(url) })
+    const auth = createAuthService({ client, onChanged, destroySession: () => storage.clear(), openExternal: url => shell.openExternal(url) })
     void auth.restore()
     return { client, auth }
   }
   const get = () => runtime ??= build()
-  return { auth: () => get().auth, getClient: () => {
-    const current = get(), access = current.auth.getState().localAccess
-    return access?.allowed && current.auth.userId() === access.boundUserID ? current.client : null
-  }, dispose: () => runtime?.auth.dispose() }
+  // Signing in is optional, so callers that need a user check the session themselves.
+  return { auth: () => get().auth, getClient: () => get().client, dispose: () => runtime?.auth.dispose() }
 }

@@ -1592,7 +1592,6 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
     res: { ok: true }
   }
 
-  'auth:confirmProfile': { req: { userID: string }; res: AuthState }
   'auth:linkProvider': { req: { provider: AuthProvider }; res: AuthSignInResult }
   'auth:deleteAccount': { req: { confirm: true }; res: { ok: boolean; appleRevocation?: string } }
   'profile:backup': { req: Record<string, never>; res: { ok: boolean; cancelled: boolean; path?: string } }
@@ -1909,7 +1908,6 @@ export const IPC_CHANNELS = [
   'layout:get',
   'layout:save',
   'layout:saveMany',
-  'auth:confirmProfile',
   'auth:linkProvider',
   'auth:deleteAccount',
   'profile:backup',

@@ -10,7 +10,7 @@ async function service(bandal: BandalApp, open = false): Promise<void> {
     const campaign = { id: 'study-tools-2026', title: '반달에 있었으면 하는 공부 도구 공모전', summary: '내가 쓰고 싶은 공부 도구를 제안해 주세요.', published, phase: published ? 'open' : 'draft', resultsPublished: false, closed: false, startsAt: published ? new Date(Date.now() - 86400_000).toISOString() : null, endsAt: published ? new Date(Date.now() + 86400_000).toISOString() : null, resultsAt: published ? new Date(Date.now() + 172800_000).toISOString() : null, rules: '실제 도움 40 · 구체성 30 · 구현 가능성 20 · 독창성 10' }
     const state = { campaign, posts: [] as any[], comments: [] as any[], requests: [] as any[], failSave: false }
     ;(globalThis as any).__community = state
-    const auth = { phase: 'signed-in', profile: { id: userId, nickname: '공부하는 달', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: null, avatarUrl: null, online: true, errorCode: null, localAccess: { allowed: true, requiresLogin: false, boundUserID: userId, profileID: '22222222-2222-4222-8222-222222222222' } }
+    const auth = { phase: 'signed-in', profile: { id: userId, nickname: '공부하는 달', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: null, avatarUrl: null, online: true, errorCode: null }
     ipcMain.removeHandler('auth:getState'); ipcMain.handle('auth:getState', () => auth)
     ipcMain.removeHandler('community:request')
     ipcMain.handle('community:request', (_event, request) => {

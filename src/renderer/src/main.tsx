@@ -3,7 +3,6 @@ import { installWorkspaceTransition } from './features/documents/workspaceTransi
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
-import { AccountAccessGate } from './features/account/AccountAccessGate'
 import { AppShell } from './app/AppShell'
 import { RendererErrorBoundary } from './app/RendererErrorBoundary'
 // tokens.css pulls in every theme (styles/themes/index.css) — entry points
@@ -22,7 +21,7 @@ void bootstrapAppearance().then(() =>
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <RendererErrorBoundary>
-        <AccountAccessGate><AppShell /></AccountAccessGate>
+        <AppShell />
       </RendererErrorBoundary>
     </React.StrictMode>
   )

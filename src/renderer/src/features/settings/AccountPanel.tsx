@@ -125,17 +125,28 @@ export function AccountPanel(): JSX.Element {
     )
   }
 
+  const profileSection = (
+    <section className="settings-card">
+      <h2>자료 백업과 새 프로필</h2><p>전체 자료를 백업하고 검증합니다. 새 프로필은 빈 상태로 시작하고, 기존 프로필과 원본 자료는 그대로 보존됩니다. 로그인한 계정과는 관계없습니다.</p>
+      <div className="account-sign-in-actions">
+        <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:backup', {}) }, '백업 절차를 마쳤습니다.', '백업을 완료하지 못했습니다.')}>전체 자료 백업</button>
+        <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => { if (window.confirm('전체 자료 백업 후 빈 프로필에서 다시 시작할까요?')) void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:new', {}) }, '새 프로필을 준비했습니다.', '자료를 보존했으며 프로필 전환을 완료하지 못했습니다.') }}>백업 후 새 프로필</button>
+      </div>
+    </section>
+  )
+
   if (profile === null) {
     return (
       <>
       <div className="account-panel-state">
         <strong>{t('settings.account.signedOut')}</strong>
         {auth?.phase !== 'unconfigured' && <div className="account-sign-in-actions">
-          {(['apple', 'google', 'kakao'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('sign-in', async () => { const result = await invoke('auth:signIn', { provider }); if (!result.ok) throw new Error('로그인 실패') }, '브라우저에서 로그인을 완료해 주세요.', '로그인을 시작하지 못했어요.')}>{provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : 'Kakao'}로 로그인</button>)}
+          {(['apple', 'google'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('sign-in', async () => { const result = await invoke('auth:signIn', { provider }); if (!result.ok) throw new Error('로그인 실패') }, '브라우저에서 로그인을 완료해 주세요.', '로그인을 시작하지 못했어요.')}>{provider === 'apple' ? 'Apple' : 'Google'}로 로그인</button>)}
         </div>}
         {feedback && <p role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.message}</p>}
       </div>
-      {auth?.localAccess?.allowed && <BillingSyncPanel />}
+      <BillingSyncPanel />
+      {profileSection}
       </>
     )
   }
@@ -266,15 +277,9 @@ export function AccountPanel(): JSX.Element {
       <BillingSyncPanel />
       <section className="settings-card">
         <h2>로그인 수단 연결</h2><p>현재 반달 계정에 로그인 수단을 추가합니다. 다른 계정의 자료는 합치지 않습니다.</p>
-        <div className="account-sign-in-actions">{(['apple', 'google', 'kakao'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('link', async () => { const result = await invoke('auth:linkProvider', { provider }); if (!result.ok) throw new Error('identity-link-failed') }, '로그인 화면에서 연결을 완료해 주세요.', '연결하지 못했습니다. 이미 다른 반달 계정에 연결된 수단인지 확인해 주세요.')}>{provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : 'Kakao'} 연결</button>)}</div>
+        <div className="account-sign-in-actions">{(['apple', 'google'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('link', async () => { const result = await invoke('auth:linkProvider', { provider }); if (!result.ok) throw new Error('identity-link-failed') }, '로그인 화면에서 연결을 완료해 주세요.', '연결하지 못했습니다. 이미 다른 반달 계정에 연결된 수단인지 확인해 주세요.')}>{provider === 'apple' ? 'Apple' : 'Google'} 연결</button>)}</div>
       </section>
-      <section className="settings-card">
-        <h2>자료 백업과 계정 변경</h2><p>다른 계정은 전체 자료를 백업하고 검증한 뒤 빈 프로필로 시작합니다. 기존 프로필과 원본 자료는 보존됩니다.</p>
-        <div className="account-sign-in-actions">
-          <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:backup', {}) }, '백업 절차를 마쳤습니다.', '백업을 완료하지 못했습니다.')}>전체 자료 백업</button>
-          <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => { if (window.confirm('전체 자료 백업 후 빈 프로필에서 다시 시작할까요?')) void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:new', {}) }, '새 프로필을 준비했습니다.', '자료를 보존했으며 프로필 전환을 완료하지 못했습니다.') }}>백업 후 새 프로필</button>
-        </div>
-      </section>
+      {profileSection}
       <section className="settings-card">
         <h2>계정 삭제</h2><p>삭제 전 자료를 백업하고 구독을 확인해 주세요. 계정 삭제는 Apple·Paddle 구독 해지가 아닙니다. 각 구매처에서 별도로 해지해야 합니다.</p>
         <p>서버의 계정 자료는 삭제되며 이 기기의 원본은 보존됩니다. 최근 로그인이 필요하며, 진행 중 거래·정산을 정리한 뒤 삭제할 수 있습니다. 완료된 거래는 개인정보를 제거해 보관합니다.</p>
