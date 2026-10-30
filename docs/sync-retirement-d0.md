@@ -13,7 +13,7 @@
 | 2 | 앱을 릴리스한다(태그 → `release.yml`). 설치 파일과 업데이트 피드가 올라왔는지 확인한다 | 개발 | `docs/release.md` |
 | 3 | 사전 확인 쿼리를 실행하고 결과를 이 문서 끝에 적는다 | 사람 | 아래 "사전 확인" |
 | 4 | SQL Editor에서 `supabase/operations/sync-write-block.sql` 파일 전체를 실행한다. 오류 없이 끝나면 차단이 확인된 것이다 | 사람 | SQL 파일 |
-| 5 | bandal_web PR을 머지하고 Vercel 배포를 확인한다. `/sync`, `/pricing`, `/billing`을 열어 본다 | 사람 | 웹 PR |
+| 5 | bandal_web PR을 머지하고 Vercel 배포를 확인한다. `/sync`, `/pricing`, `/billing`을 열어 본다 | 사람 | seojune662/bandal_web#3. 머지 전에 `src/content/sync.ts`의 `SYNC_END_DATE`에 D0를 넣는다. 넣지 않으면 프로덕션 빌드가 실패한다 |
 | 6 | 공지를 올린다(웹사이트, 커뮤니티). 3단계에서 사본 보유자가 있었다면 그들에게 메일을 보낸다 | 사람 | 아래 "공지 문안" |
 
 - 2와 4는 같은 날 한다. 새 버전은 서버에 올리지 않으므로 둘의 순서는 상관없다.
@@ -29,8 +29,13 @@ select
   (select count(distinct user_id) from public.bandal_records) as users_with_records,
   (select count(distinct split_part(name, '/', 1)) from storage.objects where bucket_id = 'bandal-assets') as users_with_assets,
   (select count(*) from storage.objects where bucket_id = 'bandal-assets') as asset_files,
-  (select count(*) from public.bandal_sync_beta_access) as beta_grants;
+  (select count(*) from public.bandal_sync_beta_access) as beta_grants,
+  (select count(*) from public.apple_billing_subscriptions
+    where environment = 'production' and revoked_at is null
+      and ((status = 1 and expires_at > now()) or (status = 4 and grace_expires_at > now()))) as app_store_active;
 ```
+
+`app_store_active`는 App Store 구독으로 Sync 이용권을 받은 사용자 수다(`20261017000000_apple_billing.sql`). 0이 아니면 공지와 환불 안내를 다시 정한다. App Store 환불은 Apple이 처리하고, iPad의 Bandal Pro 구독과도 관계가 있으므로 iPad 팀과 함께 정한다.
 
 ```sql
 -- 메일 대상. 위 결과가 모두 0이면 실행하지 않아도 된다.
