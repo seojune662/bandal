@@ -239,6 +239,7 @@ jobs:
           MAIN_VITE_MARKETPLACE_URL: ${{ vars.MAIN_VITE_MARKETPLACE_URL }}
           # Dedicated Google Desktop OAuth app. Empty = safe unconfigured UI.
           MAIN_VITE_GMAIL_CLIENT_ID: ${{ secrets.MAIN_VITE_GMAIL_CLIENT_ID }}
+          MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
           MAIN_VITE_GMAIL_VERIFIED: ${{ vars.MAIN_VITE_GMAIL_VERIFIED }}
 
       # The failure above was invisible: nothing errored, a feature just went

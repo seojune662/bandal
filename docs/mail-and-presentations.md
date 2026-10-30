@@ -13,7 +13,7 @@
 기존 Supabase Google 로그인과 별도의 **Desktop app** OAuth 클라이언트를 사용한다. 브라우저 쿠키를 읽거나 Gmail 웹페이지를 스크래핑하지 않는다.
 
 1. Google Cloud 프로젝트에서 Gmail API를 활성화하고 OAuth 동의 화면을 구성한다.
-2. Desktop app 유형 클라이언트를 만든다. 로컬 개발은 `.env.local`, 배포는 Actions secrets에 `MAIN_VITE_GMAIL_CLIENT_ID`를 설정한다. 네이티브 앱은 클라이언트 비밀을 안전하게 숨길 수 없는 public client이며 Bandal은 PKCE를 사용하므로 `client_secret`을 앱에 포함하지 않는다. 서버용 비밀키나 Supabase service-role 키도 넣으면 안 된다.
+2. Desktop app 유형 클라이언트를 만든다. 로컬 개발은 `.env.local`, 배포는 Actions secrets에 `MAIN_VITE_GMAIL_CLIENT_ID`와 `MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET`을 설정한다. Google 토큰 엔드포인트는 PKCE를 써도 데스크톱 클라이언트의 `client_secret`을 요구하므로 앱에 포함한다. 설치형 앱의 이 값은 Google이 기밀로 취급하지 않는다. 서버용 비밀키나 Supabase service-role 키도 넣으면 안 된다.
 3. `gmail.modify` 권한은 제한된 Gmail 권한이다. 개발 단계에서는 등록된 테스트 사용자로 확인하고, 일반 공개 전에 Google의 요구 검증 및 학교 Workspace 정책을 확인한다.
 4. 실제 계정에서 연결·갱신·해제·재연결·읽기·답장·보관을 확인한 뒤에만 Actions variable `MAIN_VITE_GMAIL_VERIFIED=true`를 설정한다. 이 값은 검증을 대신하지 않는다.
 

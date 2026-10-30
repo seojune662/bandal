@@ -12,10 +12,11 @@ const API = 'https://gmail.googleapis.com/gmail/v1/users/me'
 interface TokenSet { accessToken: string; refreshToken: string; expiresAt: number; email: string }
 interface TokenResponse { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string }
 
-function config(): { clientId: string; verified: boolean } {
+function config(): { clientId: string; clientSecret: string; verified: boolean } {
   const env = import.meta.env as Record<string, string | undefined>
   const value = (key: string): string => process.env[key] ?? env[key] ?? ''
-  return { clientId: value('MAIN_VITE_GMAIL_CLIENT_ID'), verified: value('MAIN_VITE_GMAIL_VERIFIED') === 'true' }
+  // Google requires the Desktop client secret even with PKCE; it is not confidential for installed apps.
+  return { clientId: value('MAIN_VITE_GMAIL_CLIENT_ID'), clientSecret: value('MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET'), verified: value('MAIN_VITE_GMAIL_VERIFIED') === 'true' }
 }
 function validId(value: string): string {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(value)) throw new Error('메일 식별자가 올바르지 않아요.')
@@ -72,6 +73,8 @@ export function createGmailService(userData: string) {
     return { status: !config().clientId ? 'unconfigured' : authPromise ? 'connecting' : needsAuth ? 'reauth-required' : tokens ? 'connected' : 'disconnected', email: tokens?.email ?? null, experimental: !config().verified }
   }
   async function exchange(body: URLSearchParams, generation: number): Promise<TokenResponse> {
+    const { clientSecret } = config()
+    if (clientSecret) body.set('client_secret', clientSecret)
     const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body, signal: AbortSignal.timeout(30_000) })
     const result = await response.json() as TokenResponse
     assertSession(generation)
