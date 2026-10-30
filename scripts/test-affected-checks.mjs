@@ -1320,6 +1320,12 @@ test('Apple administration tools select their boundary checks without broad prod
   }
 })
 
+test('shared sync spec examples select the conformance test', () => {
+  for (const file of ['sync-fixtures/SPEC.md', 'sync-fixtures/01-basic/expected.json', 'sync-fixtures/render/v5-diameter.json']) {
+    assert.ok(planChecks([file]).unitInputs.includes('tests/main/sync/conformance.test.ts'), file)
+  }
+})
+
 test('shipped projector and its Windows offline check select the portable import regression', () => {
   for (const file of ['scripts/test-projector-roundtrip.cjs', 'resources/ipad-bridge/backend.js', 'resources/ipad-bridge/projector-host.cjs', 'resources/ipad-bridge/bridge.py', '.github/workflows/verify-windows-projector.yml']) {
     assert.ok(planChecks([file]).unitInputs.includes('tests/main/ipadSync/projectorRoundtrip.test.ts'), file)

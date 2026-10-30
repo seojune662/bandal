@@ -866,6 +866,8 @@ export function planChecks(files, full = false) {
   if (has(/^src\/renderer\/src\/features\/workspace\/.*\.css$/)) unitInputs.push('src/renderer/src/features/workspace/tabDrag.ts', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/features/workspace/tabDuplication.ts')
   // Runtime font files are loaded from disk, outside the TS import graph.
   if (has(/^resources\/fonts\//)) unitInputs.push('src/main/features/pdf/exportPdf.ts', 'src/main/features/canvas/exportBoardPdf.ts')
+  // The shared sync spec examples are read from disk by the conformance test.
+  if (has(/^sync-fixtures\//)) unitInputs.push('tests/main/sync/conformance.test.ts')
   const pdfChanges = files.filter(f => /^src\/renderer\/src\/features\/(pdf|ink)\//.test(f))
   const pdfZoomOnly = !full && pdfChanges.length > 0 && pdfChanges.every(f => /\/(PdfTab\.tsx|PdfPageView\.tsx|BufferedPdfCanvas\.tsx|pdf\.css|lib\/zoomInput\.ts)$/.test(f))
   const partial = new Map()
