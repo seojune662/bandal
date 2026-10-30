@@ -1,7 +1,7 @@
 # Bandal Sync 종료 — D0 진행표
 
-- **D0**: {D0}. PR #2(로그인 선택화, 계정 동기화 숨김)를 릴리스하는 날이다.
-- **D0+30**: {D0+30}. 반달 서버에 남은 동기화 사본을 지우는 날이다.
+- **D0**: 2026-11-10(화). PR #2(로그인 선택화, 계정 동기화 숨김)를 릴리스하는 날이다.
+- **D0+30**: 2026-12-10(목). 반달 서버에 남은 동기화 사본을 지우는 날이다.
 - **Paddle 구독자**: 0명(2026-10-30 확인). 환불 절차가 없으므로 공지에도 환불 문장을 넣지 않는다.
 - 근거: `docs/sync-desktop-phase2-design-2026-10-30.md` 8.4–8.6
 
@@ -13,7 +13,7 @@
 | 2 | 앱을 릴리스한다(태그 → `release.yml`). 설치 파일과 업데이트 피드가 올라왔는지 확인한다 | 개발 | `docs/release.md` |
 | 3 | 사전 확인 쿼리를 실행하고 결과를 이 문서 끝에 적는다 | 사람 | 아래 "사전 확인" |
 | 4 | SQL Editor에서 `supabase/operations/sync-write-block.sql` 파일 전체를 실행한다. 오류 없이 끝나면 차단이 확인된 것이다 | 사람 | SQL 파일 |
-| 5 | bandal_web PR을 머지하고 Vercel 배포를 확인한다. `/sync`, `/pricing`, `/billing`을 열어 본다 | 사람 | seojune662/bandal_web#3. 머지 전에 `src/content/sync.ts`의 `SYNC_END_DATE`에 D0를 넣는다. 넣지 않으면 프로덕션 빌드가 실패한다 |
+| 5 | bandal_web PR을 머지하고 Vercel 배포를 확인한다. `/sync`, `/pricing`, `/billing`을 열어 본다 | 사람 | seojune662/bandal_web#3(날짜 반영됨). main에 머지하면 곧바로 Vercel 프로덕션 배포가 된다 |
 | 6 | 공지를 올린다(웹사이트, 커뮤니티). 3단계에서 사본 보유자가 있었다면 그들에게 메일을 보낸다 | 사람 | 아래 "공지 문안" |
 
 - 2와 4는 같은 날 한다. 새 버전은 서버에 올리지 않으므로 둘의 순서는 상관없다.
@@ -57,16 +57,14 @@ where exists (select 1 from public.bandal_records r where r.user_id = u.id)
 
 ## 공지 문안
 
-`{D0}`, `{D0+30}`을 날짜로 바꿔 쓴다.
-
 ### 전체 (웹사이트, 커뮤니티, 메일)
 
 > **Bandal Sync 종료 안내**
 >
-> 반달 서버를 거쳐 기기 사이에 자료를 동기화하던 Bandal Sync를 {D0}에 종료합니다.
+> 반달 서버를 거쳐 기기 사이에 자료를 동기화하던 Bandal Sync를 2026년 11월 10일에 종료합니다.
 >
 > - 자료는 각 기기에 그대로 있습니다. 앱을 업데이트해도 과목, PDF, 필기, 노트는 지워지지 않습니다.
-> - 반달 서버에 올라간 동기화 사본은 {D0+30}에 삭제합니다. 그전에 사본이 필요하면 hi@bandal.io로 알려 주세요.
+> - 반달 서버에 올라간 동기화 사본은 2026년 12월 10일에 삭제합니다. 그전에 사본이 필요하면 hi@bandal.io로 알려 주세요.
 > - 최신 버전에서는 동기화 메뉴가 사라집니다. 이전 버전에서는 동기화 오류가 보일 수 있으니 업데이트해 주세요.
 > - iPad로 자료를 옮기려면 [iPad] 메뉴의 "iPad로 자료 내보내기"와 "iPad 자료 가져오기"를 써 주세요.
 > - 여러분이 고른 iCloud나 Google Drive로 동기화하는 기능을 준비하고 있습니다. 무료이고, 반달 서버에 자료를 올리지 않으며, 로그인하지 않아도 됩니다.
@@ -80,16 +78,16 @@ where exists (select 1 from public.bandal_records r where r.user_id = u.id)
 
 ### 짧은 판 (배너, SNS)
 
-> Bandal Sync가 {D0}에 종료됩니다. 자료는 각 기기에 그대로 있고, 반달 서버에 남은 동기화 사본은 {D0+30}에 삭제합니다. 자세히 보기: bandal.io/sync
+> Bandal Sync가 2026년 11월 10일에 종료됩니다. 자료는 각 기기에 그대로 있고, 반달 서버에 남은 동기화 사본은 2026년 12월 10일에 삭제합니다. 자세히 보기: bandal.io/sync
 
 ### English
 
 > **Bandal Sync has ended**
 >
-> Bandal Sync, which synced your materials between devices through Bandal's server, ends on {D0}.
+> Bandal Sync, which synced your materials between devices through Bandal's server, ends on November 10, 2026.
 >
 > - Your materials stay on each device. Updating the app does not delete any courses, PDFs, ink, or notes.
-> - Sync copies stored on Bandal's server will be deleted on {D0+30}. If you need your copy before then, email hi@bandal.io.
+> - Sync copies stored on Bandal's server will be deleted on December 10, 2026. If you need your copy before then, email hi@bandal.io.
 > - The latest version removes the sync menu. Older versions may show sync errors, so please update.
 > - To move materials to your iPad, use "iPad로 자료 내보내기" and "iPad 자료 가져오기" in the iPad menu.
 > - We are preparing free sync through your own iCloud or Google Drive. Nothing goes to Bandal's server, and no sign-in is needed.
