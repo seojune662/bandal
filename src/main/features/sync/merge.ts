@@ -89,8 +89,14 @@ function push<K, V>(map: Map<K, V[]>, key: K, item: V): void {
 /** Device names are user text; keep the copy's name one valid path segment. */
 const nameSafe = (text: string): string => text.replace(/[\u0000-\u001f\u007f-\u009f/]/g, '_')
 
+/**
+ * Lower case one code point at a time. `toLowerCase()` on a whole string turns a
+ * word-final Σ into ς where Swift gives σ; per code point both apps agree.
+ */
+const foldCase = (text: string): string => [...text].map(character => character.toLowerCase()).join('')
+
 /** Path-collision key: NFC folder and name compared without case, as APFS and NTFS do. */
-const pathKey = (course: string, folder: string, name: string): string => JSON.stringify([course, folder.toLowerCase(), name.toLowerCase()])
+const pathKey = (course: string, folder: string, name: string): string => JSON.stringify([course, foldCase(folder), foldCase(name)])
 
 function emptyState(blocked: MergedState['blocked']): MergedState {
   return {
@@ -167,8 +173,14 @@ export function merge(files: readonly ParsedFile[]): MergedState {
 
     const where = place(entity)
     if (where === null) continue
-    const bases = new Set(own.filter(version => version.base !== version.hash).map(version => version.base))
-    const losers = [...new Set(own.map(version => version.hash))].filter(hash => hash !== body && !bases.has(hash))
+    // A version stops being a head only when a later version (larger t) started from its text, so a revert
+    // to an old hash stays a head and the LWW winner always is one. Collect each base's latest t once.
+    const latestFrom = new Map<string, number>()
+    for (const version of own) {
+      if (version.base !== null) latestFrom.set(version.base, Math.max(latestFrom.get(version.base) ?? -Infinity, version.t))
+    }
+    const heads = new Set(own.filter(version => !((latestFrom.get(version.hash) ?? -Infinity) > version.t)).map(version => version.hash))
+    const losers = [...heads].filter(hash => hash !== body)
     for (const hash of losers) {
       const id = uuidv5(`${doc}:${hash}`, CONFLICT_COPY_NAMESPACE)
       if (state.docs.has(id)) continue

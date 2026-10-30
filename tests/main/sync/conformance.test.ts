@@ -75,7 +75,7 @@ const fixtures = readdirSync(FIXTURES).filter(name => /^\d\d-/.test(name))
 test('every fixture folder is checked', () => {
   expect(fixtures).toEqual([
     '01-basic', '02-same-id-both-edited', '03-delete-then-edit', '04-note-both-edited', '05-note-attachments',
-    '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input', '10-same-stamp'
+    '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input', '10-same-stamp', '11-note-revert'
   ])
 })
 
