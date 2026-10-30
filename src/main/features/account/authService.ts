@@ -9,15 +9,14 @@
  * BrowserWindow would put us inside Google's "embedded user-agent" ban and
  * give the renderer a view of the auth code.
  *
- * Local access is granted by a durable, account-bound verification receipt.
- * Network/session failure does not revoke that receipt; explicit logout does.
+ * Signing in is optional: local material never depends on the session, so
+ * no state here can lock the workspace.
  *
  * ⚠ NEVER log the callback URL or a token. The URL carries a single-use
  * authorization code; `authCallbackUrl.ts` owns every look at it and
  * `describeAuthCallback()` is the only log-safe rendering.
  */
 
-import type { LocalAccessStore } from './localAccessStore'
 import { accountAvatarUrl } from '../../../shared/account/avatar'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
@@ -41,8 +40,10 @@ import {
   parseAuthCallbackUrl
 } from './authCallbackUrl'
 
+/** Kakao was retired on 2026-10-30; the renderer can no longer ask for it. */
+const SUPPORTED_PROVIDERS: ReadonlySet<string> = new Set<AuthProvider>(['apple', 'google'])
+
 export interface AuthServiceDeps {
-  localAccess?: LocalAccessStore
   /** null when the build has no Supabase keys → 'unconfigured' forever. */
   client: SupabaseClient | null
   /** Broadcast `auth:changed` to every window. */
@@ -62,7 +63,6 @@ export interface AuthService {
   restore(): Promise<AuthState>
   signIn(provider: AuthProvider): Promise<AuthSignInResult>
   linkProvider(provider: AuthProvider): Promise<AuthSignInResult>
-  confirmProfile(userID: string): Promise<AuthState>
   beginAccountDeletion(): { cancel(): void; uncertain(): void }
   /**
    * Completes (or abandons) a sign-in from a `bandal://` deep link.
@@ -118,7 +118,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   const spentCodes = new Set<string>()
 
   function publish(next: AuthState): AuthState {
-    state = { ...next, ...(deps.localAccess ? { localAccess: deps.localAccess.state() } : {}) }
+    state = next
     deps.onChanged(state)
     return state
   }
@@ -177,32 +177,10 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     accessToken: string,
     userId: string,
     userEmail: string | null,
-    metadata?: Record<string, unknown>,
-    interactive = false
+    metadata?: Record<string, unknown>
   ): Promise<AuthState> {
     const version = ++sessionVersion
     const avatarUrl = accountAvatarUrl(metadata)
-    if (deps.localAccess && deps.client) {
-      if (!interactive && deps.localAccess.requiresInteractiveSignIn()) {
-        clearSession(); deps.destroySession()
-        return publish({ ...SIGNED_OUT_AUTH_STATE })
-      }
-      if (!deps.localAccess.canAccept(userId)) {
-        clearSession()
-        unsubscribe?.(); unsubscribe = null
-        deps.destroySession()
-        return failed('profile-mismatch')
-      }
-      try {
-        const { data, error } = await deps.client.auth.getUser(accessToken)
-        if (version !== sessionVersion || signingOut) return state
-        if (!error && data.user?.id === userId) deps.localAccess.acceptVerified(userId)
-        else if (!deps.localAccess.state().allowed) return failed('network')
-      } catch {
-        if (version !== sessionVersion || signingOut) return state
-        if (!deps.localAccess.state().allowed) return failed('network')
-      }
-    }
     token = accessToken
     uid = userId
     try {
@@ -271,11 +249,10 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   }
 
   return {
-    getState: () => ({ ...state, ...(deps.localAccess ? { localAccess: deps.localAccess.state() } : {}) }),
+    getState: () => state,
 
     beginAccountDeletion() {
-      if (deleting || !uid || !deps.localAccess) throw new Error('login-required')
-      const transaction = deps.localAccess.beginDeletion()
+      if (deleting || !uid) throw new Error('login-required')
       deleting = true
       linking = false
       sessionVersion += 1
@@ -283,7 +260,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       return {
         cancel() {
           if (settled) return
-          transaction.cancel()
           settled = true; deleting = false
           publish(state)
         },
@@ -297,16 +273,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       }
     },
 
-    async confirmProfile(userID) {
-      if (uid !== userID || !token || !deps.client || !deps.localAccess) throw new Error('not-signed-in')
-      const { data, error } = await deps.client.auth.getUser(token)
-      if (error || data.user?.id !== userID || uid !== userID) throw new Error('다시 로그인한 뒤 계정 연결을 확인해 주세요.')
-      deps.localAccess.confirm(userID)
-      return publish(state)
-    },
-
     async linkProvider(provider) {
-      if (!deps.client || !uid || deleting) return { ok: false, reason: 'provider' }
+      if (!deps.client || !uid || deleting || !SUPPORTED_PROVIDERS.has(provider)) return { ok: false, reason: 'provider' }
       try {
         const { data, error } = await deps.client.auth.linkIdentity({ provider, options: { redirectTo: AUTH_CALLBACK_URL, skipBrowserRedirect: true } })
         if (error || !data.url) return { ok: false, reason: 'provider' }
@@ -319,10 +287,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     async restore() {
       if (deps.client === null) return state
       if (deleting) return state
-      if (deps.localAccess?.requiresInteractiveSignIn()) {
-        clearSession(); deps.destroySession()
-        return publish({ ...SIGNED_OUT_AUTH_STATE })
-      }
       const version = sessionVersion
       try {
         const { data, error } = await deps.client.auth.getSession()
@@ -349,6 +313,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     },
 
     async signIn(provider) {
+      if (!SUPPORTED_PROVIDERS.has(provider)) return { ok: false, reason: 'provider' } as const
       const client = deps.client
       if (client === null) {
         publish({ ...UNCONFIGURED_AUTH_STATE })
@@ -485,8 +450,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           data.session.access_token,
           data.session.user.id,
           data.session.user.email ?? null,
-          data.session.user.user_metadata,
-          true
+          data.session.user.user_metadata
         )
       } catch (error) {
         if (version !== sessionVersion || signingOut) return
@@ -499,7 +463,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     },
 
     async signOut() {
-      deps.localAccess?.lock()
       deleting = false
       linking = false
       signingOut = true

@@ -1303,8 +1303,8 @@ test('onboarding and plugin management select their own regressions without glob
 })
 
 test('account entry and PDF note flows keep their focused packaged coverage', () => {
-  assert.ok(planChecks(['src/renderer/src/features/account/AccountAccessGate.tsx']).e2e.includes('e2e/accountNotes.spec.ts'))
-  for (const file of ['src/renderer/src/features/account/AccountAccessGate.tsx', 'src/main/features/account/profileManager.ts', 'src/main/ipc/workspaceTransition.ts', 'src/renderer/src/features/documents/workspaceTransition.ts', 'src/preload/index.ts', 'src/shared/ipc/events.ts']) assert.ok(planChecks([file]).e2e.includes('e2e/accountProfileBackup.spec.ts'), file)
+  assert.ok(planChecks(['src/renderer/src/features/settings/AccountPanel.tsx']).e2e.includes('e2e/accountNotes.spec.ts'))
+  for (const file of ['src/renderer/src/features/settings/AccountPanel.tsx', 'src/main/features/account/profileManager.ts', 'src/main/ipc/workspaceTransition.ts', 'src/renderer/src/features/documents/workspaceTransition.ts', 'src/preload/index.ts', 'src/shared/ipc/events.ts']) assert.ok(planChecks([file]).e2e.includes('e2e/accountProfileBackup.spec.ts'), file)
   assert.ok(planChecks(['src/main/features/pdf/pdfNotes.ts']).e2e.includes('e2e/accountNotes.spec.ts'))
   assert.ok(planChecks(['src/renderer/src/features/pdf/useWhiteboardClipDelivery.ts']).e2e.includes('e2e/pdfClip.spec.ts'))
   assert.deepEqual(planChecks(['resources/ipad-bridge/projector-host.cjs']).pythonTests, ['tests/main/ipadSync/test_bridge_scope.py'])

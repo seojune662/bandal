@@ -52,8 +52,6 @@ export interface BandalApp {
  */
 export async function launchBandal(
   options: {
-    /** False exercises the mandatory first-login gate; default is an offline verified fixture. */
-    authenticatedProfile?: boolean
     reuseProfileDir?: string
     keepProfileOnClose?: boolean
     extraSettings?: Partial<Settings>
@@ -72,7 +70,6 @@ export async function launchBandal(
   // Only for a FRESH profile — a relaunch must keep what the first run wrote
   // (lastActiveCourseId above all), or nothing course-scoped can be restored.
   if (options.reuseProfileDir === undefined) {
-    if (options.authenticatedProfile !== false) writeFileSync(join(userDataDir, 'profile-access.json'), JSON.stringify({ version: 1, profileID: '22222222-2222-4222-8222-222222222222', boundUserID: '11111111-1111-4111-8111-111111111111', verifiedAt: '2026-10-17T00:00:00.000Z', locked: false }))
     writeFileSync(
       join(userDataDir, 'settings.json'),
       JSON.stringify(
@@ -130,7 +127,7 @@ export async function launchBandal(
     (await app.waitForEvent('window', { predicate: isMainWindow }))
   await page.waitForLoadState('domcontentloaded')
   // The shell is up once the course rail exists and the theme is applied.
-  await expect(page.locator(options.authenticatedProfile === false ? '.account-access' : 'aside.app-rail--left:visible')).toBeVisible()
+  await expect(page.locator('aside.app-rail--left:visible')).toBeVisible()
   await expect(page.locator('html[data-theme]')).toBeAttached()
   // Unrelated learning specs start at their target form. Never overwrite an
   // existing profile: guide specs must be able to verify persisted dismissal.

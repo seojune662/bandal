@@ -25,8 +25,7 @@ async function installMarketService(bandal: BandalApp): Promise<void> {
     const probe = { calls: [] as any[], workspace: null as any, drafts: [] as any[], purchases: [] as any[], paid: false, corrupt: true, opened: '', uploads: {} as Record<string, number>, nextUpload: 0 }
     ;(globalThis as any).__studyMarketFixture = probe
     const userId = '11111111-1111-4111-8111-111111111111'
-    const auth = { phase: 'signed-in', profile: { id: userId, nickname: '마켓학생', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: 'student@example.test', avatarUrl: null, online: true, errorCode: null,
-      localAccess: { allowed: true, requiresLogin: false, boundUserID: userId, profileID: '22222222-2222-4222-8222-222222222222' } }
+    const auth = { phase: 'signed-in', profile: { id: userId, nickname: '마켓학생', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: 'student@example.test', avatarUrl: null, online: true, errorCode: null }
     ipcMain.removeHandler('auth:getState'); ipcMain.handle('auth:getState', () => auth)
     const sync = (ipcMain as any)._invokeHandlers.get('agent:syncWorkspace')
     ipcMain.removeHandler('agent:syncWorkspace'); ipcMain.handle('agent:syncWorkspace', (event, input) => { probe.workspace = input; return sync(event, input) })

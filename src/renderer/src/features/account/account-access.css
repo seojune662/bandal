@@ -1,9 +1,0 @@
-.account-access { min-height:100dvh; display:grid; place-items:center; padding:40px 24px; background:var(--bg-base); color:var(--text-primary); -webkit-app-region:no-drag; }
-.account-access__card { width:min(100%,460px); display:flex; flex-direction:column; gap:16px; }
-.account-access__card h1 { margin:0; font-size:28px; }
-.account-access__card p { margin:0; line-height:1.7; }
-.account-access__moon { font-size:44px; }
-.account-access__providers,.account-access__backup { display:grid; gap:10px; }
-.account-access__backup { margin-top:24px; padding-top:20px; border-top:1px solid var(--border-default); }
-.account-access__card button { min-height:44px; padding:10px 16px; border-radius:10px; border:1px solid var(--border-default); background:var(--bg-surface); color:var(--text-primary); cursor:pointer; }
-.account-access__card button:disabled { opacity:.5; cursor:wait; }

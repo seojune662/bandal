@@ -21,6 +21,8 @@ export interface RuntimeSyncState {
   writeAllowed?: boolean; blockedReason?: string | null; retryAt?: string | null
   lastSyncedAt?: string | null; storageUsedBytes?: number; storageLimitBytes?: number
   message?: string; error?: string | null
+  /** false once the retired Supabase account sync is switched off (the default). */
+  available?: boolean
 }
 export interface SyncConflictVersion {
   exists: boolean; deleted: boolean; title?: string; updatedAt?: string

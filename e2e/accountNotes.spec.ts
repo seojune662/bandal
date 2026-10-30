@@ -5,26 +5,22 @@ import { join, relative } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
 import { launchBandal, createCourse } from './helpers/launch'
 
-test('first login blocks workspace IPC while leaving full backup available', async () => {
-  const bandal = await launchBandal({ authenticatedProfile: false })
+test('the workspace opens without signing in', async () => {
+  const bandal = await launchBandal()
   try {
-    await expect(bandal.page.getByRole('heading', { name: '반달에 로그인' })).toBeVisible()
-    if (process.env['BANDAL_E2E_EXECUTABLE']) {
-      // Release installers must carry both login settings. Local development
-      // can still exercise the backup gate without provider credentials.
-      const phase = await bandal.page.evaluate(async () => (await window.bandal.invoke('auth:getState', {})).phase)
-      expect(phase).not.toBe('unconfigured')
-    }
-    await expect(bandal.page.getByRole('button', { name: '로그인 전 자료 백업·내보내기' })).toBeVisible()
-    await expect(bandal.page.locator('aside.app-rail--left')).toHaveCount(0)
-    const error = await bandal.page.evaluate(async () => {
-      try { await window.bandal.invoke('courses:list', {}); return null } catch (error) { return String(error) }
-    })
-    expect(error).toContain('login-required')
+    await expect(bandal.page.getByRole('heading', { name: '반달에 로그인' })).toHaveCount(0)
+    const state = await bandal.page.evaluate(async () => ({
+      phase: (await window.bandal.invoke('auth:getState', {})).phase,
+      courses: await window.bandal.invoke('courses:list', {})
+    }))
+    expect(state.phase).not.toBe('signed-in')
+    expect(Array.isArray(state.courses)).toBe(true)
+    // Release installers must still carry the login settings: signing in is optional, not removed.
+    if (process.env['BANDAL_E2E_EXECUTABLE']) expect(state.phase).not.toBe('unconfigured')
   } finally { await bandal.close() }
 })
 
-test('offline verified profile creates a ruled PDF note and edits its pages', async ({}, testInfo) => {
+test('offline profile creates a ruled PDF note and edits its pages', async ({}, testInfo) => {
   const bandal = await launchBandal()
   // The test-runner trace does not include a separately launched Electron
   // context. Keep its real DOM/screenshots and bounded process output so an

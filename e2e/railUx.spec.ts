@@ -52,8 +52,7 @@ async function pushUpdate(bandal: BandalApp, status: UpdateStatus): Promise<void
 async function signInFixture(bandal: BandalApp): Promise<void> {
   await bandal.app.evaluate(({ ipcMain }) => {
     const userId = '11111111-1111-4111-8111-111111111111'
-    const profile = { phase: 'signed-in', profile: { id: userId, nickname: '서준', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: 'student@example.test', avatarUrl: null, online: true, errorCode: null,
-      localAccess: { allowed: true, requiresLogin: false, boundUserID: userId, profileID: '22222222-2222-4222-8222-222222222222' } }
+    const profile = { phase: 'signed-in', profile: { id: userId, nickname: '서준', avatarColor: '#64748b', avatarEmoji: '🌙' }, email: 'student@example.test', avatarUrl: null, online: true, errorCode: null }
     const probe = { calls: 0, fail: true, release: null as (() => void) | null }
     ;(globalThis as any).__railSignOut = probe
     ;(globalThis as any).__railAuth = profile

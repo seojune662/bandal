@@ -20,6 +20,14 @@ interface Dependencies {
 }
 let runtime: IPadCompanion | undefined
 const AUTO_ID = 'ipad-companion-auto'
+const LEGACY_SYNC_RETIRED = '계정 동기화는 종료됐습니다. 기기 간 자료 이동은 iPad 자료 내보내기·가져오기를 이용해 주세요.'
+
+/**
+ * Supabase account sync is retired (2026-10-30): user material must not reach
+ * Bandal's server. The code stays for support and data recovery only and runs
+ * when BANDAL_LEGACY_IPAD_SYNC=1. `.bandalpack` transfer is local and stays on.
+ */
+export const legacyIPadSyncEnabled = (): boolean => process.env['BANDAL_LEGACY_IPAD_SYNC'] === '1'
 
 /** This menu is available without granting renderer/webview access to tokens. */
 export function iPadCompanionMenu(): MenuItemConstructorOptions {
@@ -28,9 +36,13 @@ export function iPadCompanionMenu(): MenuItemConstructorOptions {
     void action(runtime).catch(error => dialog.showMessageBox({ type: 'error', title: 'iPad 연결',
       message: error instanceof Error ? error.message : '작업을 완료하지 못했습니다.' }))
   }
-  return { label: 'iPad', submenu: [
+  const transfer: MenuItemConstructorOptions[] = [
     { label: 'iPad로 자료 내보내기…', click: () => run(service => service.exportPack()) },
-    { label: 'iPad 자료 가져오기…', click: () => run(service => service.importPack()) },
+    { label: 'iPad 자료 가져오기…', click: () => run(service => service.importPack()) }
+  ]
+  if (!legacyIPadSyncEnabled()) return { label: 'iPad', submenu: transfer }
+  return { label: 'iPad', submenu: [
+    ...transfer,
     { type: 'separator' },
     { id: AUTO_ID, label: '계정으로 자동 동기화', type: 'checkbox', checked: runtime?.enabled ?? false,
       click: item => run(service => service.setEnabled(item.checked)) },
@@ -77,7 +89,7 @@ export class IPadCompanion {
   state(): RuntimeSyncState {
     const hasPending = this.deps.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pdf_pending_mutations'").get()
     const pending = hasPending ? (this.deps.db.prepare('SELECT count(*) AS count FROM pdf_pending_mutations WHERE resolved_at IS NULL').get() as { count: number }).count : 0
-    return { ...this.report, conflicts: Math.max(this.report.conflicts, pending), enabled: this.enabled, message: this.status }
+    return { ...this.report, conflicts: Math.max(this.report.conflicts, pending), enabled: this.enabled, message: this.status, available: legacyIPadSyncEnabled() }
   }
   async conflicts(): Promise<RuntimeSyncConflict[]> {
     const reports = await this.perform('conflicts', this.exchangeFor(this.boundUserID))
@@ -104,7 +116,7 @@ export class IPadCompanion {
     try {
       const preferences = JSON.parse(readFileSync(join(this.directory, 'preferences.json'), 'utf8'))
       this.boundUserID = typeof preferences.boundUserID === 'string' ? preferences.boundUserID : null
-      this.enabled = preferences.enabled === true && this.boundUserID !== null
+      this.enabled = legacyIPadSyncEnabled() && preferences.enabled === true && this.boundUserID !== null
     } catch { /* First launch; no automatic upload without an explicit account binding. */ }
     try {
       const saved = JSON.parse(readFileSync(join(this.directory, 'status.json'), 'utf8'))
@@ -149,6 +161,7 @@ export class IPadCompanion {
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
+    if (enabled && !legacyIPadSyncEnabled()) throw new Error(LEGACY_SYNC_RETIRED)
     if (enabled) await this.session()
     this.enabled = enabled
     this.suspended = false
@@ -212,6 +225,7 @@ export class IPadCompanion {
   }
 
   async synchronize(force = false): Promise<void> {
+    if (!legacyIPadSyncEnabled()) throw new Error(LEGACY_SYNC_RETIRED)
     if (!this.enabled) throw new Error('계정 화면에서 모든 과목 동기화에 먼저 동의해 주세요.')
     if (this.suspended && !force) return
     if (force) this.suspended = false

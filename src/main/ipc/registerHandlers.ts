@@ -15,7 +15,7 @@ import { createPhotoPicker } from '../features/externalSources/photoPicker'
 import { resolvePdfClipSource, isReferencedClipRevision } from '../features/pdf/pdfClipSource'
 import { createPdfNotesService } from '../features/pdf/pdfNotes'
 import { createProfileManager } from '../features/account/profileManager'
-import { installIPadCompanion } from '../features/ipadSync/runtime'
+import { installIPadCompanion, legacyIPadSyncEnabled } from '../features/ipadSync/runtime'
 import { createStudyMarketClient } from '../features/studyMarket/client'
 import { createStudyMarketBundles } from '../features/studyMarket/bundles'
 import { registerStudyMarketHandlers } from './studyMarketHandlers'
@@ -315,11 +315,11 @@ export interface RegisterHandlersDeps {
  * context, then rethrows so the renderer receives a rejected promise.
  */
 const registered = new Set<IpcChannel>()
-let localAccessAllowed: () => boolean = () => false
 let profileBusy: () => boolean = () => false
 let transitionCommitting: () => boolean = () => false
 let localContentChanged: () => void = () => {}
-const beforeLogin = (channel: string): boolean => channel.startsWith('auth:') || channel.startsWith('profile:') || channel.startsWith('update:') || ['workspace:transitionReady', 'settings:get', 'window:getState', 'app:diagnostics', 'app:openLogs', 'feedback:send'].includes(channel)
+// Profile backup/switch keeps the workspace busy; these channels stay usable meanwhile.
+const availableWhileProfileBusy = (channel: string): boolean => channel.startsWith('auth:') || channel.startsWith('profile:') || channel.startsWith('update:') || ['workspace:transitionReady', 'settings:get', 'window:getState', 'app:diagnostics', 'app:openLogs', 'feedback:send'].includes(channel)
 const changesSyncContent = (channel: string): boolean => /^(courses|courseGroups|materials|notes|annotations|drawings|pdfNotes|pdf|canvas):/.test(channel) && /:(create|write|update|delete|remove|rename|move|reorder|restructure|migrateLegacy|import|restore|set)/.test(channel)
 
 /**
@@ -348,7 +348,7 @@ function handle<K extends IpcChannel>(
   ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
     assertAppRendererSender(_event)
     if (transitionCommitting() && !['workspace:transitionReady', 'auth:getState', 'settings:get', 'window:getState', 'runtime:syncState', 'update:status', 'app:diagnostics', 'app:openLogs'].includes(channel)) throw new Error('자료 저장과 계정 전환이 진행 중입니다. 잠시 후 다시 시도해 주세요.')
-    if (!beforeLogin(channel) && (!localAccessAllowed() || profileBusy())) throw new Error(profileBusy() ? '자료 백업 중입니다. 잠시 후 다시 시도해 주세요.' : 'login-required')
+    if (!availableWhileProfileBusy(channel) && profileBusy()) throw new Error('자료 백업 중입니다. 잠시 후 다시 시도해 주세요.')
     const start = performance.now()
     try {
       const result = await fn(req, _event)
@@ -655,7 +655,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   setMaterialMediaHandler(
     createMediaProtocolHandler({
       absolutePathFor: async (courseId, relPath, revision) => {
-        if (!localAccessAllowed()) throw new Error('login-required')
         if (!revision) return materialsRepo.absolutePathForAsync(courseId, relPath)
         try { await materialsRepo.absolutePathForAsync(courseId, relPath) }
         catch (error) { if (!isReferencedClipRevision(db, courseId, relPath, revision)) throw error }
@@ -3763,14 +3762,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     if (!req || typeof req.requestId !== 'string' || !/^[0-9a-f-]{36}$/.test(req.requestId) || typeof req.ok !== 'boolean') throw new Error('저장 응답이 올바르지 않습니다.')
     return { ok: transitions.acknowledge(event.sender.id, req.requestId, req.ok) }
   })
-  const account = createAccountRuntime(state => { broadcast('auth:changed', state); if (state.phase === 'signed-in' && state.localAccess?.allowed) ipadCompanion.resume() })
-  localAccessAllowed = () => account.auth().getState().localAccess?.allowed === true
+  const account = createAccountRuntime(state => { broadcast('auth:changed', state); if (state.phase === 'signed-in') ipadCompanion.resume() })
   const ipadCompanion = installIPadCompanion({
-    canAccess: () => localAccessAllowed() && !profileBusy(),
+    canAccess: () => !profileBusy(),
     profileBusy: () => profileBusy(),
     db,
     userDataPath: deps.userDataPath ?? app.getPath('userData'),
-    getClient: () => localAccessAllowed() && account.auth().userId() === account.auth().getState().localAccess?.boundUserID ? account.getClient() : null,
+    getClient: () => account.getClient(),
     changed: courseIds => {
       broadcast('courses:changed', {})
       broadcast('board:changed', { courseId: null })
@@ -3797,6 +3795,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('runtime:syncConflicts', () => ipadCompanion.conflicts())
   handle('runtime:syncResolveConflict', req => ipadCompanion.resolveConflict(req.id, req.choice))
   const billingState = async () => {
+    if (!legacyIPadSyncEnabled()) throw new Error('반달 데스크톱은 구독을 판매하지 않습니다.')
     const client = account.getClient()
     if (!client || !account.auth().userId()) throw new Error('login-required')
     const [subscription, sync] = await Promise.all([client.rpc('bandal_subscription_status'), client.rpc('bandal_sync_status')])
@@ -3831,7 +3830,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // auth
   handle('auth:getState', () => account.auth().getState())
   handle('auth:signIn', (req) => account.auth().signIn(req.provider))
-  handle('auth:confirmProfile', req => account.auth().confirmProfile(req.userID))
   handle('auth:linkProvider', req => account.auth().linkProvider(req.provider))
   handle('auth:deleteAccount', req => transitions.run(async () => {
     if (req.confirm !== true) throw new Error('계정 삭제 확인이 필요합니다.')
@@ -3866,13 +3864,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     } catch (error) {
       if (!requested) deletion.cancel()
       else deletion.uncertain()
-      if (account.auth().getState().localAccess?.allowed) ipadCompanion.resume()
+      ipadCompanion.resume()
       throw error
     }
   }))
   handle('auth:signOut', () => transitions.run(async () => {
     try { await ipadCompanion.pauseAndDrain(); await account.auth().signOut(); return OK }
-    finally { if (account.auth().getState().localAccess?.allowed) ipadCompanion.resume() }
+    finally { ipadCompanion.resume() }
   }))
   handle('auth:setNickname', (req) => account.auth().setNickname(req.nickname))
   // -- auto update ----------------------------------------------------------
@@ -3886,7 +3884,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     updater.cancelInstall()
     profiles.cancelSwitch()
     transitions.release()
-    if (localAccessAllowed()) ipadCompanion.resume()
+    ipadCompanion.resume()
   })
   app.on('will-quit', () => {
     updater.dispose()
@@ -3899,9 +3897,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     try {
       await ipadCompanion.pauseAndDrain()
       const ok = updater.install()
-      if (!ok && localAccessAllowed()) ipadCompanion.resume()
+      if (!ok) ipadCompanion.resume()
       return { ok }
-    } catch (error) { if (localAccessAllowed()) ipadCompanion.resume(); throw error }
+    } catch (error) { ipadCompanion.resume(); throw error }
   }, result => result.ok))
 
   // -- feedback -------------------------------------------------------------

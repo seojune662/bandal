@@ -90,7 +90,7 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
   signOut: async () => {
     const current = generation
     await invoke('auth:signOut', {})
-    if (current === generation) set({ auth: { ...get().auth, ...(get().auth.localAccess ? { localAccess: { ...get().auth.localAccess!, allowed: false, requiresLogin: true } } : {}), phase: 'signed-out', profile: null, email: null, avatarUrl: null, errorCode: null }, lastSignInResult: null })
+    if (current === generation) set({ auth: { ...get().auth, phase: 'signed-out', profile: null, email: null, avatarUrl: null, errorCode: null }, lastSignInResult: null })
   },
 
   setNickname: async (nickname) => {
