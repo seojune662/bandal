@@ -13,7 +13,7 @@
 | 2 | 앱을 릴리스한다(태그 → `release.yml`). 설치 파일과 업데이트 피드가 올라왔는지 확인한다 | 개발 | `docs/release.md` |
 | 3 | 사전 확인 쿼리를 실행하고 결과를 이 문서 끝에 적는다 | 사람 | 아래 "사전 확인" |
 | 4 | SQL Editor에서 `supabase/operations/sync-write-block.sql` 파일 전체를 실행한다. 오류 없이 끝나면 차단이 확인된 것이다 | 사람 | SQL 파일 |
-| 5 | bandal_web PR을 머지하고 Vercel 배포를 확인한다. `/sync`, `/pricing`, `/billing`을 열어 본다 | 사람 | seojune662/bandal_web#3. 머지 전에 `src/content/sync.ts`의 `SYNC_END_DATE`에 D0를 넣는다. 넣지 않으면 프로덕션 빌드가 실패한다 |
+| 5 | bandal_web PR을 머지하고 Vercel 배포를 확인한다. `/sync`, `/pricing`, `/billing`을 열어 본다 | 사람 | seojune662/bandal_web#3(날짜 반영됨). main에 머지하면 곧바로 Vercel 프로덕션 배포가 된다 |
 | 6 | 공지를 올린다(웹사이트, 커뮤니티). 3단계에서 사본 보유자가 있었다면 그들에게 메일을 보낸다 | 사람 | 아래 "공지 문안" |
 
 - 2와 4는 같은 날 한다. 새 버전은 서버에 올리지 않으므로 둘의 순서는 상관없다.
