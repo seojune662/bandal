@@ -1,5 +1,7 @@
 # 배포와 자동 업데이트
 
+v0.92.9는 Gmail 연결의 토큰 교환에 Google 데스크톱 클라이언트 시크릿을 포함해 `client_secret is missing.` 실패를 수정한다. 릴리스 빌드는 Actions secret `MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET`을 번들에 넣는다. 검증과 공개 결과는 [`release-notes/v0.92.9.md`](release-notes/v0.92.9.md)를 따른다.
+
 v0.92.8은 자료 미리보기 목록·폴더 탐색·넓게 보기와 본문 검색을 추가한다. 미공개 v0.92.6·v0.92.7의 설치본 검사에서 발견한 AI 연결 상태 의존 검사를 보완하고, 닫힌 자료 목록 갱신이 작업 화면 전체를 가로 스크롤하는 문제를 수정한다. 검증과 공개 결과는 [`release-notes/v0.92.8.md`](release-notes/v0.92.8.md)를 따른다.
 
 v0.92.8은 2026-10-29 공개했다. 앱 커밋 `7cc23b8`의 CI 1,553개 단위 검사와 macOS·Windows 패키지 E2E 각각 97개가 통과했다. 공개 자산 12개·자동 업데이트 피드·macOS 서명과 공증 및 홈페이지 버전 반영을 확인했다.
