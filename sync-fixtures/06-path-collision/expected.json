@@ -1,0 +1,105 @@
+{
+  "fixture": "06-path-collision",
+  "spec": "2.2",
+  "blocked": null,
+  "courses": {
+    "c0000000-0000-4000-8000-000000000001": {
+      "name": "선형대수학",
+      "sort": 0,
+      "color": "blue",
+      "archived": false,
+      "alive": true
+    }
+  },
+  "docs": {
+    "d5000000-0000-4000-8000-000000000005": {
+      "course_id": "c0000000-0000-4000-8000-000000000001",
+      "type": "pdf",
+      "name": "1주차.pdf",
+      "rel_path": "강의",
+      "pdf_sha256": "b874efadd08d8148d022b60add6a0b3e942654ed646871f2c984c9c9051fb765",
+      "alive": false
+    },
+    "d6000000-0000-4000-8000-000000000001": {
+      "course_id": "c0000000-0000-4000-8000-000000000001",
+      "type": "pdf",
+      "name": "1주차.pdf",
+      "rel_path": "강의",
+      "pdf_sha256": "b874efadd08d8148d022b60add6a0b3e942654ed646871f2c984c9c9051fb765",
+      "alive": true
+    },
+    "d9000000-0000-4000-8000-000000000004": {
+      "course_id": "c0000000-0000-4000-8000-000000000001",
+      "type": "pdf",
+      "name": "1주차.pdf",
+      "rel_path": "실습",
+      "pdf_sha256": "b874efadd08d8148d022b60add6a0b3e942654ed646871f2c984c9c9051fb765",
+      "alive": true
+    },
+    "da000000-0000-4000-8000-000000000006": {
+      "course_id": "c0000000-0000-4000-8000-000000000001",
+      "type": "md",
+      "name": "Notes.md",
+      "rel_path": "Lecture",
+      "md_hash": "365d0b84ae63c2afc293dedd2b00bdf0dc8d6ef70c9297d90f9e5682ab0d72ee",
+      "alive": true
+    },
+    "d7000000-0000-4000-8000-000000000002": {
+      "course_id": "c0000000-0000-4000-8000-000000000001",
+      "type": "pdf",
+      "name": "1주차.PDF",
+      "rel_path": "강의",
+      "pdf_sha256": "b874efadd08d8148d022b60add6a0b3e942654ed646871f2c984c9c9051fb765",
+      "alive": true
+    },
+    "d8000000-0000-4000-8000-000000000003": {
+      "course_id": "c0000000-0000-4000-8000-000000000001",
+      "type": "pdf",
+      "name": "1주차.pdf",
+      "rel_path": "강의",
+      "pdf_sha256": "b874efadd08d8148d022b60add6a0b3e942654ed646871f2c984c9c9051fb765",
+      "alive": true
+    },
+    "db000000-0000-4000-8000-000000000007": {
+      "course_id": "c0000000-0000-4000-8000-000000000001",
+      "type": "md",
+      "name": "notes.md",
+      "rel_path": "lecture",
+      "md_hash": "4a28fc250c09e1f28c9f37486fca6db3c7a4ee707373216f6f7bd62ade5d9330",
+      "alive": true
+    }
+  },
+  "ink": {},
+  "notes": {
+    "da000000-0000-4000-8000-000000000006": {
+      "md_hash": "365d0b84ae63c2afc293dedd2b00bdf0dc8d6ef70c9297d90f9e5682ab0d72ee",
+      "file": "notes/da000000-0000-4000-8000-000000000006/aaaaaaaa-0000-4000-8000-000000000001-00000002.md"
+    },
+    "db000000-0000-4000-8000-000000000007": {
+      "md_hash": "4a28fc250c09e1f28c9f37486fca6db3c7a4ee707373216f6f7bd62ade5d9330",
+      "file": "notes/db000000-0000-4000-8000-000000000007/bbbbbbbb-0000-4000-8000-000000000002-00000001.md"
+    }
+  },
+  "conflict_copies": [],
+  "renames": [
+    {
+      "id": "d7000000-0000-4000-8000-000000000002",
+      "name": "1주차 (d700).PDF"
+    },
+    {
+      "id": "d8000000-0000-4000-8000-000000000003",
+      "name": "1주차 (d800).pdf"
+    },
+    {
+      "id": "db000000-0000-4000-8000-000000000007",
+      "name": "notes (db00).md"
+    }
+  ],
+  "waiting": {
+    "docs": [],
+    "ink": [],
+    "copies": []
+  },
+  "ignored": [],
+  "errors": []
+}

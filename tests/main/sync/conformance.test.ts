@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { importInkObject, toInkObject, type AssetRef } from '../../../src/main/features/sync/adapter'
-import { readRoot, type ParsedFile, type RemoteFile } from '../../../src/main/features/sync/format'
+import { readRoot, type InkObject, type ParsedFile, type RemoteFile } from '../../../src/main/features/sync/format'
 import { isAlive, merge, type Entity, type MergedState } from '../../../src/main/features/sync/merge'
 import { diameterFactorsV5 } from '../../../src/shared/inkV5'
 
@@ -25,11 +25,14 @@ function project(state: MergedState): Record<string, unknown> {
   const ink: Record<string, Record<string, Record<string, unknown>>> = {}
   for (const [id, { value: { doc, object } }] of state.ink) ((ink[doc] ??= {})[String(object.page)] ??= {})[id] = object
   return {
+    blocked: state.blocked,
     courses: Object.fromEntries([...state.courses].map(([id, entity]) => [id, { ...pick(entity, COURSE_FIELDS), alive: isAlive(entity) }])),
     docs: Object.fromEntries([...state.docs].map(([id, entity]) => [id, { ...pick(entity, DOC_FIELDS), alive: isAlive(entity) }])),
     ink,
     notes: Object.fromEntries([...state.notes].map(([id, note]) => [id, { md_hash: note.hash, file: note.file }])),
-    conflict_copies: state.conflictCopies
+    conflict_copies: state.conflictCopies,
+    renames: state.renames,
+    waiting: state.waiting
   }
 }
 
@@ -45,10 +48,35 @@ function shuffled<T>(items: readonly T[], seed: number): T[] {
   return result
 }
 
+/** Import into a local row, then export it again, as the engine would on the next change. */
+function roundTrip(object: InkObject): InkObject {
+  const result = importInkObject(object, asset => `images/${asset.sha256}.${asset.ext}`)
+  if (result.action === 'delete') {
+    const row = { id: object.id, page: object.page, kind: 'ink', data_json: '{}', style_json: '{}', created_at: result.deleted_at, updated_at: result.deleted_at, deleted_at: result.deleted_at }
+    return toInkObject(row, object.t)!
+  }
+  if (result.action !== 'upsert') throw new Error(`${object.id} was not imported: ${result.reason}`)
+  const { fields } = result, image = object.data?.image as AssetRef | undefined
+  const row = {
+    id: object.id, page: fields.page, kind: fields.kind, data_json: JSON.stringify(fields.data), style_json: JSON.stringify(fields.style),
+    created_at: fields.created_at, updated_at: fields.updated_at, deleted_at: null
+  }
+  return toInkObject(row, object.t, image && { sha256: image.sha256, ext: image.ext })!
+}
+
+/** Every page coordinate an object reaches, box edges included. */
+function geometry(object: InkObject): number[] {
+  const points = (object.data?.points ?? []) as { x: number; y: number }[], box = object.data?.box as { x: number; y: number; width: number; height: number } | undefined
+  return [...points.flatMap(point => [point.x, point.y]), ...(box ? [box.x, box.y, box.x + box.width, box.y + box.height] : [])]
+}
+
 const fixtures = readdirSync(FIXTURES).filter(name => /^\d\d-/.test(name))
 
 test('every fixture folder is checked', () => {
-  expect(fixtures).toEqual(['01-basic', '02-same-id-both-edited', '03-delete-then-edit', '04-note-both-edited'])
+  expect(fixtures).toEqual([
+    '01-basic', '02-same-id-both-edited', '03-delete-then-edit', '04-note-both-edited', '05-note-attachments',
+    '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input'
+  ])
 })
 
 describe.each(fixtures)('sync-fixtures/%s', name => {
@@ -56,10 +84,8 @@ describe.each(fixtures)('sync-fixtures/%s', name => {
   const { parsed, ignored, errors } = readRoot(loadRoot(join(FIXTURES, name, 'root')))
 
   test('root/ parses and merges to expected.json', () => {
-    expect([fixture, spec]).toEqual([name, '2.1'])
-    const state = merge(parsed)
-    expect(state.blocked).toBeNull()
-    expect({ ...project(state), ignored, errors }).toEqual(expected)
+    expect([fixture, spec]).toEqual([name, '2.2'])
+    expect({ ...project(merge(parsed)), ignored, errors }).toEqual(expected)
   })
 
   test('arrival order and repeated files do not change the result (M14, M15)', () => {
@@ -72,20 +98,11 @@ describe.each(fixtures)('sync-fixtures/%s', name => {
 
   test('the SyncAdapter round-trips every winning drawing', () => {
     for (const { value: { object } } of merge(parsed).ink.values()) {
-      const result = importInkObject(object, asset => `images/${asset.sha256}.${asset.ext}`)
-      if (result.action === 'delete') {
-        const tombstone = { id: object.id, page: object.page, kind: 'ink', data_json: '{}', style_json: '{}', created_at: result.deleted_at, updated_at: result.deleted_at, deleted_at: result.deleted_at }
-        expect(toInkObject(tombstone, object.t)).toEqual(object)
-        continue
-      }
-      if (result.action !== 'upsert') throw new Error(`${object.id} was not imported: ${result.reason}`)
-      const { fields } = result, image = object.data?.image as AssetRef | undefined
-      const row = {
-        id: object.id, page: fields.page, kind: fields.kind,
-        data_json: JSON.stringify(fields.data), style_json: JSON.stringify(fields.style),
-        created_at: fields.created_at, updated_at: fields.updated_at, deleted_at: null
-      }
-      expect(toInkObject(row, object.t, image && { sha256: image.sha256, ext: image.ext })).toEqual(object)
+      const once = roundTrip(object)
+      // Import only ever clamps into the page, and that settles in one pass, so nothing is re-exported for it.
+      expect(roundTrip(once)).toEqual(once)
+      if (name !== '07-out-of-range-coordinates') expect(once).toEqual(object)
+      else expect(geometry(once).every(value => value >= 0 && value <= 1)).toBe(true)
     }
   })
 })
