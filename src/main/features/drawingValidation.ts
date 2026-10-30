@@ -100,26 +100,29 @@ function assertImage(value: unknown): DrawingImageSource {
     relPath: image.relPath,
     label: image.label
   }
+  const size =
+    typeof image.widthPx === 'number' &&
+    Number.isInteger(image.widthPx) &&
+    image.widthPx > 0 &&
+    typeof image.heightPx === 'number' &&
+    Number.isInteger(image.heightPx) &&
+    image.heightPx > 0
+      ? { widthPx: image.widthPx, heightPx: image.heightPx }
+      : null
   if (image.storage !== undefined || image.assetId !== undefined) {
     if (
       image.storage !== 'shared' ||
       typeof image.assetId !== 'string' ||
       image.assetId.trim() === '' ||
-      typeof image.widthPx !== 'number' ||
-      !Number.isInteger(image.widthPx) ||
-      image.widthPx <= 0 ||
-      typeof image.heightPx !== 'number' ||
-      !Number.isInteger(image.heightPx) ||
-      image.heightPx <= 0
+      size === null
     ) {
       throw new ValidationError('shared data.image needs assetId and pixel dimensions')
     }
     result.storage = 'shared'
     result.assetId = image.assetId
-    result.widthPx = image.widthPx
-    result.heightPx = image.heightPx
   }
-  return result
+  // Course images keep their size too: the renderer sends it to avoid a layout jump, and sync carries it.
+  return size === null ? result : { ...result, ...size }
 }
 
 function assertClip(value: unknown): DrawingClipSource {
