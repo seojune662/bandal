@@ -14,6 +14,16 @@
 
 1. Google Cloud 프로젝트에서 Gmail API를 활성화하고 OAuth 동의 화면을 구성한다.
 2. Desktop app 유형 클라이언트를 만든다. 로컬 개발은 `.env.local`, 배포는 Actions secrets에 `MAIN_VITE_GMAIL_CLIENT_ID`와 `MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET`을 설정한다. Google 토큰 엔드포인트는 PKCE를 써도 데스크톱 클라이언트의 `client_secret`을 요구하므로 앱에 포함한다. 설치형 앱의 이 값은 Google이 기밀로 취급하지 않는다. 서버용 비밀키나 Supabase service-role 키도 넣으면 안 된다.
+   - 값 넣는 방법. 시크릿은 커밋하지 않고 대화나 문서에 붙여 넣지 않는다.
+
+     ```sh
+     # 로컬 빌드: git이 무시하는 .env.development.local과 .env.production.local을 편집기로 열어 이 줄을 넣는다
+     MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET=<콘솔의 보안 비밀>
+     # 배포 빌드: 값을 묻는 프롬프트에 붙여 넣는다(셸 기록에 남지 않음)
+     gh secret set MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET -R seojune662/bandal
+     ```
+
+     콘솔에서 기존 값을 확인할 수 없으면 "보안 비밀 추가"로 새 값을 만든다. 새 값이 배포된 뒤에 옛 값을 사용 중지한다.
 3. `gmail.modify` 권한은 제한된 Gmail 권한이다. 개발 단계에서는 등록된 테스트 사용자로 확인하고, 일반 공개 전에 Google의 요구 검증 및 학교 Workspace 정책을 확인한다.
 4. 실제 계정에서 연결·갱신·해제·재연결·읽기·답장·보관을 확인한 뒤에만 Actions variable `MAIN_VITE_GMAIL_VERIFIED=true`를 설정한다. 이 값은 검증을 대신하지 않는다.
 
