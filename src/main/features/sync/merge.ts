@@ -11,6 +11,9 @@ export interface Register<T = unknown> {
   value: T
   t: number
   device: string
+  /** File seq and position in that file's array: they settle a same-stamp tie. */
+  seq: number
+  index: number
 }
 
 export interface Entity {
@@ -43,10 +46,7 @@ export interface MergedState {
   conflictCopies: ConflictCopy[]
   /** `doc.upsert` renames that settle path collisions; every device computes the same list. */
   renames: { id: string; name: string }[]
-  /**
-   * Not appliable yet: a referenced course, document, PDF, asset or note file is
-   * missing. A conflict copy also waits for its writer's device file.
-   */
+  /** Not appliable yet: a referenced course, document, PDF, asset or note file is missing. */
   waiting: { docs: string[]; ink: string[]; copies: string[] }
 }
 
@@ -55,19 +55,22 @@ interface NoteVersion {
   base: string | null
   t: number
   device: string
+  seq: number
+  index: number
 }
 
 type NoteFile = Extract<ParsedFile, { kind: 'note' }>
 
 /**
  * Larger t, then larger device_id. A same-stamp tie only comes from a writer
- * breaking the spec; comparing the JSON text keeps even that order-independent.
+ * breaking the spec; the later write wins: larger file seq, then later in the file.
  */
 function beats(next: Register, current: Register | null | undefined): boolean {
   if (!current) return true
   if (next.t !== current.t) return next.t > current.t
   if (next.device !== current.device) return next.device > current.device
-  return JSON.stringify(next.value) > JSON.stringify(current.value)
+  if (next.seq !== current.seq) return next.seq > current.seq
+  return next.index > current.index
 }
 
 export const isAlive = (entity: Entity | undefined): boolean => entity !== undefined && entity.deleted?.value !== true
@@ -86,6 +89,9 @@ function push<K, V>(map: Map<K, V[]>, key: K, item: V): void {
 /** Device names are user text; keep the copy's name one valid path segment. */
 const nameSafe = (text: string): string => text.replace(/[\u0000-\u001f\u007f-\u009f/]/g, '_')
 
+/** Path-collision key: NFC folder and name compared without case, as APFS and NTFS do. */
+const pathKey = (course: string, folder: string, name: string): string => JSON.stringify([course, folder.toLowerCase(), name.toLowerCase()])
+
 function emptyState(blocked: MergedState['blocked']): MergedState {
   return {
     blocked, devices: new Map(), courses: new Map(), docs: new Map(), ink: new Map(), notes: new Map(),
@@ -99,6 +105,7 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   if (root.format !== SYNC_FORMAT) return emptyState(root.format > SYNC_FORMAT ? 'update-required' : 'unsupported-format')
 
   const state = emptyState(null), waitingDocs = new Set<string>()
+  const copies: (Omit<ConflictCopy, 'file'> & { file: string | null })[] = []
   const present = new Set<string>(), versions = new Map<string, NoteVersion[]>(), noteFiles = new Map<string, NoteFile[]>()
 
   for (const file of files) {
@@ -106,29 +113,30 @@ export function merge(files: readonly ParsedFile[]): MergedState {
     else if (file.kind === 'pdf' || file.kind === 'asset') present.add(file.path)
     else if (file.kind === 'note') push(noteFiles, file.doc, file)
     else if (file.kind === 'ink') {
-      for (const object of file.objects) {
-        const version = { value: { doc: file.doc, object }, t: object.t, device: file.author }
+      file.objects.forEach((object, index) => {
+        const version = { value: { doc: file.doc, object }, t: object.t, device: file.author, seq: file.seq, index }
         if (beats(version, state.ink.get(object.id))) state.ink.set(object.id, version)
-      }
+      })
     } else if (file.kind === 'log') {
-      for (const event of file.events) {
+      file.events.forEach((event, index) => {
         const entities = event.op.startsWith('course.') ? state.courses : state.docs
         const entity = entities.get(event.id) ?? { fields: new Map<string, Register>(), deleted: null }
         entities.set(event.id, entity)
-        const deleted = { value: event.op.endsWith('.delete'), t: event.t, device: file.author }
+        const stamp = { t: event.t, device: file.author, seq: file.seq, index }
+        const deleted = { ...stamp, value: event.op.endsWith('.delete') }
         if (beats(deleted, entity.deleted)) entity.deleted = deleted
-        if (deleted.value) continue
+        if (deleted.value) return
         for (const [key, value] of Object.entries(event.fields)) {
-          const next = { value, t: event.t, device: file.author }
+          const next = { ...stamp, value }
           if (beats(next, entity.fields.get(key))) entity.fields.set(key, next)
         }
         const hash = event.fields.md_hash
         if (event.op === 'doc.upsert' && typeof hash === 'string') {
           // A missing md_base reads as a fresh start (null): writers must send md_hash and md_base together.
           const base = typeof event.fields.md_base === 'string' ? event.fields.md_base : null
-          push(versions, event.id, { hash, base, t: event.t, device: file.author })
+          push(versions, event.id, { ...stamp, hash, base })
         }
-      }
+      })
     }
   }
 
@@ -164,26 +172,20 @@ export function merge(files: readonly ParsedFile[]): MergedState {
     for (const hash of losers) {
       const id = uuidv5(`${doc}:${hash}`, CONFLICT_COPY_NAMESPACE)
       if (state.docs.has(id)) continue
-      const author = authorOf(hash), device = state.devices.get(author), file = contentFile(doc, hash, author)
-      // The name needs the writer's device file and the copy needs its text; hold it until both arrive.
-      if (device === undefined || file === null) {
-        state.waiting.copies.push(id)
-        continue
-      }
+      // Until the writer's device file arrives its id stands in; a derived copy's name is recomputed on every merge.
+      const author = authorOf(hash), device = nameSafe((state.devices.get(author) ?? author.slice(0, 8)).normalize('NFC'))
       const [stem] = splitName(where.name)
-      state.conflictCopies.push({
+      copies.push({
         id, of: doc, course_id: where.course_id, rel_path: where.rel_path,
-        name: `${stem} (충돌 사본 ${nameSafe(device.normalize('NFC'))}).md`, md_hash: hash, file: file.path
+        name: `${stem} (충돌 사본 ${device}).md`, md_hash: hash, file: contentFile(doc, hash, author)?.path ?? null
       })
     }
   }
-  state.conflictCopies.sort((a, b) => (a.id < b.id ? -1 : 1))
 
   const byPath = new Map<string, string[]>()
   for (const [id, entity] of state.docs) {
     const where = place(entity)
-    // Names are NFC already; folders and names compare without case, as macOS, iPadOS and Windows store them.
-    if (isAlive(entity) && where) push(byPath, JSON.stringify([where.course_id, where.rel_path.toLowerCase(), where.name.toLowerCase()]), id)
+    if (isAlive(entity) && where) push(byPath, pathKey(where.course_id, where.rel_path, where.name), id)
   }
   for (const ids of byPath.values()) {
     for (const id of ids.sort().slice(1)) {
@@ -192,6 +194,17 @@ export function merge(files: readonly ParsedFile[]): MergedState {
     }
   }
   state.renames.sort((a, b) => (a.id < b.id ? -1 : 1))
+
+  // Copies join the collision rule: a live document keeps its name, and among copies the smallest id does.
+  // Copies still waiting for their text take part too, so a late note file never renames a made copy.
+  const taken = new Set(byPath.keys())
+  for (const copy of copies.sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const key = pathKey(copy.course_id, copy.rel_path, copy.name), [stem, ext] = splitName(copy.name)
+    const name = taken.has(key) ? `${stem} (${copy.id.slice(0, 4)})${ext}` : copy.name
+    taken.add(key)
+    if (copy.file === null) state.waiting.copies.push(copy.id)
+    else state.conflictCopies.push({ ...copy, name, file: copy.file })
+  }
 
   for (const [id, entity] of state.docs) {
     if (!isAlive(entity)) continue

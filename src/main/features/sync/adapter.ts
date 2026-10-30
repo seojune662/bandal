@@ -46,10 +46,18 @@ const isRecord = (value: unknown): value is Json => value !== null && typeof val
 const within = (value: unknown, min: number, max: number): boolean =>
   typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 
-/** Spec rounding: nearest, ties away from zero, on the binary64 value scaled by 10^digits. */
+/** Spec rounding: nearest, ties away from zero, on the binary64 value scaled by 10^digits. −0 is written as 0. */
 export function roundAway(value: number, digits: number): number {
   const scale = 10 ** digits
-  return (Math.sign(value) * Math.round(Math.abs(value) * scale)) / scale
+  const rounded = (Math.sign(value) * Math.round(Math.abs(value) * scale)) / scale
+  return rounded === 0 ? 0 : rounded
+}
+
+/** `assets/<sha>.<ext>` extension: the file's own extension in lower case, or `bin` when it has none or a disallowed one. */
+export function assetExt(fileName: string): string {
+  const base = fileName.slice(fileName.lastIndexOf('/') + 1), dot = base.lastIndexOf('.')
+  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : ''
+  return isAssetExt(ext) ? ext : 'bin'
 }
 
 /** Non-numbers pass through untouched so validation rejects them instead of reading them as 0. */

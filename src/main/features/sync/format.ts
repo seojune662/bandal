@@ -13,6 +13,12 @@ export const SYNC_FORMAT = 2
 
 /** Size limits use MiB. */
 const MIB = 1024 * 1024
+/** Containers nest at most this deep; the outermost one is depth 1. */
+const MAX_DEPTH = 64
+/** JSON files are UTF-8 without a BOM: a bad byte throws, and a kept BOM fails JSON.parse. */
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+/** A UTF-16 surrogate standing alone: under the `u` flag a valid pair is one code point and never matches. */
+const LONE_SURROGATE = /[\uD800-\uDFFF]/u
 /** t and created must be before 2100-01-01: keeps every clock + 1 a safe integer and a valid Date. */
 export const MAX_STAMP = Date.UTC(2100, 0, 1)
 const MAX_PAGE = 100_000
@@ -83,19 +89,25 @@ export const isSha = (value: unknown): value is string => typeof value === 'stri
 export const isAssetExt = (value: unknown): value is string => typeof value === 'string' && EXT_RE.test(value)
 export const sha256 = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 
-/** JSON can still spell Infinity (`1e999`), which no file may carry. */
-function allFinite(value: unknown): boolean {
+/**
+ * What JSON.parse lets through but the spec does not: Infinity (`1e999`), an
+ * unpaired surrogate written as `\ud800`, and nesting deeper than MAX_DEPTH.
+ */
+function sound(value: unknown, depth: number): boolean {
   if (typeof value === 'number') return Number.isFinite(value)
-  if (Array.isArray(value)) return value.every(allFinite)
-  return isRecord(value) ? Object.values(value).every(allFinite) : true
+  if (typeof value === 'string') return !LONE_SURROGATE.test(value)
+  if (value === null || typeof value !== 'object') return true
+  if (depth > MAX_DEPTH) return false
+  if (Array.isArray(value)) return value.every(item => sound(item, depth + 1))
+  return Object.entries(value).every(([key, item]) => !LONE_SURROGATE.test(key) && sound(item, depth + 1))
 }
 
 const text = (bytes: Uint8Array): string => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8')
 
 function json(bytes: Uint8Array, limit: number): unknown {
   if (bytes.byteLength > limit) fail('file is over its size limit')
-  const value: unknown = JSON.parse(text(bytes))
-  if (!allFinite(value)) fail('non-finite number')
+  const value: unknown = JSON.parse(UTF8.decode(bytes))
+  if (!sound(value, 1)) fail('non-finite number, unpaired surrogate or nesting deeper than 64')
   return value
 }
 

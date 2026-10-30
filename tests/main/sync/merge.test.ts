@@ -111,13 +111,15 @@ test('an unreadable file is skipped whole, a bad item only on its own, and the r
   expect(isAlive(merge(parsed).courses.get(COURSE))).toBe(true)
 })
 
-test('a conflict copy waits for its text and for its writer\'s device file', () => {
+test('a conflict copy waits only for its text; until the device file arrives the writer id names it', () => {
   const doc = docId(1), copy = uuidv5(`${doc}:${H('b')}`, CONFLICT_COPY_NAMESPACE)
   const files: ParsedFile[] = [root, course, note(A, 3, doc, H('a')),
     log(A, 2, [mdDoc(doc, 10, H('0')), mdDoc(doc, 30, H('a'), { md_base: H('0') })]),
     log(B, 1, [event(21, 'doc.upsert', doc, { md_hash: H('b'), md_base: H('0') })])]
   expect(merge(files)).toMatchObject({ conflictCopies: [], waiting: { copies: [copy] } })
-  expect(merge([...files, note(B, 2, doc, H('b'))])).toMatchObject({ conflictCopies: [], waiting: { copies: [copy] } })
+  expect(merge([...files, note(B, 2, doc, H('b'))])).toMatchObject({
+    conflictCopies: [{ id: copy, name: `노트 (충돌 사본 ${B.slice(0, 8)}).md` }], waiting: { copies: [] }
+  })
   expect(merge([...files, note(B, 2, doc, H('b')), devices[1]!])).toMatchObject({
     conflictCopies: [{ id: copy, name: '노트 (충돌 사본 iPad Pro).md', file: `notes/${doc}/${B}-00000002.md` }], waiting: { copies: [] }
   })

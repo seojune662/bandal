@@ -75,7 +75,7 @@ const fixtures = readdirSync(FIXTURES).filter(name => /^\d\d-/.test(name))
 test('every fixture folder is checked', () => {
   expect(fixtures).toEqual([
     '01-basic', '02-same-id-both-edited', '03-delete-then-edit', '04-note-both-edited', '05-note-attachments',
-    '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input'
+    '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input', '10-same-stamp'
   ])
 })
 
@@ -101,7 +101,9 @@ describe.each(fixtures)('sync-fixtures/%s', name => {
       const once = roundTrip(object)
       // Import only ever clamps into the page, and that settles in one pass, so nothing is re-exported for it.
       expect(roundTrip(once)).toEqual(once)
-      if (name !== '07-out-of-range-coordinates') expect(once).toEqual(object)
+      // Unknown top-level keys are not written back (spec: rewrite with known keys only).
+      const known = Object.fromEntries(Object.entries(object).filter(([key]) => ['id', 'kind', 'page', 't', 'created', 'data', 'style', 'del'].includes(key)))
+      if (name !== '07-out-of-range-coordinates') expect(once).toEqual(known)
       else expect(geometry(once).every(value => value >= 0 && value <= 1)).toBe(true)
     }
   })

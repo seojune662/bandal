@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { ValidationError } from '../../../src/main/db/errors'
-import { courseFields, docLocation, importInkObject, roundAway, toInkObject, type DrawingRow } from '../../../src/main/features/sync/adapter'
+import { assetExt, courseFields, docLocation, importInkObject, roundAway, toInkObject, type DrawingRow } from '../../../src/main/features/sync/adapter'
 import type { InkObject } from '../../../src/main/features/sync/format'
 
 const row = (overrides: Partial<DrawingRow> = {}): DrawingRow => ({
@@ -15,16 +15,23 @@ const rect: InkObject = {
 }
 const imageRow = row({ kind: 'image', data_json: JSON.stringify({ box: { x: 0.2, y: 0.2, width: 0.3, height: 0.3 }, image: { relPath: 'images/a.png', label: 'a.png' } }) })
 
-test('rounding is nearest with ties away from zero', () => {
+test('rounding is nearest with ties away from zero, and never writes -0', () => {
   expect([roundAway(2.5, 0), roundAway(-2.5, 0), roundAway(0.125, 2), roundAway(-0.125, 2), roundAway(0.1234567, 5)])
     .toEqual([3, -3, 0.13, -0.13, 0.12346])
+  expect(Object.is(roundAway(-0.0000049, 5), 0)).toBe(true)
+  expect(Object.is(roundAway(-0, 3), 0)).toBe(true)
+})
+
+test('asset extensions are lower case, and bin when missing or not allowed', () => {
+  expect(['칠판.PNG', 'images/scan.JPEG', '첨부-1f2e', '.png', 'a.', 'a.tar.gz', 'x.ＰＮＧ', 'a.verylongextension1'].map(assetExt))
+    .toEqual(['png', 'jpeg', 'bin', 'bin', 'bin', 'gz', 'bin', 'bin'])
 })
 
 test('export rounds coordinates to 5 digits and pressure to 3, and leaves other numbers alone', () => {
   const stored = row()
   expect(toInkObject(stored, 1793318402000)).toEqual({
     id: stored.id, kind: 'ink', page: 2, t: 1793318402000, created: Date.parse(stored.created_at),
-    data: { inkVersion: 5, points: [{ x: 0.12346, y: -0, p: 0.123, t: 7, tiltX: 12.345678 }] },
+    data: { inkVersion: 5, points: [{ x: 0.12346, y: 0, p: 0.123, t: 7, tiltX: 12.345678 }] },
     style: { color: 'blue', width: 0.0031234567, opacity: 1 }
   })
   expect(stored).toEqual(row())
