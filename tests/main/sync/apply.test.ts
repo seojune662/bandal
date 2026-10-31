@@ -309,7 +309,9 @@ test('a root that lost files never rolls back what was already applied', async (
 test('nothing is applied while a root file cannot be read yet', async () => {
   const { pull } = profile()
   const root = loadRoot('01-basic'), log = 'log/aaaaaaaa-0000-4000-8000-000000000001/00000001.json'
-  expect(await pull(snapshot(root, { offline: new Set([log]) }))).toEqual({ status: 'incomplete', pending: [log] })
+  // After the first read fails the rest wait unread as well.
+  const first = await pull(snapshot(root, { offline: new Set([log]) }))
+  expect(first.status === 'incomplete' && first.pending).toContain(log)
   expect(row('SELECT COUNT(*) AS n FROM courses')!.n).toBe(0)
   const placeholder = new Map([...root].filter(([path]) => path !== log))
   placeholder.set('log/aaaaaaaa-0000-4000-8000-000000000001/.00000001.json.icloud', new Uint8Array())

@@ -24,8 +24,11 @@ export type PullResult =
   | { status: 'blocked'; blocked: NonNullable<MergedState['blocked']> }
   /** Some files could not be read yet (offline, still downloading): nothing was applied. */
   | { status: 'incomplete'; pending: string[] }
-  /** `errors` are files the spec rejects whole; every device ignores them alike. */
-  | ({ status: 'applied'; errors: string[] } & ApplyResult)
+  /**
+   * `errors` are files the spec rejects whole; every device ignores them alike.
+   * `merged` and `clock` (the largest t in the root) are what an export right after needs.
+   */
+  | ({ status: 'applied'; errors: string[]; merged: MergedState; clock: number } & ApplyResult)
 
 /** One pull at a time: a second call waits for the first. */
 export function createPull(ctx: Omit<ApplyContext, 'read'>): (root: RootSnapshot) => Promise<PullResult> {
@@ -43,6 +46,11 @@ export function createPull(ctx: Omit<ApplyContext, 'read'>): (root: RootSnapshot
         listed.add(path)
         let cached = cache.get(path)
         if (cached?.version !== version) {
+          // Once one read fails the pass applies nothing: the rest wait without a read, so a pass (and a backup's pause) never sits through every timeout.
+          if (pending.length > 0) {
+            pending.push(path)
+            continue
+          }
           try {
             cached = { version, bytes: await root.read(path) }
             cache.set(path, cached)
@@ -60,7 +68,12 @@ export function createPull(ctx: Omit<ApplyContext, 'read'>): (root: RootSnapshot
     if (pending.length > 0 || read.pending.length > 0) return { status: 'incomplete', pending: [...pending, ...read.pending].sort() }
     const merged = merge([...read.parsed, ...content])
     if (merged.blocked !== null) return { status: 'blocked', blocked: merged.blocked }
-    return { status: 'applied', errors: read.errors, ...await applyMerged(merged, { ...ctx, read: path => root.read(path) }) }
+    let clock = 0
+    for (const file of read.parsed) {
+      if (file.kind === 'log') for (const event of file.events) clock = Math.max(clock, event.t)
+      else if (file.kind === 'ink') for (const object of file.objects) clock = Math.max(clock, object.t)
+    }
+    return { status: 'applied', errors: read.errors, merged, clock, ...await applyMerged(merged, { ...ctx, read: path => root.read(path) }) }
   }
   return root => {
     const next = running.then(() => pull(root), () => pull(root))
