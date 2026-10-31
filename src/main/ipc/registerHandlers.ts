@@ -92,7 +92,7 @@ import {
   mkdirSync,
   writeFileSync
 } from 'node:fs'
-import { release, tmpdir } from 'node:os'
+import { hostname, release, tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import {
   app,
@@ -176,6 +176,11 @@ import { speechModel } from '../features/recordings/modelCatalog'
 import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
 import { createBoundPDFRepositories, createPDFDocumentBindings, retryPDFMutation } from '../features/pdf/pdfDocumentBinding'
 import { repointSyncDocs } from '../features/sync/localDocs'
+import { createSyncEngine } from '../features/sync/engine'
+import { createICloudProvider, icloudRoot } from '../features/sync/icloud'
+import { machineFingerprint } from '../features/sync/identity'
+import { createPull } from '../features/sync/pull'
+import { MATERIAL_SCAN_MAX_DEPTH, MATERIAL_SCAN_MAX_ENTRIES } from '../features/materials/materialsRepo'
 import { createPDFOriginalPreserver, createPDFRevisionReader } from '../features/pdf/pdfOriginals'
 import { createPDFPreviewReader } from '../features/pdf/pdfPreview'
 import { createPdfExporter } from '../features/pdf'
@@ -3782,8 +3787,36 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   app.on('will-quit', () => ipadCompanion.dispose())
   localContentChanged = () => ipadCompanion.localChanged()
+  // Sync v2 through iCloud (design 2.7). Off until the settings screen and initial connect land; BANDAL_SYNC=icloud turns it on for testing.
+  const userDataPath = deps.userDataPath ?? app.getPath('userData')
+  const syncEngine = process.platform === 'darwin' && process.env['BANDAL_SYNC'] === 'icloud' ? createSyncEngine({
+    db,
+    provider: createICloudProvider({ root: icloudRoot(), tmpDir: join(userDataPath, 'sync', 'tmp') }),
+    pull: createPull({ db, courses: coursesRepo, materials: materialsRepo }),
+    stateFile: join(userDataPath, 'sync', 'state.json'),
+    machine: machineFingerprint,
+    device: { name: hostname().replace(/\.local$/, ''), platform: 'macos', app_version: app.getVersion() },
+    scan: async folder => {
+      const walk = await background.request('scan', { folder, limits: { maxDepth: MATERIAL_SCAN_MAX_DEPTH, maxEntries: MATERIAL_SCAN_MAX_ENTRIES } })
+      return { complete: walk.truncation.size === 0, files: walk.files.map(file => ({ relPath: file.relPath, size: file.size ?? 0, mtime: Math.round(file.mtime ?? 0) })) }
+    },
+    changed: ({ changed, removed }) => {
+      for (const courseId of removed) releaseCourseRuntime(courseId)
+      broadcast('courses:changed', {})
+      for (const courseId of changed) {
+        materialsRepo.invalidateTree(courseId)
+        broadcast('materials:changed', { courseId })
+      }
+    }
+  }) : null
+  // While nothing runs the engine, the triggers keep no outbox; its first pass compares everything with the base instead.
+  db.prepare('UPDATE sync_runtime SET enabled = 0').run()
+  syncEngine?.start()
+  app.on('will-quit', () => syncEngine?.stop())
   const profiles = createProfileManager({ db, root: deps.userDataPath, baseRoot: process.env['BANDAL_PROFILE_BASE_ROOT'] ?? deps.userDataPath,
-    pause: () => ipadCompanion.pauseAndDrain(), resume: () => ipadCompanion.resume(), relaunch: () => { app.relaunch(); app.quit() },
+    pause: async () => { await Promise.all([ipadCompanion.pauseAndDrain(), syncEngine?.pause()]) },
+    resume: () => { ipadCompanion.resume(); syncEngine?.resume() },
+    relaunch: () => { app.relaunch(); app.quit() },
     chooseDestination: async () => {
       const result = await dialog.showSaveDialog({ title: '반달 전체 자료 백업', defaultPath: `반달 백업 ${new Date().toISOString().replace(/[:.]/g, '-')}.bandalbackup`, buttonLabel: '백업' })
       return result.canceled ? null : result.filePath ?? null
