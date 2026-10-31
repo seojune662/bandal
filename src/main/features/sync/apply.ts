@@ -53,6 +53,8 @@ interface RemoteDoc {
   name: string
   type: DocType
   hash: string
+  /** PDF only: the bytes `hash` was appended to, from the same event (spec v2.3); null otherwise. */
+  prev: string | null
   /** Root path of the bytes, `pdf/<sha>.pdf` or a note snapshot; null until it arrives. */
   content: string | null
   /** Synced values with their stamps, the base once applied; `name` is the spec name before any collision rename. */
@@ -68,6 +70,7 @@ const EXTENSION: Record<DocType, RegExp> = { pdf: /\.pdf$/i, md: /\.(md|markdown
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+const hasTable = (db: Database, name: string): boolean => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)
 const stamped = (register: Register | null | undefined): Stamped | undefined =>
   register ? { value: register.value, t: register.t, device: register.device } : undefined
 /** Every device computes a derived value the same way, so it has no stamp. */
@@ -269,8 +272,10 @@ function remoteDocs(merged: MergedState): Map<string, RemoteState> {
     const hash = stamped(entity.fields.get(type === 'pdf' ? 'pdf_sha256' : 'md_hash'))
     if (typeof course_id?.value !== 'string' || typeof rel_path?.value !== 'string' || typeof name?.value !== 'string' ||
       (type !== 'pdf' && type !== 'md') || typeof hash?.value !== 'string') continue
+    const prev = type === 'pdf' ? entity.fields.get('pdf_prev_sha256')?.value : null
     docs.set(id, {
       course_id: course_id.value, rel_path: rel_path.value, name: renamed.get(id) ?? name.value, type, hash: hash.value,
+      prev: typeof prev === 'string' ? prev : null,
       content: type === 'pdf' ? `pdf/${hash.value}.pdf` : merged.notes.get(id)?.file ?? null, fields: { ...fields, hash }
     })
   }
@@ -278,7 +283,7 @@ function remoteDocs(merged: MergedState): Map<string, RemoteState> {
   // the two cannot be told apart, and its text is in the root's history either way.
   for (const copy of merged.conflictCopies) {
     docs.set(copy.id, {
-      course_id: copy.course_id, rel_path: copy.rel_path, name: copy.name, type: 'md', hash: copy.md_hash, content: copy.file,
+      course_id: copy.course_id, rel_path: copy.rel_path, name: copy.name, type: 'md', hash: copy.md_hash, prev: null, content: copy.file,
       fields: {
         course_id: derived(copy.course_id), rel_path: derived(copy.rel_path), name: derived(copy.name), type: derived('md'),
         hash: derived(copy.md_hash), deleted: derived(false), copy: derived(true)
@@ -334,6 +339,17 @@ function record(db: Database, id: string, courseId: string, path: string, abs: s
     ON CONFLICT (document_id) DO UPDATE SET course_id = excluded.course_id, local_path = excluded.local_path, local_hash = excluded.local_hash,
       local_size = excluded.local_size, local_mtime = excluded.local_mtime, synced_hash = excluded.synced_hash, missing_since = NULL`)
     .run(id, courseId, path, hash, info.size, Math.round(info.mtimeMs), hash)
+}
+
+/**
+ * D6 (spec v2.3): a page appended elsewhere to the bytes this device's drawings
+ * are bound to carries the binding to the new bytes. Any other new bytes leave
+ * it, so the viewer keeps protecting the drawings from the changed original.
+ */
+function rebind(db: Database, doc: RemoteDoc, courseId: string, path: string): void {
+  if (doc.prev === null || !hasTable(db, 'pdf_document_bindings')) return
+  db.prepare(`UPDATE pdf_document_bindings SET bound_sha = ?, evidence = 'sync' WHERE bound_sha = ? AND material_id =
+    (SELECT material_id FROM pdf_document_aliases WHERE course_id = ? AND rel_path = ?)`).run(doc.hash, doc.prev, courseId, path)
 }
 
 /** Root asset `assets/<sha>.<ext>` in the course's `assets/` folder; the name is the content, so a file there is it. */
@@ -436,12 +452,13 @@ async function moveAcross(id: string, doc: RemoteDoc, row: SyncDocRow, ctx: Appl
   const { path, abs, digest } = await arrive(id, doc, to, bytes, localPath(doc.rel_path, doc.name, doc.type, ctx.platform), ctx)
   const latest = getRow(db, id)
   if (latest?.course_id !== row.course_id || latest.local_path !== row.local_path) return
-  const aliases = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'pdf_document_aliases'").get()
+  const aliases = hasTable(db, 'pdf_document_aliases')
   silently(db, () => {
     record(db, id, doc.course_id, path, abs, digest)
     for (const table of ['pdf_drawings', 'annotations', ...(aliases ? ['pdf_document_aliases'] : [])]) {
       db.prepare(`UPDATE OR REPLACE ${table} SET course_id = ?, rel_path = ? WHERE course_id = ? AND rel_path = ?`).run(doc.course_id, path, row.course_id, row.local_path)
     }
+    rebind(db, doc, doc.course_id, path)
     writeBase(db, 'doc', id, doc.fields)
   })
   await trash(row, ctx)
@@ -507,7 +524,10 @@ async function replaceContent(id: string, doc: RemoteDoc, path: string, folder: 
   if (seen === null) return false
   const abs = resolveInsideReal(folder, path)
   writeFileAtomic(abs, bytes, { beforePublish: unchangedSince(abs, seen) })
-  silently(db, () => record(db, id, doc.course_id, path, abs, sha256(bytes)))
+  silently(db, () => {
+    record(db, id, doc.course_id, path, abs, sha256(bytes))
+    rebind(db, doc, doc.course_id, path)
+  })
   return true
 }
 

@@ -8,7 +8,7 @@ import { diameterFactorsV5 } from '../../../src/shared/inkV5'
 
 const FIXTURES = join(__dirname, '../../../sync-fixtures')
 const COURSE_FIELDS = ['name', 'sort', 'color', 'archived']
-const DOC_FIELDS = ['course_id', 'type', 'name', 'rel_path', 'pdf_sha256', 'md_hash']
+const DOC_FIELDS = ['course_id', 'type', 'name', 'rel_path', 'pdf_sha256', 'pdf_prev_sha256', 'md_hash']
 
 function loadRoot(dir: string): RemoteFile[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile()).map(entry => {
@@ -75,7 +75,8 @@ const fixtures = readdirSync(FIXTURES).filter(name => /^\d\d-/.test(name))
 test('every fixture folder is checked', () => {
   expect(fixtures).toEqual([
     '01-basic', '02-same-id-both-edited', '03-delete-then-edit', '04-note-both-edited', '05-note-attachments',
-    '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input', '10-same-stamp', '11-note-revert'
+    '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input', '10-same-stamp', '11-note-revert',
+    '12-pdf-append'
   ])
 })
 
@@ -84,7 +85,7 @@ describe.each(fixtures)('sync-fixtures/%s', name => {
   const { parsed, ignored, errors } = readRoot(loadRoot(join(FIXTURES, name, 'root')))
 
   test('root/ parses and merges to expected.json', () => {
-    expect([fixture, spec]).toEqual([name, '2.2'])
+    expect([fixture, spec]).toEqual([name, '2.3'])
     expect({ ...project(merge(parsed)), ignored, errors }).toEqual(expected)
   })
 
