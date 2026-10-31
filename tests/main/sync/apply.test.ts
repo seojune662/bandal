@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createCoursesRepo } from '../../../src/main/features/courses/coursesRepo'
 import { repointMaterialPath } from '../../../src/main/features/links/renameRepoint'
 import { createMaterialsRepo } from '../../../src/main/features/materials/materialsRepo'
+import { createPDFDocumentBindings } from '../../../src/main/features/pdf/pdfDocumentBinding'
 import { importInkObject } from '../../../src/main/features/sync/adapter'
 import { localPath } from '../../../src/main/features/sync/apply'
 import type { InkObject } from '../../../src/main/features/sync/format'
@@ -127,22 +128,18 @@ function expectProfile(expected: Expected, root: Root, folder: (courseId: string
   const waiting = new Set([...expected.waiting.docs, ...expected.waiting.copies])
   const renamed = new Map(expected.renames.map(rename => [rename.id, rename.name]))
   const placed = new Map<string, string>()
-  // In id order, as apply places them: a path another file already holds on a case-insensitive disk gets "(2)".
   const arriving = [
     ...alive.filter(([id]) => !waiting.has(id)).map(([id, doc]) => ({ id, course: doc.course_id, path: localPath(doc.rel_path, renamed.get(id) ?? doc.name, doc.type as 'pdf' | 'md'),
       content: doc.type === 'pdf' ? null : expected.notes[id]!.file!, hash: doc.pdf_sha256 })),
     ...expected.conflict_copies.map(copy => ({ id: copy.id, course: copy.course_id, path: localPath(copy.rel_path, copy.name, 'md'), content: copy.file, hash: undefined }))
-  ].sort((a, b) => (a.id < b.id ? -1 : 1))
-  const disk = (course: string, path: string) => `${course}/${path.normalize('NFC').toUpperCase()}`
-  const onDisk = new Set<string>()
+  ]
+  // The spec's collision key folds names the way APFS and NTFS do, so every document lands at its own spec path.
   for (const doc of arriving) {
-    const path = onDisk.has(disk(doc.course, doc.path)) ? doc.path.replace(/(\.[^./]+)?$/, ' (2)$1') : doc.path
-    onDisk.add(disk(doc.course, path))
-    expect(row('SELECT local_path FROM sync_docs WHERE document_id = ?', doc.id)?.local_path).toBe(path)
-    const bytes = readFileSync(join(folder(doc.course), path))
+    expect(row('SELECT local_path FROM sync_docs WHERE document_id = ?', doc.id)?.local_path).toBe(doc.path)
+    const bytes = readFileSync(join(folder(doc.course), doc.path))
     if (doc.content === null) expect(sha(bytes)).toBe(doc.hash)
     else expect(bytes.toString('utf8')).toBe(localized(root.get(doc.content)!))
-    placed.set(doc.id, path)
+    placed.set(doc.id, doc.path)
   }
   for (const [id] of alive) if (waiting.has(id)) expect(row('SELECT * FROM sync_docs WHERE document_id = ?', id)).toBeUndefined()
   for (const [id, doc] of Object.entries(expected.docs)) if (!doc.alive) expect(row('SELECT * FROM sync_docs WHERE document_id = ?', id)).toBeUndefined()
@@ -217,6 +214,31 @@ test('a remote note edit replaces an untouched local note', async () => {
   expect(readFileSync(join(folder(COURSE), '요약.md'), 'utf8')).toBe('# 요약\n\n![](assets/6b7fa434f92a8b80aab02d9bf1a12e49ffcae424e4013a1c4f68b67e3d2bbcd0.png)\n')
   expect(existsSync(join(folder(COURSE), 'assets/6b7fa434f92a8b80aab02d9bf1a12e49ffcae424e4013a1c4f68b67e3d2bbcd0.png'))).toBe(true)
   expect(outbox()).toEqual([])
+})
+
+test('a page appended elsewhere carries the drawings bound to the bytes it started from; other new bytes stay protected (D6)', async () => {
+  const { pull, folder } = profile()
+  const root = loadRoot('01-basic'), path = '강의자료/1주차 벡터.pdf'
+  await pull(snapshot(root))
+  const file = join(folder(COURSE), path), h0 = readFileSync(file)
+  const drawings = () => ctx.db.prepare('SELECT id, page FROM pdf_drawings WHERE rel_path = ? AND deleted_at IS NULL ORDER BY id').all(path)
+  const before = drawings()
+  const bindings = createPDFDocumentBindings(ctx.db, (courseId: string, relPath: string) => sha(readFileSync(join(folder(courseId), relPath))))
+  expect(bindings.check({ courseId: COURSE, relPath: path }).documentRevision).toBe(sha(h0))
+  const h1 = Buffer.concat([h0, Buffer.from('% one more page\n')]), h2 = Buffer.from('%PDF-1.7 another file\n')
+  const appended = withLog(new Map([...root, [`pdf/${sha(h1)}.pdf`, h1]]), 1, [
+    { t: T, op: 'doc.upsert', id: PDF_DOC, fields: { pdf_sha256: sha(h1), pdf_prev_sha256: sha(h0) } }
+  ])
+  await pull(snapshot(appended))
+  expect(sha(readFileSync(file))).toBe(sha(h1))
+  expect(bindings.check({ courseId: COURSE, relPath: path }).documentRevision).toBe(sha(h1))
+  // Appended to bytes this device's drawings were never bound to: the file changes, the drawings stay protected.
+  await pull(snapshot(withLog(new Map([...appended, [`pdf/${sha(h2)}.pdf`, h2]]), 2, [
+    { t: T + 1, op: 'doc.upsert', id: PDF_DOC, fields: { pdf_sha256: sha(h2), pdf_prev_sha256: sha(h0) } }
+  ])))
+  expect(sha(readFileSync(file))).toBe(sha(h2))
+  expect(() => bindings.check({ courseId: COURSE, relPath: path })).toThrow('PDF 원본이 기존 필기와 다릅니다')
+  expect(drawings()).toEqual(before)
 })
 
 test('a remote move takes the file and its drawings along through the materials journal', async () => {

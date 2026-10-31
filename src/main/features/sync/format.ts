@@ -141,8 +141,12 @@ function docFields(fields: Record<string, unknown>): Record<string, unknown> | n
   if ((name !== undefined && !isDocName(name)) || (folder !== undefined && !isDocFolder(folder))) return null
   if ((fields.pdf_sha256 !== undefined && !isSha(fields.pdf_sha256)) || (fields.md_hash !== undefined && !isSha(fields.md_hash))) return null
   if (fields.md_base !== undefined && fields.md_base !== null && !isSha(fields.md_base)) return null
+  if (fields.pdf_prev_sha256 !== undefined && fields.pdf_prev_sha256 !== null && !isSha(fields.pdf_prev_sha256)) return null
+  // pdf_prev_sha256 belongs to the pdf_sha256 of its own event: missing it reads as null, alone it means nothing (v2.3).
+  const { pdf_prev_sha256: prev, ...rest } = fields
   return {
-    ...fields,
+    ...rest,
+    ...(fields.pdf_sha256 === undefined ? {} : { pdf_prev_sha256: prev ?? null }),
     ...(name === undefined ? {} : { name }),
     ...(folder === undefined ? {} : { rel_path: folder })
   }

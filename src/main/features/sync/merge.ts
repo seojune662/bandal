@@ -96,10 +96,11 @@ function push<K, V>(map: Map<K, V[]>, key: K, item: V): void {
 const nameSafe = (text: string): string => text.replace(/[\u0000-\u001f\u007f-\u009f/]/g, '_')
 
 /**
- * Lower case one code point at a time. `toLowerCase()` on a whole string turns a
- * word-final Σ into ς where Swift gives σ; per code point both apps agree.
+ * Upper then lower case, one code point at a time (spec v2.3). `toLowerCase()` on a
+ * whole string turns a word-final Σ into ς where Swift gives σ; through upper case
+ * Σ, σ and ς all become σ, the way APFS and NTFS see them.
  */
-const foldCase = (text: string): string => [...text].map(character => character.toLowerCase()).join('')
+const foldCase = (text: string): string => [...text].map(character => character.toUpperCase().toLowerCase()).join('')
 
 /** Path-collision key: NFC folder and name compared without case, as APFS and NTFS do. */
 const pathKey = (course: string, folder: string, name: string): string => JSON.stringify([course, foldCase(folder), foldCase(name)])
