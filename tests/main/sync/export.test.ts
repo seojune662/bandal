@@ -310,3 +310,21 @@ test('log events fill the open file, then new ones, each within the size limit',
   for (const file of files) expect(Buffer.byteLength(JSON.stringify(file.events))).toBeLessThanOrEqual(300)
   expect(files.flatMap(file => file.events)).toEqual(events)
 })
+
+test('a note edited here in a course another device deleted brings the course back with it (v2.4)', async () => {
+  const { a, course } = await startedRoot()
+  const b = device('mac-b')
+  await b.sync()
+  a.courses.softDelete({ courseId: course })
+  await a.sync()
+  writeFileSync(join(b.folder(course), '요약.md'), '# 요약\n\n지우기 전에 고친 내용\n')
+  b.rescan(course)
+  await b.sync()
+  expect(b.events().filter(event => event.id === course).map(event => event.op)).toEqual(['course.upsert'])
+  expect(b.row('SELECT deleted_at FROM courses WHERE id = ?', course)!.deleted_at).toBeNull()
+  await a.sync()
+  expect(a.row('SELECT deleted_at FROM courses WHERE id = ?', course)!.deleted_at).toBeNull()
+  expect(readFileSync(join(a.folder(course), '요약.md'), 'utf8')).toBe('# 요약\n\n지우기 전에 고친 내용\n')
+  // The PDF went with the delete and stays gone.
+  expect(existsSync(join(a.folder(course), '강의/1주차.pdf'))).toBe(false)
+})

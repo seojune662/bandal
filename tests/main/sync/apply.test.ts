@@ -115,10 +115,9 @@ interface Expected {
 /** The profile shows what expected.json says the root holds, except what has to wait. */
 function expectProfile(expected: Expected, root: Root, folder: (courseId: string) => string): void {
   const alive = Object.entries(expected.docs).filter(([, doc]) => doc.alive)
-  const holding = new Set([...alive.map(([, doc]) => doc.course_id), ...expected.conflict_copies.map(copy => copy.course_id)])
   for (const [id, course] of Object.entries(expected.courses)) {
     const local = row('SELECT * FROM courses WHERE id = ?', id)
-    if (!course.alive && !holding.has(id)) {
+    if (!course.alive) {
       expect(local).toBeUndefined()
       continue
     }
@@ -241,6 +240,20 @@ test('a page appended elsewhere carries the drawings bound to the bytes it start
   expect(drawings()).toEqual(before)
 })
 
+test('strokes follow a document brought back under another name after a delete', async () => {
+  const { pull, folder } = profile()
+  const root = loadRoot('01-basic')
+  await pull(snapshot(root))
+  const strokes = () => ctx.db.prepare('SELECT DISTINCT rel_path FROM pdf_drawings WHERE course_id = ?').all(COURSE)
+  const deleted = withLog(root, 1, [{ t: T, op: 'doc.delete', id: PDF_DOC }])
+  await pull(snapshot(deleted))
+  expect(strokes()).toEqual([{ rel_path: '강의자료/1주차 벡터.pdf' }])
+  await pull(snapshot(withLog(deleted, 2, [{ t: T + 1, op: 'doc.upsert', id: PDF_DOC, fields: { rel_path: '', name: '되살린 벡터.pdf' } }])))
+  expect(existsSync(join(folder(COURSE), '되살린 벡터.pdf'))).toBe(true)
+  expect(strokes()).toEqual([{ rel_path: '되살린 벡터.pdf' }])
+  expect(outbox()).toEqual([])
+})
+
 test('a remote move takes the file and its drawings along through the materials journal', async () => {
   const { pull, folder } = profile()
   const root = loadRoot('01-basic')
@@ -270,26 +283,49 @@ test('a remote delete moves an untouched file to the trash; a file edited here s
   expect(row('SELECT * FROM sync_docs WHERE document_id = ?', NOTE_DOC)).toBeDefined()
 })
 
-test('a deleted course stays while it holds a live document and goes with the last one (P8)', async () => {
-  const { pull } = profile()
+test('a course deleted without tombstones for its documents takes them along, and brings them back when it returns (v2.4)', async () => {
+  const { pull, folder, trash } = profile()
   const root = loadRoot('01-basic')
   await pull(snapshot(root))
-  const deleted = withLog(root, 1, [{ t: 1793400000000, op: 'course.delete', id: COURSE }])
+  const deleted = withLog(root, 1, [{ t: T, op: 'course.delete', id: COURSE }])
   await pull(snapshot(deleted))
-  expect(row('SELECT deleted_at FROM courses WHERE id = ?', COURSE)!.deleted_at).toBeNull()
-  await pull(snapshot(withLog(deleted, 2, [
-    { t: 1793400000001, op: 'doc.delete', id: PDF_DOC },
-    { t: 1793400000002, op: 'doc.delete', id: NOTE_DOC }
-  ])))
   expect(row('SELECT deleted_at FROM courses WHERE id = ?', COURSE)!.deleted_at).not.toBeNull()
+  expect(readdirSync(trash).sort()).toEqual(['1주차 벡터.pdf', '요약.md'])
+  expect(row('SELECT COUNT(*) AS n FROM sync_docs')).toEqual({ n: 0 })
+  await pull(snapshot(withLog(deleted, 2, [{ t: T + 1, op: 'course.upsert', id: COURSE, fields: { name: '선형대수학' } }])))
+  expect(row('SELECT deleted_at FROM courses WHERE id = ?', COURSE)!.deleted_at).toBeNull()
+  expect(readFileSync(join(folder(COURSE), '요약.md'), 'utf8')).toBe(localized(root.get(`notes/${NOTE_DOC}/aaaaaaaa-0000-4000-8000-000000000001-00000002.md`)!))
 })
 
-test('a new device still creates a deleted course while it holds live documents (P8)', async () => {
-  const { pull, folder } = profile()
+test('a new device creates neither a deleted course nor its documents (v2.4)', async () => {
+  const { pull } = profile()
   const root = withLog(loadRoot('01-basic'), 1, [{ t: T, op: 'course.delete', id: COURSE }])
   expect(await pull(snapshot(root))).toMatchObject({ status: 'applied', held: [] })
-  expect(row('SELECT deleted_at FROM courses WHERE id = ?', COURSE)!.deleted_at).toBeNull()
-  expect(existsSync(join(folder(COURSE), '요약.md'))).toBe(true)
+  expect(row('SELECT * FROM courses WHERE id = ?', COURSE)).toBeUndefined()
+  expect(row('SELECT COUNT(*) AS n FROM sync_docs')).toEqual({ n: 0 })
+})
+
+test('appends missed in a row still carry the binding; with nothing drawn the binding follows any new bytes (v2.4)', async () => {
+  const { pull, folder } = profile()
+  const root = loadRoot('01-basic'), path = '강의자료/1주차 벡터.pdf'
+  await pull(snapshot(root))
+  const file = join(folder(COURSE), path), h0 = readFileSync(file)
+  const bindings = createPDFDocumentBindings(ctx.db, (courseId: string, relPath: string) => sha(readFileSync(join(folder(courseId), relPath))))
+  bindings.check({ courseId: COURSE, relPath: path })
+  const h1 = Buffer.concat([h0, Buffer.from('% page 2\n')]), h2 = Buffer.concat([h1, Buffer.from('% page 3\n')])
+  const appended = withLog(new Map([...root, [`pdf/${sha(h1)}.pdf`, h1], [`pdf/${sha(h2)}.pdf`, h2]]), 1, [
+    { t: T, op: 'doc.upsert', id: PDF_DOC, fields: { pdf_sha256: sha(h1), pdf_prev_sha256: sha(h0) } },
+    { t: T + 1, op: 'doc.upsert', id: PDF_DOC, fields: { pdf_sha256: sha(h2), pdf_prev_sha256: sha(h1) } }
+  ])
+  await pull(snapshot(appended))
+  expect(sha(readFileSync(file))).toBe(sha(h2))
+  expect(bindings.check({ courseId: COURSE, relPath: path }).documentRevision).toBe(sha(h2))
+  ctx.db.prepare('UPDATE pdf_drawings SET deleted_at = ?').run(new Date().toISOString())
+  const other = Buffer.from('%PDF-1.7 another file\n')
+  await pull(snapshot(withLog(new Map([...appended, [`pdf/${sha(other)}.pdf`, other]]), 2, [
+    { t: T + 2, op: 'doc.upsert', id: PDF_DOC, fields: { pdf_sha256: sha(other) } }
+  ])))
+  expect(bindings.check({ courseId: COURSE, relPath: path }).documentRevision).toBe(sha(other))
 })
 
 test('a root that lost files never rolls back what was already applied', async () => {

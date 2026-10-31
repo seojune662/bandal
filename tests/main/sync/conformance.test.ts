@@ -27,7 +27,10 @@ function project(state: MergedState): Record<string, unknown> {
   return {
     blocked: state.blocked,
     courses: Object.fromEntries([...state.courses].map(([id, entity]) => [id, { ...pick(entity, COURSE_FIELDS), alive: isAlive(entity) }])),
-    docs: Object.fromEntries([...state.docs].map(([id, entity]) => [id, { ...pick(entity, DOC_FIELDS), alive: isAlive(entity) }])),
+    docs: Object.fromEntries([...state.docs].map(([id, entity]) => {
+      const fields = pick(entity, DOC_FIELDS)
+      return [id, { ...fields, ...('pdf_sha256' in fields ? { pdf_rebind_from: state.rebindFrom.get(id) ?? [] } : {}), alive: isAlive(entity) }]
+    })),
     ink,
     notes: Object.fromEntries([...state.notes].map(([id, note]) => [id, { md_hash: note.hash, file: note.file }])),
     conflict_copies: state.conflictCopies,
@@ -76,7 +79,7 @@ test('every fixture folder is checked', () => {
   expect(fixtures).toEqual([
     '01-basic', '02-same-id-both-edited', '03-delete-then-edit', '04-note-both-edited', '05-note-attachments',
     '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input', '10-same-stamp', '11-note-revert',
-    '12-pdf-append'
+    '12-pdf-append', '13-course-delete', '14-append-chain'
   ])
 })
 
@@ -85,7 +88,7 @@ describe.each(fixtures)('sync-fixtures/%s', name => {
   const { parsed, ignored, errors } = readRoot(loadRoot(join(FIXTURES, name, 'root')))
 
   test('root/ parses and merges to expected.json', () => {
-    expect([fixture, spec]).toEqual([name, '2.3'])
+    expect([fixture, spec]).toEqual([name, '2.4'])
     expect({ ...project(merge(parsed)), ignored, errors }).toEqual(expected)
   })
 
