@@ -42,9 +42,9 @@ export interface ApplyResult {
   held: { id: string; reason: string }[]
 }
 
-interface Stamped { value: unknown; t: number | null; device: string | null }
-type Base = Map<string, Stamped>
-type DocType = 'pdf' | 'md'
+export interface Stamped { value: unknown; t: number | null; device: string | null }
+export type Base = Map<string, Stamped>
+export type DocType = 'pdf' | 'md'
 
 interface RemoteDoc {
   course_id: string
@@ -75,8 +75,8 @@ const stamped = (register: Register | null | undefined): Stamped | undefined =>
   register ? { value: register.value, t: register.t, device: register.device } : undefined
 /** Every device computes a derived value the same way, so it has no stamp. */
 const derived = (value: unknown): Stamped => ({ value, t: null, device: null })
-const samePlace = (a: string, b: string): boolean => diskKey(a) === diskKey(b)
-const split = (path: string): { dir: string; name: string } => {
+export const samePlace = (a: string, b: string): boolean => diskKey(a) === diskKey(b)
+export const split = (path: string): { dir: string; name: string } => {
   const slash = path.lastIndexOf('/')
   return { dir: slash < 0 ? '' : path.slice(0, slash), name: path.slice(slash + 1) }
 }
@@ -123,13 +123,13 @@ function silently<T>(db: Database, write: () => T): T {
   })()
 }
 
-function readBase(db: Database, id: string): Base {
+export function readBase(db: Database, id: string): Base {
   const rows = db.prepare('SELECT field, value_json, t, device_id FROM sync_meta WHERE entity_id = ?').all(id) as
     { field: string; value_json: string; t: number | null; device_id: string | null }[]
   return new Map(rows.map(row => [row.field, { value: JSON.parse(row.value_json) as unknown, t: row.t, device: row.device_id }]))
 }
 
-function writeBase(db: Database, kind: 'course' | 'doc', id: string, values: Record<string, Stamped>): void {
+export function writeBase(db: Database, kind: 'course' | 'doc', id: string, values: Record<string, Stamped>): void {
   const upsert = db.prepare(`INSERT INTO sync_meta (kind, entity_id, field, value_json, t, device_id) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT (entity_id, field) DO UPDATE SET value_json = excluded.value_json, t = excluded.t, device_id = excluded.device_id`)
   for (const [field, item] of Object.entries(values)) upsert.run(kind, id, field, JSON.stringify(item.value), item.t, item.device)
@@ -156,7 +156,7 @@ function threeWay(remote: Record<string, Stamped>, local: Record<string, unknown
 }
 
 /** Folder of a course this device syncs and still shows; null otherwise. */
-function liveFolder(db: Database, courseId: string): string | null {
+export function liveFolder(db: Database, courseId: string): string | null {
   const row = db.prepare(`SELECT folder_path FROM courses WHERE id = ? AND deleted_at IS NULL
     AND source = 'managed' AND workspace_kind = 'course'`).get(courseId) as { folder_path: string } | undefined
   return row?.folder_path ?? null
@@ -241,7 +241,11 @@ function removeCourse(id: string, row: CourseRow, remote: Record<string, Stamped
   const { deleted } = remote
   if (deleted?.value !== true) return
   if (ctx.db.prepare('SELECT 1 FROM sync_docs WHERE course_id = ? AND local_hash IS NOT NULL LIMIT 1').get(id)) return
-  const { apply, settled } = threeWay({ deleted }, { deleted: row.deleted_at !== null }, readBase(ctx.db, id))
+  const base = readBase(ctx.db, id)
+  // A field changed here and not exported yet: its upsert outranks this delete by t once it goes, so the course stays for it.
+  const local = { name: row.name, sort: row.sort_order, color: row.color, archived: row.archived === 1 }
+  if (Object.entries(local).some(([key, value]) => base.has(key) && !same(base.get(key)!.value, value))) return
+  const { apply, settled } = threeWay({ deleted }, { deleted: row.deleted_at !== null }, base)
   if (Object.keys(settled).length === 0) return
   silently(ctx.db, () => {
     if (apply.deleted === true) ctx.courses.softDelete({ courseId: id })
@@ -293,7 +297,7 @@ function remoteDocs(merged: MergedState): Map<string, RemoteState> {
   return docs
 }
 
-async function hashFile(abs: string): Promise<string> {
+export async function hashFile(abs: string): Promise<string> {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(abs)) hash.update(chunk as Buffer)
   return hash.digest('hex')
@@ -317,19 +321,19 @@ const unchangedSince = (abs: string, seen: Stats | null) => (): void => {
 }
 
 /** Where the base puts this document here: its course, folder and the names it may carry (its own, or a path collision's). */
-function basePlace(base: Base, id: string, type: DocType, platform: NodeJS.Platform | undefined): { course: unknown; dir: string; names: string[] } | null {
+export function basePlace(base: Base, id: string, type: DocType, platform: NodeJS.Platform | undefined): { course: unknown; dir: string; names: string[] } | null {
   const rel = base.get('rel_path')?.value, name = base.get('name')?.value
   if (typeof rel !== 'string' || typeof name !== 'string') return null
   const own = split(localPath(rel, name, type, platform))
   return { course: base.get('course_id')?.value, dir: own.dir, names: [own.name, split(localPath(rel, collisionName(name, id), type, platform)).name] }
 }
 
-function untouchedPlace(row: SyncDocRow, was: ReturnType<typeof basePlace>): boolean {
+export function untouchedPlace(row: SyncDocRow, was: ReturnType<typeof basePlace>): boolean {
   const have = split(row.local_path)
   return was !== null && row.course_id === was.course && samePlace(have.dir, was.dir) && was.names.some(name => samePlace(have.name, name))
 }
 
-function getRow(db: Database, id: string): SyncDocRow | undefined {
+export function getRow(db: Database, id: string): SyncDocRow | undefined {
   return db.prepare('SELECT * FROM sync_docs WHERE document_id = ?').get(id) as SyncDocRow | undefined
 }
 
@@ -559,7 +563,9 @@ async function applyDoc(id: string, doc: RemoteState, ctx: ApplyContext, result:
   if (path !== row.local_path) result.changed.push(row.course_id)
   const settled: Record<string, Stamped> = { course_id: doc.fields.course_id!, type: doc.fields.type!, deleted: doc.fields.deleted!, copy: doc.fields.copy! }
   if (samePlace(split(path).dir, want.dir)) settled.rel_path = doc.fields.rel_path!
-  if (samePlace(split(path).name, want.name)) settled.name = doc.fields.name!
+  // A name settles only where the disk holds exactly it: a remote rename that only changes case is not applied on a
+  // disk that ignores case, and settling it anyway would have the export send the old spelling back.
+  if (split(path).name.normalize('NFC') === want.name.normalize('NFC')) settled.name = doc.fields.name!
 
   const baseHash = base.get('hash')
   if (doc.hash === baseHash?.value) settled.hash = doc.fields.hash!
