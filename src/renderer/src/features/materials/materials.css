@@ -317,7 +317,8 @@
 .materials-view-picker__trigger:hover, .materials-view-picker__trigger[aria-expanded='true'] { background: var(--sidebar-hover); color: var(--text-primary); }
 .materials-view-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 30; width: 148px; padding: 4px; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--bg-overlay, var(--bg-raised)); box-shadow: var(--shadow-md); }
 .materials-view-menu > button { display: grid; grid-template-columns: 16px 1fr 14px; align-items: center; width: 100%; gap: 10px; padding: 8px; border-radius: 5px; text-align: left; font-size: 12px; color: var(--text-primary); }
-.materials-view-menu > button:hover, .materials-view-menu > button:focus-visible { background: var(--sidebar-selection); outline: none; }
+.materials-view-menu > button:hover, .materials-view-menu > button:focus-visible { background: var(--sidebar-selection); }
+.materials-view-menu > button:focus-visible { outline-offset: -2px; }
 .materials-browser { min-width: 0; padding-bottom: 6px; }
 .materials-breadcrumbs { display: flex; align-items: center; min-width: 0; gap: 2px; overflow-x: auto; padding: 3px 3px 10px; scrollbar-width: thin; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
 .materials-breadcrumbs > span, .materials-breadcrumbs button { display: inline-flex; align-items: center; gap: 3px; }

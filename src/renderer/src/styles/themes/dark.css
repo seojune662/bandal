@@ -30,6 +30,7 @@
   --highlight-blue: oklch(78% 0.11 240);
   --status-todo: oklch(62% 0.03 255);
   --status-progress: oklch(78% 0.11 240);
+  --on-status-progress: #171717;
   --status-done: oklch(76% 0.13 150);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.15);
   --shadow-md: 0 4px 16px rgb(0 0 0 / 0.22);
