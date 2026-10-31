@@ -48,3 +48,19 @@ test('search failure offers a retry without being presented as zero results', as
   await act(async () => vi.advanceTimersByTimeAsync(180))
   expect(host.textContent).toContain('recovered.md')
 })
+
+test('the search box announces the highlighted result and keeps results out of the Tab order', async () => {
+  mocks.invoke.mockResolvedValue([
+    { name: 'a.md', relPath: 'a.md', kind: 'note', score: 2 },
+    { name: 'b.md', relPath: 'b.md', kind: 'note', score: 1 }
+  ])
+  await query('md'); await act(async () => vi.advanceTimersByTimeAsync(180))
+  const input = host.querySelector('input')!
+  const options = [...host.querySelectorAll<HTMLElement>('[role="option"]')]
+  expect(input.getAttribute('role')).toBe('combobox')
+  expect(input.getAttribute('aria-controls')).toBe(host.querySelector('[role="listbox"]')!.id)
+  expect(options.every(option => option.tabIndex === -1)).toBe(true)
+  expect(input.getAttribute('aria-activedescendant')).toBe(options[0].id)
+  await act(async () => Simulate.keyDown(input, { key: 'ArrowDown' }))
+  expect(input.getAttribute('aria-activedescendant')).toBe(options[1].id)
+})

@@ -5,7 +5,7 @@
  * Esc closes. Open/close state lives in useQuickSearch (shortcuts.ts).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type {
   MaterialKind,
   MaterialSearchHit
@@ -45,6 +45,7 @@ export function QuickFileSearch(): JSX.Element | null {
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [highlighted, setHighlighted] = useState(0)
+  const listId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const sequenceRef = useRef(0)
@@ -135,6 +136,11 @@ export function QuickFileSearch(): JSX.Element | null {
               course === null ? '먼저 과목을 선택해 주세요' : `${course.name}에서 파일 찾기`
             }
             aria-label="파일 검색어"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={hits.length > 0}
+            aria-controls={listId}
+            aria-activedescendant={hits.length > 0 ? `${listId}-${clamped}` : undefined}
             value={query}
             disabled={course === null}
             onChange={(event) => {
@@ -173,12 +179,14 @@ export function QuickFileSearch(): JSX.Element | null {
           ) : hits.length === 0 ? (
             <p className="quick-search__hint">결과 없음</p>
           ) : (
-            <ul className="quick-search__list" role="listbox" aria-label="검색 결과">
+            <ul id={listId} className="quick-search__list" role="listbox" aria-label="검색 결과">
               {hits.map((hit, index) => (
                 <li key={hit.relPath} role="presentation">
                   <button
+                    id={`${listId}-${index}`}
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={index === clamped}
                     data-highlighted={index === clamped}
                     onMouseEnter={() => setHighlighted(index)}
