@@ -175,6 +175,7 @@ import { createRecordingService } from '../features/recordings/recordingService'
 import { speechModel } from '../features/recordings/modelCatalog'
 import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
 import { createBoundPDFRepositories, createPDFDocumentBindings, retryPDFMutation } from '../features/pdf/pdfDocumentBinding'
+import { repointSyncDocs } from '../features/sync/localDocs'
 import { createPDFOriginalPreserver, createPDFRevisionReader } from '../features/pdf/pdfOriginals'
 import { createPDFPreviewReader } from '../features/pdf/pdfPreview'
 import { createPdfExporter } from '../features/pdf'
@@ -495,6 +496,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     db.transaction(() => {
       learningPaths.enqueue(change)
       pdfBindings.repoint(change)
+      repointSyncDocs(db, change)
       materialsRepo.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
       repointMaterialPath({
         ...change,

@@ -1113,6 +1113,56 @@ export const migrations: Migration[] = [
     const sessions = db.prepare("SELECT a.id,a.course_id FROM agent_sessions a JOIN courses c ON c.id=a.course_id WHERE c.workspace_kind='study-space'").all() as { id: string; course_id: string }[]
     const bind = db.prepare('INSERT OR IGNORE INTO workspace_chat_sessions(session_id,workspace_key) VALUES(?,?)')
     for (const session of sessions) bind.run(session.id, workspaceKey({ kind: 'project', courseId: session.course_id, rootRelPath: '' }))
+  } },
+  // File sync state (docs/sync-desktop-phase2-design-2026-10-30.md 2.6, 3.1, 18).
+  // sync_meta and sync_ink hold what was last synced with its (t, device_id),
+  // the base a remote change is compared against; sync_docs ties a document
+  // id to its file. Triggers note local changes in sync_outbox only while
+  // sync is on and no remote change is being applied. (kind, id) is not unique
+  // there on purpose: an insert must never fail the user's own write; seq only
+  // grows, so an unchanged max(seq) means no change since the last look.
+  { version: 39, name: 'sync-state', up: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS sync_runtime (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled INTEGER NOT NULL DEFAULT 0,
+      applying INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT OR IGNORE INTO sync_runtime (id) VALUES (1);
+    CREATE TABLE IF NOT EXISTS sync_outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, id TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS sync_meta (
+      kind TEXT NOT NULL, entity_id TEXT NOT NULL, field TEXT NOT NULL, value_json TEXT NOT NULL,
+      t INTEGER, device_id TEXT,
+      PRIMARY KEY (entity_id, field)
+    );
+    CREATE TABLE IF NOT EXISTS sync_docs (
+      document_id TEXT PRIMARY KEY,
+      course_id TEXT NOT NULL,
+      local_path TEXT NOT NULL,
+      local_hash TEXT, local_size INTEGER, local_mtime INTEGER,
+      synced_hash TEXT,
+      missing_since INTEGER,
+      UNIQUE (course_id, local_path)
+    );
+    CREATE TABLE IF NOT EXISTS sync_ink (
+      id TEXT PRIMARY KEY, doc_id TEXT NOT NULL, page INTEGER NOT NULL,
+      t INTEGER NOT NULL, device_id TEXT NOT NULL, updated_at TEXT
+    );`)
+    const on = '(SELECT enabled = 1 AND applying = 0 FROM sync_runtime)'
+    const trigger = (name: string, event: string, when: string, kind: string, id: string) =>
+      `CREATE TRIGGER IF NOT EXISTS ${name} AFTER ${event} WHEN ${when}
+       BEGIN INSERT INTO sync_outbox (kind, id) VALUES ('${kind}', ${id}); END;`
+    const doc = (row: string) => `${row}.kind IN ('pdf', 'note')`
+    db.exec([
+      trigger('sync_course_insert', 'INSERT ON courses', on, 'course', 'NEW.id'),
+      trigger('sync_course_update', 'UPDATE OF name, color, sort_order, archived, deleted_at ON courses', on, 'course', 'NEW.id'),
+      trigger('sync_course_delete', 'DELETE ON courses', on, 'course', 'OLD.id'),
+      trigger('sync_ink_insert', 'INSERT ON pdf_drawings', on, 'ink', 'NEW.id'),
+      trigger('sync_ink_update', 'UPDATE ON pdf_drawings', on, 'ink', 'NEW.id'),
+      trigger('sync_ink_delete', 'DELETE ON pdf_drawings', on, 'ink', 'OLD.id'),
+      trigger('sync_doc_insert', 'INSERT ON materials_index', `${doc('NEW')} AND ${on}`, 'docs', 'NEW.course_id'),
+      trigger('sync_doc_update', 'UPDATE OF rel_path, kind, size, mtime, deleted_at ON materials_index', `(${doc('NEW')} OR ${doc('OLD')}) AND ${on}`, 'docs', 'NEW.course_id'),
+      trigger('sync_doc_delete', 'DELETE ON materials_index', `${doc('OLD')} AND ${on}`, 'docs', 'OLD.course_id')
+    ].join('\n'))
   } }
 ]
 
