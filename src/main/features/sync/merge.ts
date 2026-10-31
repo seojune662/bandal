@@ -36,7 +36,7 @@ export interface ConflictCopy {
 export interface MergedState {
   /** Set when `bandal.json` is missing or not format 2: nothing else is read. */
   blocked: 'missing-root' | 'update-required' | 'unsupported-format' | null
-  devices: Map<string, string>
+  devices: Map<string, { name: string; platform: string | null; last_seen: number | null }>
   courses: Map<string, Entity>
   docs: Map<string, Entity>
   /** Winning version per drawing id, with the document its file sits under. */
@@ -126,7 +126,7 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   const appends = new Map<string, [from: string, to: string][]>()
 
   for (const file of files) {
-    if (file.kind === 'device') state.devices.set(file.device, file.name)
+    if (file.kind === 'device') state.devices.set(file.device, { name: file.name, platform: file.platform, last_seen: file.last_seen })
     else if (file.kind === 'pdf' || file.kind === 'asset') present.add(file.path)
     else if (file.kind === 'note') push(noteFiles, file.doc, file)
     else if (file.kind === 'ink') {
@@ -228,7 +228,7 @@ export function merge(files: readonly ParsedFile[]): MergedState {
       const id = uuidv5(`${doc}:${hash}`, CONFLICT_COPY_NAMESPACE)
       if (state.docs.has(id)) continue
       // Until the writer's device file arrives its id stands in; a derived copy's name is recomputed on every merge.
-      const author = authorOf(hash), device = nameSafe((state.devices.get(author) ?? author.slice(0, 8)).normalize('NFC'))
+      const author = authorOf(hash), device = nameSafe((state.devices.get(author)?.name ?? author.slice(0, 8)).normalize('NFC'))
       const [stem] = splitName(where.name)
       copies.push({
         id, of: doc, course_id: where.course_id, rel_path: where.rel_path,

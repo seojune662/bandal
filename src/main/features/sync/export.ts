@@ -69,6 +69,8 @@ interface Batch {
   ctx: ExportContext
   session: ExportSession
   renames: Map<string, string>
+  /** Local id → the root's id, for courses merged at initial connect (design 6.2). */
+  remoteIds: Map<string, string>
   events: MetaEvent[]
   /** Drawings by `<doc>/<page>`. */
   ink: Map<string, InkObject[]>
@@ -95,7 +97,10 @@ function stamp(batch: Batch): number {
 /** One meta event, and the base it leaves behind once written: these values under this device's stamp. */
 function emit(batch: Batch, op: string, id: string, fields: Record<string, unknown>, base: Record<string, unknown>): void {
   const t = stamp(batch), device = batch.ctx.device
-  batch.events.push({ t, op, id, fields })
+  // The base keeps this profile's ids; the root gets its own for a course merged at initial connect.
+  const remote = (local: string): string => batch.remoteIds.get(local) ?? local
+  const course = fields.course_id
+  batch.events.push({ t, op, id: op.startsWith('course.') ? remote(id) : id, fields: typeof course === 'string' ? { ...fields, course_id: remote(course) } : fields })
   const values: Record<string, Stamped> = Object.fromEntries(Object.entries(base).map(([key, value]) => [key, { value, t, device }]))
   batch.commits.push(() => writeBase(batch.ctx.db, op.startsWith('course.') ? 'course' : 'doc', id, values))
 }
@@ -170,16 +175,18 @@ async function exportDocs(batch: Batch, courseId: string): Promise<void> {
 }
 
 /**
- * The snapshot as the spec stores it: links to images in the course's
- * `assets/` folder become `../../assets/<sha>.<ext>`, and those images go up.
- * Bytes that are not UTF-8, or that link nothing, go exactly as they are.
+ * A note as the spec stores it, and the files its image links point at:
+ * links to images in the course's `assets/` folder become
+ * `../../assets/<sha>.<ext>`. Bytes that are not UTF-8, or that link nothing,
+ * stay exactly as they are.
  */
-async function specNote(batch: Batch, folder: string, bytes: Uint8Array): Promise<Uint8Array> {
+export async function specNote(folder: string, bytes: Uint8Array): Promise<{ bytes: Uint8Array; assets: Map<string, Buffer> }> {
+  const assets = new Map<string, Buffer>()
   let text: string
   try {
     text = UTF8.decode(bytes)
   } catch {
-    return bytes
+    return { bytes, assets }
   }
   const links = new Map<string, string>()
   for (const [target] of text.matchAll(LOCAL_ASSET)) {
@@ -191,10 +198,10 @@ async function specNote(batch: Batch, folder: string, bytes: Uint8Array): Promis
       continue // Not a file in assets/: the link stays as written.
     }
     const asset = `assets/${sha256(file)}.${assetExt(target)}`
-    await upload(batch, asset, file)
+    assets.set(asset, file)
     links.set(target, `../../${asset}`)
   }
-  return links.size === 0 ? bytes : Buffer.from(text.replace(LOCAL_ASSET, target => links.get(target) ?? target), 'utf8')
+  return { bytes: links.size === 0 ? bytes : Buffer.from(text.replace(LOCAL_ASSET, target => links.get(target) ?? target), 'utf8'), assets }
 }
 
 async function exportDoc(batch: Batch, row: SyncDocRow, folder: string): Promise<void> {
@@ -233,10 +240,11 @@ async function exportDoc(batch: Batch, row: SyncDocRow, folder: string): Promise
       if (fresh || synced !== hash) Object.assign(fields, { pdf_sha256: synced, pdf_prev_sha256: null })
       hash = synced
     } else {
-      const note = await specNote(batch, folder, bytes), mdHash = sha256(note)
+      const note = await specNote(folder, bytes), mdHash = sha256(note.bytes)
+      for (const [path, file] of note.assets) await upload(batch, path, file)
       if (fresh || mdHash !== hash) {
         Object.assign(fields, { md_hash: mdHash, md_base: typeof hash === 'string' ? hash : null })
-        batch.notes.set(id, note)
+        batch.notes.set(id, note.bytes)
       }
       hash = mdHash
     }
@@ -402,6 +410,8 @@ export async function exportChanges(ctx: ExportContext, session: ExportSession):
   if (items.length === 0) return { written: [], held: [] }
   const batch: Batch = {
     ctx, session, renames: new Map(ctx.root.merged.renames.map(rename => [rename.id, rename.name])),
+    remoteIds: new Map((db.prepare("SELECT local_id, remote_id FROM sync_alias WHERE kind = 'course'").all() as { local_id: string; remote_id: string }[])
+      .map(row => [row.local_id, row.remote_id])),
     events: [], ink: new Map(), notes: new Map(), commits: [], revived: new Set(), written: [], retry: new Map(), held: []
   }
   const ids = (kind: string) => new Set(items.filter(item => item.kind === kind).map(item => item.id))

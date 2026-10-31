@@ -67,7 +67,7 @@ export interface InkObject {
 
 export type ParsedFile =
   | { kind: 'root'; path: string; format: number }
-  | { kind: 'device'; path: string; device: string; name: string }
+  | { kind: 'device'; path: string; device: string; name: string; platform: string | null; last_seen: number | null }
   /** `dropped` counts events that failed validation and were left out. */
   | { kind: 'log'; path: string; author: string; seq: number; events: MetaEvent[]; dropped: number }
   | { kind: 'ink'; path: string; author: string; seq: number; doc: string; objects: InkObject[]; dropped: number }
@@ -211,7 +211,10 @@ export function parseFile({ path, bytes }: RemoteFile): ParsedFile | null {
   if ((match = PATHS.device.exec(path))) {
     const device = json(bytes, MIB)
     if (!isRecord(device) || typeof device.name !== 'string') fail('device name')
-    return { kind: 'device', path, device: match[1]!, name: device.name }
+    return {
+      kind: 'device', path, device: match[1]!, name: device.name,
+      platform: typeof device.platform === 'string' ? device.platform : null, last_seen: isStamp(device.last_seen) ? device.last_seen : null
+    }
   }
   if ((match = PATHS.log.exec(path))) {
     const { items: events, dropped } = items(json(bytes, 4 * MIB), 'log', event)
