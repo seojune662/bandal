@@ -15,6 +15,7 @@ import type { AuthState } from '../types/auth'
 import type { UpdateStatus } from '../types/update'
 import type { PipState } from '../types/pip'
 import type { PluginSummary } from '../types/plugin'
+import type { SyncView } from '../types/sync'
 import type { WorkflowPackSummary } from '../types/workflowPack'
 import type {
   ScreenPermissionState
@@ -292,6 +293,8 @@ export interface PushEvents {
   'shortcut:passthrough': ShortcutPassthrough
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed': AuthState
+  /** Sync's view changed: binding, state, devices or pending changes. */
+  'sync:changed': SyncView
   // -- auto update ----------------------------------------------------------
   /**
    * Every auto-update state transition, including ones the renderer never

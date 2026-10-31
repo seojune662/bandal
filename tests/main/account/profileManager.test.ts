@@ -146,3 +146,27 @@ test('a disappearing user file still fails backup without a verified manifest or
   expect(f.resume).toHaveBeenCalledOnce()
   expect(readFileSync(join(f.source, 'local.md'), 'utf8')).toBe('# 보존할 자료')
 })
+
+test('a profile made to import a sync root starts bound to it, and backups leave out the sync state', async () => {
+  const f = fixture()
+  mkdirSync(join(f.dir, 'sync'))
+  writeFileSync(join(f.dir, 'sync/state.json'), JSON.stringify({ device_id: 'kept-out-of-backups' }))
+  const result = await f.manager.newProfile({ sync: { provider: 'icloud' } })
+  expect(result.ok).toBe(true)
+  expect(JSON.parse(readFileSync(join(resolveActiveProfile(f.dir), 'sync/state.json'), 'utf8'))).toEqual({ provider: 'icloud' })
+  expect(existsSync(join(result.path!, 'profile/sync'))).toBe(false)
+})
+
+test('a switch tells the old profile to let go of sync, and a switch taken back removes the seed', async () => {
+  const f = fixture()
+  const switched = vi.fn()
+  const manager = createProfileManager({ db: f.db, baseRoot: f.dir, root: f.dir, chooseDestination: async () => join(f.destination, 'again.bandalbackup'),
+    pause: f.pause, resume: f.resume, relaunch: f.relaunch, switched })
+  expect((await manager.newProfile({ sync: { provider: 'icloud' } })).ok).toBe(true)
+  expect(switched).toHaveBeenCalledTimes(1)
+  const seeded = join(resolveActiveProfile(f.dir), 'sync', 'state.json')
+  expect(existsSync(seeded)).toBe(true)
+  manager.cancelSwitch()
+  expect(existsSync(seeded)).toBe(false)
+  expect(resolveActiveProfile(f.dir)).toBe(f.dir)
+})

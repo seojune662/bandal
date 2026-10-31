@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, existsSync, unlinkSync } from 'node:fs'
+import { mkdirSync, readFileSync, existsSync, rmSync, unlinkSync } from 'node:fs'
 import { cp, mkdir, readdir, readFile, realpath, lstat, writeFile } from 'node:fs/promises'
 import { join, dirname, basename, relative, isAbsolute, sep } from 'node:path'
 import type { Database } from 'better-sqlite3'
@@ -24,7 +24,9 @@ export function resolveActiveProfile(base: string): string {
 const excluded = new Set(['auth', 'sync', 'Cache', 'Code Cache', 'GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'Session Storage', 'Local Storage', 'IndexedDB', 'Service Worker', 'Partitions', 'Network', 'DIPS', 'DIPS-journal', 'DIPS-wal', 'DIPS-shm', 'workspace-previews', 'logs', 'Crashpad', 'profiles', 'SingletonLock', 'SingletonSocket', 'SingletonCookie', POINTER])
 interface Entry { source: string; target: string; sha256: string; size: number }
 async function digest(file: string): Promise<string> { return createHash('sha256').update(await readFile(file)).digest('hex') }
-export function createProfileManager(deps: { db: Database; baseRoot: string; root: string; chooseDestination(): Promise<string | null>; pause(): void | Promise<void>; resume(): void; relaunch(): void }) {
+export function createProfileManager(deps: { db: Database; baseRoot: string; root: string; chooseDestination(): Promise<string | null>; pause(): void | Promise<void>; resume(): void; relaunch(): void
+  /** The pointer now names the new profile; called just before the relaunch. */
+  switched?(): void }) {
   let working = false
   let pendingSwitch: (() => void) | null = null
   const backup = async (keepPaused = false): Promise<{ ok: boolean; cancelled: boolean; path?: string }> => {
@@ -76,7 +78,7 @@ export function createProfileManager(deps: { db: Database; baseRoot: string; roo
       return { ok: true, cancelled: false, path: destination }
     } finally { if (!retained) { working = false; if (paused) deps.resume() } }
   }
-  return { backup: () => backup(), busy: () => working, cancelSwitch: () => pendingSwitch?.(), async newProfile() {
+  return { backup: () => backup(), busy: () => working, cancelSwitch: () => pendingSwitch?.(), async newProfile(options: { sync?: Record<string, unknown> } = {}) {
     const result = await backup(true)
     if (!result.ok) return result
     const pointer = join(deps.baseRoot, POINTER)
@@ -89,12 +91,26 @@ export function createProfileManager(deps: { db: Database; baseRoot: string; roo
       writeFileAtomic(join(root, 'isolated-profile.json'), JSON.stringify({ id, createdAt: new Date().toISOString(), previousBackup: result.path }))
       // Fresh settings prevent implicit attachment of the previous external data root.
       writeFileAtomic(join(root, 'settings.json'), JSON.stringify({ dataRoot: join(root, 'Courses') }))
-      writeFileAtomic(pointer, JSON.stringify({ id })); switched = true
+      // A profile made to take a sync root's data starts bound to it (design 6.2 "가져오기").
+      if (options.sync) {
+        mkdirSync(join(root, 'sync'), { recursive: true })
+        writeFileAtomic(join(root, 'sync', 'state.json'), JSON.stringify(options.sync), { mode: 0o600 })
+      }
+      // Left behind if the switch fails or is taken back, the seed would hold the sync root for a profile no one opens.
+      const unseed = () => rmSync(join(root, 'sync'), { recursive: true, force: true })
+      try {
+        writeFileAtomic(pointer, JSON.stringify({ id })); switched = true
+      } catch (error) {
+        unseed()
+        throw error
+      }
       pendingSwitch = () => {
         if (previous === null) unlinkSync(pointer)
         else writeFileAtomic(pointer, previous)
+        unseed()
         pendingSwitch = null; working = false; deps.resume()
       }
+      deps.switched?.()
       deps.relaunch()
       return result
     } catch (error) {

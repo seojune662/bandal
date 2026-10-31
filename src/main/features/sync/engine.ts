@@ -6,19 +6,15 @@
  * blocks a local edit.
  */
 import type { Database } from 'better-sqlite3'
+import type { SyncDevice, SyncState } from '../../../shared/types/sync'
 import type { ApplyResult } from './apply'
 import { createExportSession, exportChanges } from './export'
-import type { ProviderStatus, SyncProvider } from './icloud'
+import type { SyncProvider } from './icloud'
 import { loadIdentity, takeSeq, type SyncIdentity } from './identity'
 import type { Scan } from './localDocs'
 import type { PullResult, RootSnapshot } from './pull'
 
-export type SyncState =
-  | { state: 'off' | 'syncing' | 'update-required' | Exclude<ProviderStatus, 'ready'> }
-  | { state: 'synced'; at: number }
-  /** Root files are still downloading, or the Mac is offline: nothing was applied. */
-  | { state: 'waiting'; pending: number }
-  | { state: 'error'; message: string }
+export type { SyncDevice, SyncState }
 
 const TIMING = {
   /** The outbox must stay still this long before an export (spec "1.5초 idle"). */
@@ -39,8 +35,8 @@ export interface SyncEngineDeps {
   /** `<profile>/sync/state.json`: device id, seq and the machine it was made on. */
   stateFile: string
   machine(): Promise<string>
-  /** This device's `devices/<id>.json`, less `last_seen`. */
-  device: { name: string; platform: string; app_version: string }
+  /** This device's `devices/<id>.json`, less `last_seen`; read at each write, so a rename shows up. */
+  device(): { name: string; platform: string; app_version: string }
   scan(folder: string): Promise<Scan>
   /** An apply changed or removed courses: refresh the windows and release what was removed. */
   changed(result: ApplyResult): void
@@ -51,12 +47,17 @@ export interface SyncEngineDeps {
 
 export interface SyncEngine {
   start(): void
+  /** The device files of the last root this engine read. */
+  devices(): SyncDevice[]
+  /** This device's file is written again on the next pass (a new name). */
+  deviceChanged(): void
   /** Runs a pass now, after any running one; resolves when it is done. */
   syncNow(): Promise<void>
   /** No pass starts until resume; resolves once a running one has finished (backups). */
   pause(): Promise<void>
   resume(): void
-  stop(): void
+  /** No pass starts again; resolves once a running one has finished (it never exports after this). */
+  stop(): Promise<void>
   state(): SyncState
 }
 
@@ -89,7 +90,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   let running: Promise<void> | null = null, queued: Promise<void> | null = null, queuedFor: 'poke' | 'ask' = 'poke', stopped = true, paused = false
   let failures = 0, rescanAt = 0, deviceAt = 0, lastSeq: number | null = null, kickedSeq: number | null = null
   let timer: NodeJS.Timeout | undefined, hintTimer: NodeJS.Timeout | undefined, ticker: NodeJS.Timeout | undefined
-  let unwatch: (() => void) | null = null
+  let unwatch: (() => void) | null = null, devices: SyncDevice[] = []
 
   const set = (next: SyncState): void => {
     // A pass still finishing after stop() must not bring the state back.
@@ -128,6 +129,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     set({ state: 'syncing' })
     identity ??= loadIdentity(deps.stateFile, await deps.machine())
     let root = await provider.list()
+    if (stopped) return
     if (root.entries.length === 0) {
       // An empty root: this device starts it, and everything here goes up (spec 초기 연결).
       await provider.write('bandal.json', Buffer.from('{"format":2}'))
@@ -137,6 +139,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       enqueue(db)
       rescanAt = Date.now() + timing.rescanMs
     }
+    if (stopped) return
     const pulled = await deps.pull(root)
     if (pulled.status === 'blocked') {
       set(pulled.blocked === 'update-required' ? { state: 'update-required' } : { state: 'error', message: `bandal.json: ${pulled.blocked}` })
@@ -146,7 +149,10 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       set({ state: 'waiting', pending: pulled.pending.length })
       return schedule(timing.waitingMs)
     }
+    devices = [...pulled.merged.devices].map(([id, device]) => ({ id, ...device }))
     if (pulled.changed.length > 0 || pulled.removed.length > 0) deps.changed(pulled)
+    // Stopped while applying (disconnected): what was applied stays, but nothing more goes to the root.
+    if (stopped) return
     const paths = new Set(root.entries.map(entry => entry.path)), own = identity
     await exportChanges({
       db, device: own.device_id, takeSeq: () => takeSeq(deps.stateFile, own, paths),
@@ -155,7 +161,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     }, session)
     if (Date.now() - deviceAt >= timing.deviceMs) {
       const now = Date.now()
-      await provider.write(`devices/${own.device_id}.json`, Buffer.from(JSON.stringify({ ...deps.device, last_seen: now })))
+      await provider.write(`devices/${own.device_id}.json`, Buffer.from(JSON.stringify({ ...deps.device(), last_seen: now })))
       deviceAt = now
     }
     set({ state: 'synced', at: Date.now() })
@@ -214,6 +220,11 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       void run()
     },
     syncNow: () => run('ask'),
+    devices: () => devices,
+    deviceChanged() {
+      deviceAt = 0
+      void run('ask')
+    },
     async pause() {
       paused = true
       await (queued ?? running)
@@ -222,7 +233,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       paused = false
       void run()
     },
-    stop() {
+    async stop() {
       stopped = true
       clearTimeout(timer)
       clearTimeout(hintTimer)
@@ -230,6 +241,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       unwatch?.()
       unwatch = null
       set({ state: 'off' })
+      await (queued ?? running)
     },
     state: () => current
   }
