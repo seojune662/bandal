@@ -7,6 +7,8 @@ export interface PdfRestructureResult { documentRevision: string; fingerprint: s
 interface Props {
   pdf: PDFDocumentProxy | null; numPages: number; currentPage: number; onJump(page: number): void
   courseId: string; relPath: string; revision: string | null
+  /** A synced document: only appending pages at the end, which every device can follow. */
+  appendOnly?: boolean
   suspend(): Promise<void>; resume(): void; onRestructured(result: PdfRestructureResult): void
 }
 /** Lazy pdf.js thumbnails for the rows in view (the desktop panel's helpers are not exported). */
@@ -49,11 +51,14 @@ type Drag = { pointerId: number; page: number; startX: number; startY: number; a
 const HOLD_MS = 250, SLOP = 8
 const request = (channel: string, payload: Record<string, unknown>): Promise<unknown> =>
   (window as unknown as { bandal: { invoke(channel: string, payload: unknown): Promise<unknown> } }).bandal.invoke(channel, payload)
+/** The main process's message, without Electron's "Error invoking remote method …: ValidationError:" in front. */
+export const failureText = (failure: unknown): string =>
+  (failure instanceof Error ? failure.message : String(failure)).replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, '')
 
 /** Page thumbnails that also edit the document: tap to jump, hold and drag to
  * reorder, a per-page menu for delete / rotate / duplicate / blank pages.
  * Every edit is one `pdf:restructure` recipe; the viewer remounts afterwards. */
-export function PdfPagesPanel({ pdf, numPages, currentPage, onJump, courseId, relPath, revision, suspend, resume, onRestructured }: Props): JSX.Element {
+export function PdfPagesPanel({ pdf, numPages, currentPage, onJump, courseId, relPath, revision, appendOnly = false, suspend, resume, onRestructured }: Props): JSX.Element {
   const listRef = useRef<HTMLDivElement>(null)
   const { visiblePages, register } = useVisibleThumbnails(listRef)
   const [menu, setMenu] = useState<number | null>(null)
@@ -73,7 +78,7 @@ export function PdfPagesPanel({ pdf, numPages, currentPage, onJump, courseId, re
       const result = await request('pdf:restructure', { courseId, relPath, expectedRevision: revision, pages }) as PdfRestructureResult
       onRestructured(result)
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure))
+      setError(failureText(failure))
       resume()
     } finally { setBusy(false) }
   }
@@ -92,7 +97,7 @@ export function PdfPagesPanel({ pdf, numPages, currentPage, onJump, courseId, re
     return active
   }
   const down = (page: number) => (event: ReactPointerEvent<HTMLElement>) => {
-    if (busy || event.button !== 0 || gesture.current) return
+    if (busy || appendOnly || event.button !== 0 || gesture.current) return
     // Every pointer type holds first: a Pencil tap must never reorder pages.
     const start = () => { if (gesture.current) { gesture.current.active = true; setDrag({ page, slot: null }) } }
     gesture.current = { pointerId: event.pointerId, page, startX: event.clientX, startY: event.clientY, active: false, slot: null, timer: window.setTimeout(start, HOLD_MS) }
@@ -128,6 +133,7 @@ export function PdfPagesPanel({ pdf, numPages, currentPage, onJump, courseId, re
   const menuItem = (label: string, recipe: () => PageRecipeEntry[]) => <button type="button" role="menuitem" onClick={() => void run(recipe())}>{label}</button>
   return <aside className="pdf-preview pdf-pages" aria-label="페이지" data-busy={busy}>
     <div className="pdf-preview__header"><strong>페이지</strong><span>{numPages}쪽</span></div>
+    {appendOnly && <p className="pdf-pages__note">동기화 중인 문서는 끝에 페이지를 덧붙이는 것만 할 수 있어요. 다른 편집은 사본에서 해 주세요.</p>}
     {error && <p className="pdf-pages__error" role="alert">{error}</p>}
     <div ref={listRef} className="pdf-preview__list">
       {Array.from({ length: numPages }, (_, index) => index + 1).map(page => <div key={page} className="pdf-pages__item" data-pdf-pages-item
@@ -137,9 +143,9 @@ export function PdfPagesPanel({ pdf, numPages, currentPage, onJump, courseId, re
           <span className="pdf-preview__paper"><PdfThumbnail pdf={pdf} pageNumber={page} visible={visiblePages.has(page)} /></span>
           <span className="pdf-preview__page-number">{page}</span>
         </button>
-        <button type="button" className="pdf-pages__more" aria-label={`${page}쪽 메뉴`} aria-haspopup="menu" aria-expanded={menu === page} disabled={busy}
-          onClick={() => { setConfirmDelete(null); setMenu(menu === page ? null : page) }}>···</button>
-        {menu === page && <div className="pdf-pages__menu" role="menu" aria-label={`${page}쪽 메뉴`}>
+        {!appendOnly && <button type="button" className="pdf-pages__more" aria-label={`${page}쪽 메뉴`} aria-haspopup="menu" aria-expanded={menu === page} disabled={busy}
+          onClick={() => { setConfirmDelete(null); setMenu(menu === page ? null : page) }}>···</button>}
+        {menu === page && !appendOnly && <div className="pdf-pages__menu" role="menu" aria-label={`${page}쪽 메뉴`}>
           {menuItem('앞에 빈 페이지', () => insertBlankPage(numPages, page))}
           {menuItem('뒤에 빈 페이지', () => insertBlankPage(numPages, page + 1))}
           {menuItem('복제', () => duplicatePage(numPages, page))}

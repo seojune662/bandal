@@ -71,6 +71,19 @@ describe('shared editable PDF notes', () => {
     expect(drawings.listForFile(courseId,target.relPath)).toHaveLength(9)
     expect((ctx.db.prepare('SELECT original_json FROM pdf_note_migrations').get() as {original_json:string}).original_json).toContain('source.pdf')
   })
+  test('a synced note takes only end-page appends, and records them as appends for sync', async () => {
+    const synced = createPdfNotesService({ ...deps, appendOnly: () => true })
+    const note = await service.create({ courseId, title: 'Synced' })
+    const revision = hash(readFileSync(join(folder, note.relPath)))
+    await expect(synced.restructure({ courseId, relPath: note.relPath, expectedRevision: revision, pages: [{ source: null }, { source: 1 }] }))
+      .rejects.toThrow('끝에 페이지를 덧붙이는 것만')
+    const next = await synced.restructure({ courseId, relPath: note.relPath, expectedRevision: revision, pages: [{ source: 1 }, { source: null }] })
+    await service.restructure({ courseId, relPath: note.relPath, expectedRevision: next.documentRevision, pages: [{ source: 2 }, { source: 1 }] })
+    expect(ctx.db.prepare('SELECT from_sha, to_sha, appended FROM pdf_restructure_log ORDER BY rowid').all()).toEqual([
+      { from_sha: revision, to_sha: next.documentRevision, appended: 1 },
+      { from_sha: next.documentRevision, to_sha: expect.any(String), appended: 0 }
+    ])
+  })
   test('defaults to lined portrait paper and rewrites editable page geometry atomically',async()=>{
     const note=await service.create({courseId,title:'New'})
     expect(await service.info({courseId,relPath:note.relPath})).toMatchObject({paper:'lines',surface:'light',orientation:'portrait'})

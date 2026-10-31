@@ -12,4 +12,6 @@ export interface PDFMarkupChanged {
   courseId: string
   relPath: string
   documentRevision: string
+  /** `sync`: a background sync wrote these drawings, so an open view reloads them; local saves leave it out. */
+  origin?: 'sync'
 }

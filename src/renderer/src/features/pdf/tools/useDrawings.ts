@@ -177,6 +177,12 @@ export function useDrawings(courseId: string, relPath: string, documentRevision?
     if (changedCourseId === courseId) load(false)
   }), [courseId, load])
 
+  // A background sync wrote this PDF's drawings: reload this file only (other PDFs of the course are untouched).
+  useEffect(() => onPush('pdf:markupChanged', change => {
+    if (change.origin === 'sync' && change.courseId === courseId && change.relPath.normalize('NFC') === relPath.normalize('NFC') &&
+      (!documentRevision || change.documentRevision === documentRevision)) load(false)
+  }), [courseId, documentRevision, load, relPath])
+
   useEffect(() => subscribeExternalDrawingChanges(change => {
     if (change.courseId === courseId && change.relPath.normalize('NFC') === relPath.normalize('NFC') &&
       (!documentRevision || change.documentRevision === documentRevision)) load(false)

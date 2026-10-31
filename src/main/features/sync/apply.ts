@@ -38,6 +38,8 @@ export interface ApplyResult {
   changed: string[]
   /** Courses this pass deleted or archived: the caller stops their recordings, watchers and sessions as the IPC handlers do. */
   removed: string[]
+  /** PDFs whose drawings this pass wrote: an open view of each redraws, nothing else needs to. */
+  markup: { courseId: string; relPath: string }[]
   /** Ids left for a later pass, and why. */
   held: { id: string; reason: string }[]
 }
@@ -622,7 +624,7 @@ async function applyInk(merged: MergedState, ctx: ApplyContext, result: ApplyRes
     // A document placed again at another path (brought back after a delete here) leaves its strokes where it was: they follow it.
     if (row && (row.course_id !== at.course_id || !samePlace(row.rel_path, at.local_path))) {
       silently(db, () => db.prepare('UPDATE pdf_drawings SET course_id = ?, rel_path = ? WHERE id = ?').run(at.course_id, at.local_path, id))
-      result.changed.push(at.course_id)
+      result.markup.push({ courseId: at.course_id, relPath: at.local_path })
     }
     const base = db.prepare('SELECT t, device_id, updated_at FROM sync_ink WHERE id = ?').get(id) as { t: number; device_id: string; updated_at: string | null } | undefined
     const next = { value: null, t: winner.t, device: winner.device }, was = base && { value: null, t: base.t, device: base.device_id }
@@ -657,7 +659,7 @@ async function applyInk(merged: MergedState, ctx: ApplyContext, result: ApplyRes
           .run(id, doc, object.page, winner.t, winner.device, updatedAt)
         return true
       })
-      if (wrote) result.changed.push(at.course_id)
+      if (wrote) result.markup.push({ courseId: at.course_id, relPath: at.local_path })
     } catch (error) {
       result.held.push({ id, reason: message(error) })
     }
@@ -666,11 +668,12 @@ async function applyInk(merged: MergedState, ctx: ApplyContext, result: ApplyRes
 
 /** Courses first, then documents, then drawings, each needing the one before; course deletions last. */
 export async function applyMerged(merged: MergedState, ctx: ApplyContext): Promise<ApplyResult> {
-  const result: ApplyResult = { changed: [], removed: [], held: [] }
+  const result: ApplyResult = { changed: [], removed: [], markup: [], held: [] }
   if (merged.blocked !== null) return result
   applyCourses(merged, ctx, result, 'upsert')
   await applyDocs(merged, ctx, result)
   await applyInk(merged, ctx, result)
   applyCourses(merged, ctx, result, 'remove')
-  return { changed: [...new Set(result.changed)].sort(), removed: [...new Set(result.removed)].sort(), held: result.held }
+  const markup = new Map(result.markup.map(item => [JSON.stringify([item.courseId, item.relPath]), item]))
+  return { changed: [...new Set(result.changed)].sort(), removed: [...new Set(result.removed)].sort(), markup: [...markup.values()], held: result.held }
 }

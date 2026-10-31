@@ -8,16 +8,22 @@ import { useDrawings, type DrawingsApi } from '../../../src/renderer/src/feature
 import { usePdfToolStore } from '../../../src/renderer/src/features/pdf/tools/toolStore'
 import { notifyExternalDrawingChange } from '../../../src/renderer/src/features/pdf/drawingChanges'
 
-const { invoke, listeners } = vi.hoisted(() => ({
+const { invoke, listeners, channels } = vi.hoisted(() => ({
   invoke: vi.fn(),
-  listeners: new Set<(payload: { courseId: string }) => void>()
+  listeners: new Set<(payload: { courseId: string }) => void>(),
+  /** The push channel each listener subscribed to. */
+  channels: new Map<(payload: never) => void, string>()
 }))
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
   invoke,
-  onPush: (_channel: string, listener: (payload: { courseId: string }) => void) => {
+  onPush: (channel: string, listener: (payload: { courseId: string }) => void) => {
     listeners.add(listener)
-    return () => listeners.delete(listener)
+    channels.set(listener, channel)
+    return () => {
+      listeners.delete(listener)
+      channels.delete(listener)
+    }
   }
 }))
 
@@ -115,6 +121,22 @@ describe('PDF drawing saves and history', () => {
     expect(invoke.mock.calls.filter(([channel]) => channel === 'drawings:listForFile')).toHaveLength(2)
     expect(invoke.mock.calls.filter(([channel]) => channel === 'materials:tree')).toHaveLength(0)
     expect(api.canUndo).toBe(false)
+  })
+
+  test('drawings a sync wrote for this PDF reload it; a local save or another file does not', async () => {
+    rows.set('original', drawing('original', 'old note'))
+    await mount('first.pdf', currentRevision)
+    const markup = async (payload: Record<string, unknown>) => act(async () => {
+      for (const [listener, channel] of channels) if (channel === 'pdf:markupChanged') (listener as (payload: unknown) => void)(payload)
+    })
+    const loads = () => invoke.mock.calls.filter(([channel]) => channel === 'drawings:listForFile').length
+    const before = loads()
+    rows.set('synced', drawing('synced', 'from the iPad'))
+    await markup({ courseId: 'course', relPath: 'first.pdf', documentRevision: currentRevision })
+    await markup({ courseId: 'course', relPath: 'other.pdf', documentRevision: currentRevision, origin: 'sync' })
+    expect(loads()).toBe(before)
+    await markup({ courseId: 'course', relPath: 'first.pdf'.normalize('NFD'), documentRevision: currentRevision, origin: 'sync' })
+    expect(api.drawings).toHaveLength(2)
   })
 
   test('external drawing notifications target one file revision and retain the old view after a rewrite', async () => {

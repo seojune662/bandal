@@ -111,6 +111,13 @@ export async function reconcileDocs(db: Database, courseId: string, scan: Scan, 
   })()
 }
 
+/** The tracked document a course file is, if any: the disk's spelling may differ in case or normalization. */
+export function trackedDoc(db: Database, courseId: string, relPath: string): string | null {
+  const key = diskKey(relPath)
+  const rows = db.prepare('SELECT document_id, local_path FROM sync_docs WHERE course_id = ? AND local_hash IS NOT NULL').all(courseId) as { document_id: string; local_path: string }[]
+  return rows.find(row => diskKey(row.local_path) === key)?.document_id ?? null
+}
+
 /** In-app rename or move through the materials journal: the documents keep their ids at the new path. */
 export function repointSyncDocs(db: Database, change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: boolean }): void {
   const from = diskKey(change.fromRelPath), depth = change.fromRelPath.split('/').length

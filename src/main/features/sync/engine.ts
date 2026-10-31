@@ -150,7 +150,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       return schedule(timing.waitingMs)
     }
     devices = [...pulled.merged.devices].map(([id, device]) => ({ id, ...device }))
-    if (pulled.changed.length > 0 || pulled.removed.length > 0) deps.changed(pulled)
+    if (pulled.changed.length > 0 || pulled.removed.length > 0 || pulled.markup.length > 0) deps.changed(pulled)
     // Stopped while applying (disconnected): what was applied stays, but nothing more goes to the root.
     if (stopped) return
     const paths = new Set(root.entries.map(entry => entry.path)), own = identity

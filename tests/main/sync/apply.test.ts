@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join, relative, sep } from 'node:path'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createCoursesRepo } from '../../../src/main/features/courses/coursesRepo'
 import { repointMaterialPath } from '../../../src/main/features/links/renameRepoint'
@@ -252,6 +253,17 @@ test('strokes follow a document brought back under another name after a delete',
   expect(existsSync(join(folder(COURSE), '되살린 벡터.pdf'))).toBe(true)
   expect(strokes()).toEqual([{ rel_path: '되살린 벡터.pdf' }])
   expect(outbox()).toEqual([])
+})
+
+test('a pass that only writes drawings names their PDF for a redraw, not the whole course', async () => {
+  const { pull } = profile()
+  const root = loadRoot('01-basic')
+  await pull(snapshot(root))
+  const source = [...root].find(([path]) => path.startsWith(`ink/${PDF_DOC}/1/bbbbbbbb`))!
+  const [stroke] = JSON.parse(gunzipSync(Buffer.from(source[1])).toString('utf8')) as InkObject[]
+  const changed = { ...stroke!, t: T, style: { ...stroke!.style, color: 'red' } }
+  const result = await pull(snapshot(new Map([...root, [`ink/${PDF_DOC}/1/${PHONE}-00000001.json.gz`, gzipSync(JSON.stringify([changed]))]])))
+  expect(result).toMatchObject({ status: 'applied', changed: [], markup: [{ courseId: COURSE, relPath: '강의자료/1주차 벡터.pdf' }] })
 })
 
 test('a remote move takes the file and its drawings along through the materials journal', async () => {

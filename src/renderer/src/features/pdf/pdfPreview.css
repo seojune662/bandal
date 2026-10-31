@@ -154,3 +154,4 @@
 .pdf-pages__menu .pdf-pages__danger { color: var(--danger, #c32632); }
 .pdf-pages__add { margin: 4px 6px 12px; min-height: 44px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--accent, #596da1); background: var(--accent-muted, #e7f0fc); }
 .pdf-pages__error { margin: 4px 8px; font-size: 12px; line-height: 1.5; color: var(--danger, #c32632); overflow-wrap: anywhere; }
+.pdf-pages__note { margin: 4px 8px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; }

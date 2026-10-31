@@ -14,7 +14,14 @@ import type { CreatePdfNoteInput, RestructurePdfInput, RestructurePdfResult, Pdf
 import { readFile } from 'node:fs/promises'
 import { PAPERS, drawPaper, noteSize, readPaper, readSurface, setPaper, type Orientation, type Paper } from './notePaper'
 
-export interface PdfNotesDeps { db: any; courses: { getFolder(courseId: string): string }; materials: any; notes: any; links: any; pdfBindings: any; userDataPath: string; changed: (courseId: string) => void }
+export interface PdfNotesDeps {
+  db: any; courses: { getFolder(courseId: string): string }; materials: any; notes: any; links: any; pdfBindings: any; userDataPath: string; changed: (courseId: string) => void
+  /** A synced document: every device follows an end-page append, nothing else (sync spec "PDF 페이지 재구성"). */
+  appendOnly?(courseId: string, relPath: string): boolean
+}
+/** The recipe keeps every page as it was, in order, and only adds blank pages after the last. */
+const endAppend = (entries: readonly PageRecipeEntry[], count: number): boolean =>
+  entries.length > count && entries.every((entry, index) => (index < count ? entry.source === index + 1 && (entry.rotate ?? 0) === 0 : entry.source === null))
 /** One entry per page of the new document: an existing page (1-based) with an
  * extra rotation, or `null` for a new blank page. Reorder, delete, duplicate,
  * rotate and insert are all expressed by this one recipe. */
@@ -53,6 +60,10 @@ export function createPdfNotesService(deps: PdfNotesDeps) {
   db.exec(`CREATE TABLE IF NOT EXISTS pdf_restructure_log (
     id TEXT PRIMARY KEY, material_id TEXT NOT NULL, from_sha TEXT NOT NULL, to_sha TEXT NOT NULL, recipe_json TEXT NOT NULL, created_at TEXT NOT NULL
   )`)
+  // An end-page append tells sync which bytes the new ones grew from (pdf_prev_sha256). Older rows count as other edits.
+  if (!(db.prepare('PRAGMA table_info(pdf_restructure_log)').all() as { name: string }[]).some(column => column.name === 'appended')) {
+    db.exec('ALTER TABLE pdf_restructure_log ADD COLUMN appended INTEGER NOT NULL DEFAULT 0')
+  }
   const copyRow = (table: string, row: Record<string, unknown>, overrides: Record<string, unknown>): void => {
     const next = { ...row, ...overrides }, columns = Object.keys(next)
     db.prepare(`INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`).run(...columns.map(column => next[column]))
@@ -71,7 +82,10 @@ export function createPdfNotesService(deps: PdfNotesDeps) {
     const source = await PDFDocument.load(sourceBytes)
     const sourcePages = source.getPages(), count = sourcePages.length
     // Array.from keeps the recipe in this realm: a host-supplied array fails pdf-lib's instanceof checks.
-    const entries = Array.from(recipe(request.pages, count))
+    const entries = Array.from(recipe(request.pages, count)), appended = endAppend(entries, count)
+    if (!appended && deps.appendOnly?.(courseId, relPath)) {
+      throw new ValidationError('동기화 중인 문서는 끝에 페이지를 덧붙이는 것만 할 수 있어요. 다른 편집은 사본을 만들어 해 주세요.')
+    }
     const geometry = sourcePages.map((page): Geometry => {
       const crop = page.getCropBox(), rotation = normalizeRotation(page.getRotation().angle)
       if (![0, 90, 180, 270].includes(rotation)) throw new ValidationError('PDF page rotation is unsupported')
@@ -156,7 +170,7 @@ export function createPdfNotesService(deps: PdfNotesDeps) {
       pinPdfClipSources(db,courseId,relPath,expected,sourceBytes.length)
       archivePdfRows(db, binding.materialID, expected, courseId, relPath)
       db.prepare('UPDATE pdf_document_bindings SET bound_sha=?, evidence=?, legacy_unverified=0 WHERE material_id=?').run(revision, 'receipt', binding.materialID)
-      db.prepare('INSERT INTO pdf_restructure_log(id,material_id,from_sha,to_sha,recipe_json,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(), binding.materialID, expected, revision, JSON.stringify(entries), now)
+      db.prepare('INSERT INTO pdf_restructure_log(id,material_id,from_sha,to_sha,recipe_json,created_at,appended) VALUES(?,?,?,?,?,?,?)').run(randomUUID(), binding.materialID, expected, revision, JSON.stringify(entries), now, appended ? 1 : 0)
       remapTable('pdf_drawings', (row, oldGeometry, newGeometry) => {
         if (oldGeometry.rotation === newGeometry.rotation) return {}
         const shape = transformShape(transformShape({ data: JSON.parse(row.data_json), style: JSON.parse(row.style_json) }, oldGeometry), newGeometry, true)

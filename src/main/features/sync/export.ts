@@ -16,7 +16,7 @@ import { resolveInsideReal } from '../../db/validate'
 import { assetExt, courseFields, docLocation, importInkObject, toInkObject, type AssetRef, type DrawingRow } from './adapter'
 import { basePlace, getRow, hashFile, liveFolder, readBase, samePlace, split, writeBase, type Stamped } from './apply'
 import { sha256, type InkObject, type MetaEvent } from './format'
-import { diskKey, isSyncedFile, reconcileDocs, type Scan, type SyncDocRow } from './localDocs'
+import { isSyncedFile, reconcileDocs, trackedDoc, type Scan, type SyncDocRow } from './localDocs'
 import { isAlive, type MergedState } from './merge'
 
 /** Log and ink files start over past this size (spec "동기화 루프"); readers take log files up to 4 MiB. */
@@ -236,8 +236,8 @@ async function exportDoc(batch: Batch, row: SyncDocRow, folder: string): Promise
     if (synced !== row.local_hash) return retry(batch, 'docs', row.course_id, `${row.local_path} changed while exporting`)
     if (type === 'pdf') {
       await upload(batch, `pdf/${synced}.pdf`, bytes)
-      // ponytail: an end-page append made here writes null until the restructure block records appends (design 20.3).
-      if (fresh || synced !== hash) Object.assign(fields, { pdf_sha256: synced, pdf_prev_sha256: null })
+      // An append made here names the bytes it grew from, so devices bound to them carry their drawings over (D6).
+      if (fresh || synced !== hash) Object.assign(fields, { pdf_sha256: synced, pdf_prev_sha256: !fresh && appendedHere(db, hash, synced) ? hash : null })
       hash = synced
     } else {
       const note = await specNote(folder, bytes), mdHash = sha256(note.bytes)
@@ -258,6 +258,30 @@ async function exportDoc(batch: Batch, row: SyncDocRow, folder: string): Promise
   if (synced !== row.synced_hash) batch.commits.push(() => db.prepare('UPDATE sync_docs SET synced_hash = ? WHERE document_id = ?').run(synced, id))
 }
 
+/**
+ * The page editor turned `from` into `to` by appending pages at the end, once
+ * or several times between two exports (pdf_restructure_log, appended = 1).
+ */
+function appendedHere(db: Database, from: unknown, to: string): boolean {
+  if (typeof from !== 'string') return false
+  let edges: { from_sha: string; to_sha: string }[]
+  try {
+    edges = db.prepare('SELECT from_sha, to_sha FROM pdf_restructure_log WHERE appended = 1').all() as { from_sha: string; to_sha: string }[]
+  } catch {
+    return false // Nothing was ever restructured here: the log, or its appended column, is not there yet.
+  }
+  const seen = new Set([from]), queue = [from]
+  for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+    for (const edge of edges) {
+      if (edge.from_sha !== next || seen.has(edge.to_sha)) continue
+      if (edge.to_sha === to) return true
+      seen.add(edge.to_sha)
+      queue.push(edge.to_sha)
+    }
+  }
+  return false
+}
+
 /** What applying `object` here and exporting it again would write: clamped, known keys only. Null when it would not import. */
 function reexported(object: InkObject): InkObject | null {
   try {
@@ -272,13 +296,6 @@ function reexported(object: InkObject): InkObject | null {
   } catch {
     return null
   }
-}
-
-/** The tracked document a drawing's PDF is, if any. */
-function trackedDoc(db: Database, courseId: string, relPath: string): string | null {
-  const key = diskKey(relPath)
-  const rows = db.prepare('SELECT document_id, local_path FROM sync_docs WHERE course_id = ? AND local_hash IS NOT NULL').all(courseId) as { document_id: string; local_path: string }[]
-  return rows.find(row => diskKey(row.local_path) === key)?.document_id ?? null
 }
 
 /** A PDF a scan of its course will track: a synced kind, outside dot folders, on disk now. */
