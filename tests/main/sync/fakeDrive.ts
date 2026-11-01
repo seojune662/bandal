@@ -13,8 +13,10 @@ const FOLDER = 'application/vnd.google-apps.folder'
 
 interface Stored {
   id: string; name: string; mimeType: string; parents: string[]; createdTime: string; modifiedTime: string
-  trashed: boolean; appProperties?: Record<string, string>; bytes?: Buffer
+  trashed: boolean; properties?: Record<string, string>; appProperties?: Record<string, string>; bytes?: Buffer
 }
+/** Every request comes from this client, so `appProperties` another client wrote are not here at all. */
+type Marks = Pick<Stored, 'properties' | 'appProperties'>
 
 export const fakeEncryptor = {
   isEncryptionAvailable: () => true,
@@ -63,14 +65,27 @@ export function createFakeDrive() {
     touched(file)
     return file
   }
-  /** `name = 'x'`, `mimeType = 'x'`, `'id' in parents`, `trashed = false`, joined by `and`. */
+  /** `q` cut at `separator` outside brackets. */
+  function split(q: string, separator: string): string[] {
+    const parts: string[] = []
+    let depth = 0, start = 0
+    for (let i = 0; i < q.length; i++) {
+      if ('({'.includes(q[i]!)) depth++
+      else if (')}'.includes(q[i]!)) depth--
+      else if (depth === 0 && q.startsWith(separator, i)) { parts.push(q.slice(start, i)); start = i + separator.length; i = start - 1 }
+    }
+    return [...parts, q.slice(start)]
+  }
+  /** `name = 'x'`, `mimeType = 'x'`, `'id' in parents`, `trashed = false`, `(app)properties has { key='k' and value='v' }`, joined by `and`, or by `or` in brackets. */
   function matches(file: Stored, q: string): boolean {
-    return q.split(' and ').every(clause => {
+    return split(q, ' and ').every(clause => {
+      if (clause.startsWith('(')) return split(clause.slice(1, -1), ' or ').some(part => matches(file, part))
       let m = /^name = '(.*)'$/.exec(clause)
       if (m) return file.name === m[1]
       if ((m = /^mimeType = '(.*)'$/.exec(clause))) return file.mimeType === m[1]
       if ((m = /^'(.*)' in parents$/.exec(clause))) return file.parents.includes(m[1] === 'root' ? 'ROOT' : m[1]!)
       if (clause === 'trashed = false') return !file.trashed
+      if ((m = /^(properties|appProperties) has \{ key='(.*)' and value='(.*)' \}$/.exec(clause))) return file[m[1] as keyof Marks]?.[m[2]!] === m[3]
       throw new Error(`fake drive: ${clause}`)
     })
   }
@@ -149,7 +164,7 @@ export function createFakeDrive() {
       return new Response('', { headers: { location: `${UPLOAD}/files?uploadType=resumable&upload_id=${key}` } })
     }
     if (path === '/files' && method === 'GET') {
-      if (state.hideRootsOnce && url.searchParams.get('q')?.includes("name = 'Bandal'")) {
+      if (state.hideRootsOnce && url.searchParams.get('q')?.includes('bandalRoot')) {
         state.hideRootsOnce = false
         return json({ files: [] })
       }
@@ -159,7 +174,7 @@ export function createFakeDrive() {
       return json(from + size < found.length ? { files: page, nextPageToken: String(from + size) } : { files: page })
     }
     if (path === '/files' && method === 'POST') {
-      const metadata = JSON.parse(body.toString()) as { name: string; mimeType: string; parents: string[]; appProperties?: Record<string, string> }
+      const metadata = JSON.parse(body.toString()) as { name: string; mimeType: string; parents: string[] } & Marks
       return json(meta(put({ ...metadata, parents: metadata.parents.map(parent => (parent === 'root' ? 'ROOT' : parent)) })))
     }
     if (id && method === 'PATCH') return json(meta(update(id, JSON.parse(body.toString()) as Partial<Stored>)))
@@ -177,8 +192,8 @@ export function createFakeDrive() {
 
   return {
     fetch, files, state, calls, valid,
-    /** A Bandal folder another device made, as Drive holds it. */
-    folder: (name = 'Bandal', parent = 'ROOT') => put({ name, parents: [parent], mimeType: FOLDER, appProperties: { bandalRoot: '2' } }),
+    /** A root another device made, as this client sees it: marked in public `properties` since spec v2.5, unmarked before. */
+    folder: (name = 'Bandal', parent = 'ROOT', marks: Marks = { properties: { bandalRoot: '2' } }) => put({ name, parents: [parent], mimeType: FOLDER, ...marks }),
     file: (name: string, parent: string, bytes: Buffer) => put({ name, parents: [parent], bytes }),
     pathOf(id: string): string {
       const file = files.get(id)!
