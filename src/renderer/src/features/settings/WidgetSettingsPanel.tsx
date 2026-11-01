@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { WIDGET_IDS, type Settings, type WidgetId } from '../../../../shared/types/settings'
+import { showToast } from '../../app/toast'
 import { useLocale } from '../../i18n'
+import { invoke } from '../../lib/ipc'
 import { useUniversityStore } from '../../stores/universityStore'
 import { SettingsCard, ToggleRow } from './primitives'
 import { savePreference } from './savePreference'
@@ -20,8 +22,11 @@ export function WidgetSettingsPanel({ settings }: { settings: Settings | null })
   const initUniversity = useUniversityStore((state) => state.init)
   const widgets = settings?.widgets
   const [mailUrl, setMailUrl] = useState(widgets?.mailUrl ?? '')
+  // The account of a saved Gmail sign-in, so it can be removed even while the mailbox is hidden.
+  const [gmailAccount, setGmailAccount] = useState<string | null>(null)
 
   useEffect(() => void initUniversity(), [initUniversity])
+  useEffect(() => void invoke('mail:state', {}).then((account) => setGmailAccount(account.email)).catch(() => {}), [])
   useEffect(() => setMailUrl(widgets?.mailUrl ?? ''), [widgets?.mailUrl])
 
   const mailServices = useMemo(
@@ -134,6 +139,22 @@ export function WidgetSettingsPanel({ settings }: { settings: Settings | null })
               }}
             />
           </label>
+          {gmailAccount !== null && (
+            <div className="setting-row">
+              <div className="setting-row__copy">
+                <span className="setting-row__label">{ko ? 'Google 메일' : 'Google Mail'}</span>
+                <span className="setting-row__description">{ko ? `${gmailAccount} 로그인이 이 기기에 저장되어 있습니다.` : `The sign-in for ${gmailAccount} is saved on this device.`}</span>
+              </div>
+              <button type="button" className="secondary-button settings-advanced-danger-button" onClick={() => {
+                if (!window.confirm(ko ? '이 기기에서 Google 메일 연결을 해제할까요?' : 'Disconnect Google Mail on this device?')) return
+                // Resolves only once the token file is gone.
+                void invoke('mail:disconnect', {}).then(() => setGmailAccount(null))
+                  .catch(() => showToast(ko ? '메일 연결을 해제하지 못했어요. 다시 시도해 주세요.' : 'Could not disconnect mail. Please try again.', 'danger'))
+              }}>
+                {ko ? 'Google 메일 연결 해제' : 'Disconnect Google Mail'}
+              </button>
+            </div>
+          )}
         </div>
       </SettingsCard>
     </div>
