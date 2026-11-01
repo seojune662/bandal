@@ -48,3 +48,17 @@ test('a slower course listing cannot undo the current archived-course filter', a
   await act(async () => old.resolve([]))
   expect(container.textContent).toContain('보관한 과목')
 })
+
+test('Settings › 동기화 is listed only when launched with BANDAL_SYNC_UI=1', async () => {
+  const bandal = (window as unknown as { bandal: Record<string, unknown> }).bandal
+  const { container } = await mount('about', () => undefined)
+  expect(container.querySelector('[data-category="sync"]')).toBeNull()
+  act(() => root!.unmount())
+  Object.defineProperty(window, 'bandal', { configurable: true, value: { ...bandal, syncUi: true } })
+  try {
+    const shown = await mount('about', () => undefined)
+    expect(shown.container.querySelector('[data-category="sync"]')).not.toBeNull()
+  } finally {
+    Object.defineProperty(window, 'bandal', { configurable: true, value: bandal })
+  }
+})

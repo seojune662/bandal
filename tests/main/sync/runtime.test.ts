@@ -171,6 +171,16 @@ test('a profile that synced with this root resumes without asking, and an import
   expect(c.runtime.view().provider).toBeNull()
 })
 
+test('a new profile releases a bound one, and leaves no sync state in an unbound one', async () => {
+  root = new Map()
+  const a = device('mac-a')
+  a.runtime.release()
+  expect(existsSync(join(a.dir, 'sync'))).toBe(false)
+  await a.runtime.connect('merge', [])
+  a.runtime.release()
+  expect(readState(join(a.dir, 'sync', 'state.json')).provider).toBeNull()
+})
+
 test('a root another profile here is bound to is refused, and a device name goes to its devices file', async () => {
   root = new Map()
   const other = device('mac-a', { boundElsewhere: '기본 프로필' })

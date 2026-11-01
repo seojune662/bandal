@@ -23,6 +23,8 @@ declare global {
       startExternalFileDrag(id: string): void
       /** [M9] 'darwin' | 'win32' | 'linux' — drives the traffic-light inset. */
       readonly platform: string
+      /** Launched with BANDAL_SYNC_UI=1: Settings › 동기화 is listed. */
+      readonly syncUi?: boolean
       readonly browserAuthProbe?: 'product' | 'clean'
       /** Temporary M0 helper — opens the settings window. */
       openSettings(): Promise<void>

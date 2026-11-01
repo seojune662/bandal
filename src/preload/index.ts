@@ -35,6 +35,8 @@ export interface BandalBridge {
    * anywhere else leaves a dead gap in the window chrome.
    */
   readonly platform: string
+  /** Settings › 동기화 is listed only when launched with BANDAL_SYNC_UI=1, until sync ships together with the iPad app. */
+  readonly syncUi: boolean
   /** Present only in an explicitly isolated manual authentication probe. */
   readonly browserAuthProbe?: 'product' | 'clean'
   /** Temporary M0 helper — opens the settings window. */
@@ -157,6 +159,7 @@ const bridge: BandalBridge = {
     }
   },
   platform: process.platform,
+  syncUi: process.env['BANDAL_SYNC_UI'] === '1',
   ...(process.argv.includes('--bandal-browser-auth-probe=clean')
     ? { browserAuthProbe: 'clean' as const }
     : process.argv.includes('--bandal-browser-auth-probe=product')
