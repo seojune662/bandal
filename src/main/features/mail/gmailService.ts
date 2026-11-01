@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { runtimeSafeStorage } from '../../lib/safeStorageGate'
-import { authorize, googleClient, granted, revokeToken, tokenRequest, type GoogleTokens } from '../google/oauth'
+import { authorize, googleClient, granted, tokenRequest, type GoogleTokens } from '../google/oauth'
 import type { MailAccountState, MailList, MailMessage, MailModify, MailReply } from '../../../shared/types/mail'
 import { gmailMessage, gmailSummary, replyMime, type GmailMessage } from './gmailModel'
 
@@ -141,13 +141,12 @@ export function createGmailService(userData: string) {
     ++epoch; cancelAuth?.()
     disconnectPromise = (async () => {
       await load()
-      const old = tokens
       await storageQueue
       await unlink(tokenPath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
       // Keep the account visible if removal fails, so the user can retry and
       // the running app agrees with the credentials still saved on disk.
+      // Never revoked: Google drops every grant of the project for this account, Drive sync on every device too (sync design 24.3).
       tokens = null; needsAuth = false; bodies.clear()
-      if (old) await revokeToken(old.refreshToken)
     })().finally(() => { disconnectPromise = null })
     return disconnectPromise
   }

@@ -71,7 +71,17 @@ test.describe('right rail widgets', () => {
     await expect(rows.nth(0)).toHaveAttribute('data-color', 'violet')
   })
 
+  test('without BANDAL_GMAIL_UI the mail widget only opens the webmail, with no Gmail connection', async () => {
+    test.skip(process.env['BANDAL_GMAIL_UI'] === '1', 'Gmail mailbox shown')
+    const widget = bandal.page.getByRole('region', { name: '자료 사이드바' }).getByRole('region', { name: '위젯' })
+    await expect(widget.getByRole('button', { name: '웹메일 열기 ↗' })).toBeVisible()
+    await expect(widget.getByText('Google 메일 연결')).toHaveCount(0)
+    await expect(widget.locator('webview')).toHaveCount(0)
+  })
+
   test('opens a native mailbox without embedding the desktop mail website', async () => {
+    // Gmail waits on Google's restricted-scope review: shown only under BANDAL_GMAIL_UI=1.
+    test.skip(process.env['BANDAL_GMAIL_UI'] !== '1', 'Gmail mailbox hidden')
     const { page } = bandal
     const widget = page.getByRole('region', { name: '자료 사이드바' }).getByRole('region', { name: '위젯' })
 

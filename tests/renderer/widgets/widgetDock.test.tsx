@@ -18,7 +18,7 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ({
 vi.mock('../../../src/renderer/src/stores/settingsSnapshot', () => ({ ensureSettingsLoaded: mocks.load }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: mocks.toast }))
 vi.mock('../../../src/renderer/src/app/icons', () => ({ Icon: () => null }))
-vi.mock('../../../src/renderer/src/features/widgets/MailWidget', () => ({ NativeMailWidget: () => null }))
+vi.mock('../../../src/renderer/src/features/widgets/MailWidget', () => ({ NativeMailWidget: () => 'Gmail 메일함', WebmailWidget: () => '웹메일 바로가기' }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({ useCoursesStore: (select: (state: any) => unknown) => select({ courses: [{ id: 'course', name: '수학', workspaceKind: 'course' }], selectedCourseId: 'course' }) }))
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: (select: (state: any) => unknown) => select({ rightRailOpen: true, isSettingsOpen: false, toggleBoardOverlay: () => {} }) }))
 vi.mock('../../../src/renderer/src/stores/universityStore', () => ({ useUniversityStore: (select: (state: any) => unknown) => select({ services: [], init: () => {} }) }))
@@ -63,6 +63,23 @@ const startResize = async (): Promise<void> => {
   divider().releasePointerCapture = vi.fn()
   await act(async () => Simulate.pointerDown(divider(), { button: 0, pointerId: 1, clientY: 620 } as never))
 }
+
+test('the mail widget holds the Gmail mailbox only when launched with BANDAL_GMAIL_UI=1', async () => {
+  settings = { ...settings, widgets: { ...settings.widgets, enabled: ['mail'], active: 'mail' } }
+  mocks.load.mockResolvedValue(settings)
+  await mount()
+  expect(dock().textContent).toContain('웹메일 바로가기')
+  expect(dock().textContent).not.toContain('Gmail 메일함')
+  await act(async () => root.unmount())
+  root = createRoot(host)
+  Object.defineProperty(window, 'bandal', { configurable: true, value: { gmailUi: true } })
+  try {
+    await mount()
+    expect(dock().textContent).toContain('Gmail 메일함')
+  } finally {
+    Reflect.deleteProperty(window, 'bandal')
+  }
+})
 
 test('a failed initial settings request shows a retry instead of silently hiding enabled widgets', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})

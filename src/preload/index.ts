@@ -37,6 +37,8 @@ export interface BandalBridge {
   readonly platform: string
   /** Settings › 동기화 is listed only when launched with BANDAL_SYNC_UI=1, until sync ships together with the iPad app. */
   readonly syncUi: boolean
+  /** The Gmail mailbox in the mail widget shows only under BANDAL_GMAIL_UI=1 while Google reviews its restricted scope. */
+  readonly gmailUi: boolean
   /** Present only in an explicitly isolated manual authentication probe. */
   readonly browserAuthProbe?: 'product' | 'clean'
   /** Temporary M0 helper — opens the settings window. */
@@ -160,6 +162,7 @@ const bridge: BandalBridge = {
   },
   platform: process.platform,
   syncUi: process.env['BANDAL_SYNC_UI'] === '1',
+  gmailUi: process.env['BANDAL_GMAIL_UI'] === '1',
   ...(process.argv.includes('--bandal-browser-auth-probe=clean')
     ? { browserAuthProbe: 'clean' as const }
     : process.argv.includes('--bandal-browser-auth-probe=product')

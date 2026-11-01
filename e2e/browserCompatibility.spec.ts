@@ -785,7 +785,12 @@ function visibleNativePages(bandal: BandalApp): Promise<number[]> {
 }
 
 test('settings occlusion survives late bounds, nested dialogs and newly created pages', async ({}, info) => {
+  // The widget overlay checked at the end is the expanded Gmail mailbox, shown only under BANDAL_GMAIL_UI=1.
+  const gmailUi = process.env['BANDAL_GMAIL_UI']
+  process.env['BANDAL_GMAIL_UI'] = '1'
   const site = await fixture(), bandal = await launchBandal()
+  if (gmailUi === undefined) delete process.env['BANDAL_GMAIL_UI']
+  else process.env['BANDAL_GMAIL_UI'] = gmailUi
   try {
     const { page } = bandal
     await createCourse(page, '설정 브라우저 겹침')

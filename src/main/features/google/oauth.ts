@@ -27,9 +27,6 @@ export async function tokenRequest(body: URLSearchParams): Promise<{ ok: boolean
   return { ok: response.ok, result: await response.json() as GoogleTokens }
 }
 
-export const revokeToken = (token: string): Promise<unknown> =>
-  fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', body: new URLSearchParams({ token }), signal: AbortSignal.timeout(10_000) }).catch(() => {})
-
 /**
  * Asks for `scope` in the browser and waits for the redirect; resolves with the
  * authorization-code grant for `tokenRequest`. `label` names the connection on

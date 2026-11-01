@@ -16,7 +16,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { useUniversityStore } from '../../stores/universityStore'
 import { dueDayLabel } from '../board/boardLogic'
 import { localDateKey } from '../calendar/calendarDate'
-import { NativeMailWidget } from './MailWidget'
+import { NativeMailWidget, WebmailWidget } from './MailWidget'
 import './widgets.css'
 
 const LABELS: Record<WidgetId, string> = {
@@ -333,7 +333,7 @@ function MailWidget({ settings, active }: { settings: Settings; active: boolean 
         url: selected.url
       }
 
-  return <NativeMailWidget fallback={target} active={active} />
+  return window.bandal?.gmailUi === true ? <NativeMailWidget fallback={target} active={active} /> : <WebmailWidget fallback={target} />
 }
 
 

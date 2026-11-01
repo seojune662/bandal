@@ -3,7 +3,8 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Simulate } from 'react-dom/test-utils'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { NativeMailWidget, mailText } from '../../../src/renderer/src/features/widgets/MailWidget'
+import { NativeMailWidget, WebmailWidget, mailText } from '../../../src/renderer/src/features/widgets/MailWidget'
+import { createBrowserTab } from '../../../src/renderer/src/app/tabCommands'
 
 const invoke = vi.hoisted(() => vi.fn())
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke }))
@@ -64,6 +65,14 @@ test('provider HTML never mounts scripts, images, iframes, or decoded tags', () 
   expect(value).not.toContain('hidden')
   expect(value).not.toContain('tracker.test')
   expect(document.body.querySelector('img,script,iframe')).toBeNull()
+})
+
+test('with Gmail hidden the widget only opens the school mail in a tab and never asks the Gmail service', async () => {
+  await act(async () => root.render(<WebmailWidget fallback={{ label: '스누메일', url: 'https://mail.snu.ac.kr/' }} />))
+  expect(document.body.textContent).not.toContain('Google 메일 연결')
+  await click('스누메일 열기')
+  expect(createBrowserTab).toHaveBeenCalledWith('https://mail.snu.ac.kr/')
+  expect(invoke).not.toHaveBeenCalled()
 })
 
 test('unconfigured builds offer an honest fallback, not a broken login', async () => {
