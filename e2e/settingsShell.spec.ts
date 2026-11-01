@@ -44,9 +44,11 @@ test.describe('settings shell', () => {
     await expect(nav).toBeVisible()
     await expect(nav.locator('.settings-nav__group-label')).toHaveCount(SETTINGS_GROUPS.length)
 
+    // 동기화 ships with the iPad app: listed only under BANDAL_SYNC_UI=1.
+    await expect(nav.locator('[data-category="sync"]')).toHaveCount(process.env['BANDAL_SYNC_UI'] === '1' ? 1 : 0)
     // The launcher disables safeStorage, so the encrypted registry (mcp) and
     // saved logins (university) render without a keychain prompt.
-    for (const { id } of SETTINGS_CATEGORIES) {
+    for (const { id } of SETTINGS_CATEGORIES.filter(({ id }) => id !== 'sync' || process.env['BANDAL_SYNC_UI'] === '1')) {
       const item = nav.locator(`[data-category="${id}"]`)
       await expect(item).toBeVisible()
       await item.click()

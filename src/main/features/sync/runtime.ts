@@ -204,8 +204,10 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     prepare,
     connect,
     disconnect,
-    /** This profile stops being the active one (a new profile was made): unbind it, so the next one can connect. */
-    release: () => void disconnect(),
+    /** This profile stops being the active one (a new profile was made): unbind it, so the next one can connect. An unbound profile is left untouched. */
+    release: () => {
+      if (readState(stateFile).provider) void disconnect()
+    },
     syncNow: async () => {
       await engine?.syncNow()
       publish()

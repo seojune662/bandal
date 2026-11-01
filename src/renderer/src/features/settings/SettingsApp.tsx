@@ -143,7 +143,7 @@ export function SettingsApp({
 
   const categories = useMemo<readonly Category[]>(
     () =>
-      SETTINGS_CATEGORIES.map(({ id, group }) => ({
+      SETTINGS_CATEGORIES.filter(({ id }) => id !== "sync" || window.bandal?.syncUi === true).map(({ id, group }) => ({
         id,
         group,
         label: t(`settings.category.${id}.label`),
