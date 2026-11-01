@@ -3794,7 +3794,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // Sync through the user's iCloud (design 6.1–6.4): bound from Settings › 동기화; only the open profile syncs.
   const userDataPath = deps.userDataPath ?? app.getPath('userData')
   const sync = createSyncRuntime({
-    db, courses: coursesRepo, materials: materialsRepo, userDataPath, appVersion: app.getVersion(),
+    db, courses: coursesRepo, materials: materialsRepo, userDataPath, appVersion: app.getVersion(), logFile: join(app.getPath('logs'), 'sync.log'),
     scan: async folder => {
       const walk = await background.request('scan', { folder, limits: { maxDepth: MATERIAL_SCAN_MAX_DEPTH, maxEntries: MATERIAL_SCAN_MAX_ENTRIES } })
       return { complete: walk.truncation.size === 0, files: walk.files.map(file => ({ relPath: file.relPath, size: file.size ?? 0, mtime: Math.round(file.mtime ?? 0) })) }

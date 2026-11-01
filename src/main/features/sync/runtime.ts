@@ -5,9 +5,9 @@
  * active profile syncs; switching profiles relaunches.
  */
 import { execFile } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { hostname } from 'node:os'
-import { join, resolve } from 'node:path'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { homedir, hostname } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { ConnectMode, ConnectPlan, ConnectPrepare, SyncProviderKind, SyncView } from '../../../shared/types/sync'
 import { googleClient } from '../google/oauth'
@@ -15,11 +15,12 @@ import type { ApplyContext, ApplyResult } from './apply'
 import { forgetRoot, joinRoot, overwriteRoot, planConnect } from './connect'
 import { createDriveProvider, DRIVE_TOKEN_FILE, type DriveProvider } from './drive'
 import { createSyncEngine, type SyncEngine } from './engine'
+import { parseFile, placeholderTarget, type ParsedFile } from './format'
 import { createICloudProvider, icloudRoot, type SyncProvider } from './icloud'
 import { loadIdentity, machineFingerprint, patchState, readState, takeSeq } from './identity'
 import type { Scan } from './localDocs'
 import { merge } from './merge'
-import { createPull, readMerged } from './pull'
+import { createPull, readMerged, type RootSnapshot } from './pull'
 
 export interface SyncRuntimeDeps extends Omit<ApplyContext, 'read'> {
   userDataPath: string
@@ -38,6 +39,8 @@ export interface SyncRuntimeDeps extends Omit<ApplyContext, 'read'> {
   /** Stand-ins for iCloud and Google Drive (tests); only these are offered. */
   providers?: { icloud?: SyncProvider; gdrive?: DriveProvider }
   machine?: () => Promise<string>
+  /** `<logs>/sync.log`: a line for each connect that failed or waits, with what was looked at (spec v2.6). */
+  logFile?: string
 }
 
 const NAME: Record<SyncProviderKind, string> = { icloud: 'iCloud', gdrive: 'Google Drive' }
@@ -47,6 +50,61 @@ const rootOf = (state: Record<string, unknown>): string => (typeof state.root ==
 
 const run = promisify(execFile)
 const MAX_NAME = 64
+/** A first upload whose device was seen within this long still runs (spec v2.6). */
+const FIRST_UPLOAD_SEEN_MS = 60 * 60_000
+/** sync.log starts over past this size. */
+const MAX_LOG = 1 << 20
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+/** A first-upload mark (spec v2.6): the marking device, with the name and `last_seen` of its device file when there is one. */
+export interface FirstUploadMark {
+  device: string
+  name: string | null
+  last_seen: number | null
+  /** The device file is listed but cannot be read yet: whether the upload still runs cannot be told. */
+  pending?: true
+}
+
+/**
+ * Another device's first upload into this root, by name, and whether it stopped (spec v2.6): no device file or
+ * `last_seen`, or one more than an hour away from now either way (a clock far ahead would hold everyone back).
+ */
+export function firstUpload(mark: FirstUploadMark | null, own: string | null, now = Date.now()): { device: string; stopped: boolean } | null {
+  if (mark === null || mark.device === own) return null
+  const seen = mark.last_seen
+  return { device: (mark.name?.trim() || mark.device.slice(0, 8)).slice(0, MAX_NAME), stopped: seen === null || Math.abs(now - seen) > FIRST_UPLOAD_SEEN_MS }
+}
+
+/**
+ * The mark from `bandal.json` and the marking device's file alone, so another device's upload shows before the
+ * rest of a root still arriving is readable. `unreadable`: `bandal.json` is listed but cannot be read yet (an
+ * iCloud placeholder, a failed download). Null without a mark, or when `bandal.json` is missing or broken: the full read says why.
+ */
+async function readMark(root: RootSnapshot): Promise<FirstUploadMark | null | 'unreadable'> {
+  const listed = (path: string): 'file' | 'placeholder' | null =>
+    root.entries.some(entry => entry.path === path) ? 'file' : root.entries.some(entry => placeholderTarget(entry.path) === path) ? 'placeholder' : null
+  const read = async (path: string): Promise<ParsedFile | null | 'unreadable'> => {
+    let bytes: Uint8Array
+    try {
+      bytes = await root.read(path)
+    } catch {
+      return 'unreadable'
+    }
+    try {
+      return parseFile({ path, bytes })
+    } catch {
+      return null
+    }
+  }
+  if (listed('bandal.json') !== 'file') return null
+  const file = await read('bandal.json')
+  if (file === 'unreadable') return 'unreadable'
+  if (file?.kind !== 'root' || file.initial_upload === undefined) return null
+  const path = `devices/${file.initial_upload}.json`, there = listed(path)
+  const device = there === 'file' ? await read(path) : null
+  if (there === 'placeholder' || device === 'unreadable') return { device: file.initial_upload, name: null, last_seen: null, pending: true }
+  return { device: file.initial_upload, name: device?.kind === 'device' ? device.name : null, last_seen: device?.kind === 'device' ? device.last_seen : null }
+}
 
 /** The Mac's name as System Settings shows it ("서준의 MacBook Air"); the host name if that cannot be read. */
 async function computerName(): Promise<string> {
@@ -81,6 +139,10 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     fallbackName = name
   })
   let engine: SyncEngine | null = null, busy = false, stopping: Promise<void> | null = null
+  /** The root the last connect step listed, for the log. */
+  let looked: { key: string | null; entries: number; bandal_json: boolean; initial_upload: string | null } | null = null
+  /** Whether the last connect step asked Google Drive for its folders: only then does its lookup belong in the log. */
+  let lookedUp = false
 
   const deviceName = (): string => {
     const name = readState(stateFile).device_name
@@ -102,6 +164,27 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       deps.onView(view())
     } catch {
       // The database closed under a pass that is still finishing (quitting): no window is left to tell.
+    }
+  }
+
+  /** This profile's device id if it has one; never makes one, as an unbound profile keeps no sync state. */
+  const ownDevice = async (): Promise<string | null> => {
+    const { device_id, machine: madeOn } = readState(stateFile)
+    return typeof device_id === 'string' && madeOn === await machine() ? device_id : null
+  }
+  /** One line for a connect that failed or waits: what was looked at, for a person reading the log (spec v2.6). */
+  function log(step: 'prepare' | 'connect', kind: SyncProviderKind, outcome: string): void {
+    if (!deps.logFile) return
+    try {
+      mkdirSync(dirname(deps.logFile), { recursive: true })
+      // ponytail: no rotation, a connect rarely fails; past 1 MiB the log starts over.
+      if (existsSync(deps.logFile) && statSync(deps.logFile).size > MAX_LOG) writeFileSync(deps.logFile, '')
+      const candidates = kind === 'gdrive' && lookedUp ? providers.gdrive?.lookup() ?? null : undefined
+      // An error can carry a path: the home folder (the account name) stays out.
+      const line = { at: new Date().toISOString(), step, provider: kind, outcome: outcome.replaceAll(homedir(), '~'), root: looked, ...(candidates !== undefined ? { candidates } : {}) }
+      appendFileSync(deps.logFile, `${JSON.stringify(line)}\n`, { mode: 0o600 })
+    } catch {
+      // A log that cannot be written never stops a connect.
     }
   }
 
@@ -144,21 +227,34 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
    */
   async function readRoot(kind: SyncProviderKind, make: boolean) {
     const provider = providers[kind]!
+    looked = null
+    lookedUp = false
     const status = await provider.status()
     if (status !== 'ready') return { status } as const
     const empty = { status: 'merged' as const, merged: merge([{ kind: 'root', path: 'bandal.json', format: 2 }]), clock: 0 }
     let key = 'icloud'
     if (kind === 'gdrive') {
+      lookedUp = true
       const folder = await providers.gdrive!.findRoot(make)
-      if (folder === null) return { ...empty, key: null, root: { entries: [], read: async () => new Uint8Array() } }
+      if (folder === null) return { ...empty, key: null, root: { entries: [], read: async () => new Uint8Array() }, started: null }
       key = `gdrive:${folder}`
     }
     const root = await provider.list()
-    if (root.entries.length === 0) return { ...empty, key, root }
+    looked = { key, entries: root.entries.length, bandal_json: root.entries.some(entry => entry.path === 'bandal.json'), initial_upload: null }
+    if (root.entries.length === 0) return { ...empty, key, root, started: null }
+    // Another device's first upload (spec v2.6) is decided before a full read, which waits for every file.
+    const mark = await readMark(root)
+    if (mark === 'unreadable') return { status: 'waiting' as const }
+    looked.initial_upload = mark?.device ?? null
+    const own = await ownDevice()
+    // The marking device's file is still arriving: whether its upload runs cannot be told yet.
+    if (mark?.pending && mark.device !== own) return { status: 'waiting' as const }
+    const started = firstUpload(mark, own)
+    if (started && !started.stopped) return { status: 'uploading' as const, device: started.device }
     const read = await readMerged(root)
     if (read.status === 'blocked') return { status: read.blocked === 'update-required' ? 'update-required' as const : 'error' as const, message: `bandal.json: ${read.blocked}` }
     if (read.status === 'incomplete') return { status: 'waiting' as const }
-    return { status: 'merged' as const, key, root, merged: read.merged, clock: read.clock }
+    return { status: 'merged' as const, key, root, merged: read.merged, clock: read.clock, started }
   }
 
   async function prepare(kind: SyncProviderKind): Promise<ConnectPrepare> {
@@ -166,11 +262,28 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     // Never while a pass may still run: looking for a Drive folder must not move a provider in use.
     await stopping
     if (engine) return { status: 'error', message: '이미 동기화에 연결돼 있어요.' }
-    const read = await readRoot(kind, false)
-    if (read.status === 'error') return { status: 'error', message: read.message }
-    if (read.status !== 'merged') return { status: read.status }
+    let read: Awaited<ReturnType<typeof readRoot>>
+    try {
+      read = await readRoot(kind, false)
+    } catch (error) {
+      log('prepare', kind, `error: ${messageOf(error)}`)
+      throw error
+    }
+    if (read.status === 'error') {
+      log('prepare', kind, `error: ${read.message}`)
+      return { status: 'error', message: read.message }
+    }
+    if (read.status === 'uploading') {
+      log('prepare', kind, `uploading: ${read.device}`)
+      return { status: 'uploading', device: read.device }
+    }
+    if (read.status !== 'merged') {
+      log('prepare', kind, read.status)
+      return { status: read.status }
+    }
     // A base from another root (the other provider, or a root made anew) says nothing about this one.
-    return { status: 'ready', plan: await planConnect(db, read.merged, deps.scan, read.key === rootOf(readState(stateFile))) }
+    const plan = await planConnect(db, read.merged, deps.scan, read.key === rootOf(readState(stateFile)))
+    return { status: 'ready', plan: read.started ? { ...plan, interrupted: read.started.device } : plan }
   }
 
   /**
@@ -187,7 +300,9 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     try {
       const read = await readRoot(kind, true)
       if (read.status !== 'merged' || read.key === null) {
-        throw new Error(read.status === 'error' ? read.message : read.status === 'needs-auth' ? '먼저 Google 계정을 연결해 주세요.' : `지금은 ${NAME[kind]}에 연결할 수 없어요. 상태를 확인한 뒤 다시 시도해 주세요.`)
+        throw new Error(read.status === 'error' ? read.message
+          : read.status === 'uploading' ? `다른 기기(${read.device})가 아직 올리고 있어요. 다 올린 뒤 다시 연결해 주세요.`
+            : read.status === 'needs-auth' ? '먼저 Google 계정을 연결해 주세요.' : `지금은 ${NAME[kind]}에 연결할 수 없어요. 상태를 확인한 뒤 다시 시도해 주세요.`)
       }
       const other = deps.boundElsewhere(read.key)
       if (other !== null) throw new Error(`이 저장소는 ${other}과 연결돼 있어요. 그 프로필에서 연결을 해제한 뒤 다시 시도해 주세요.`)
@@ -201,6 +316,9 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       }
       const plan = await planConnect(db, read.merged, deps.scan, read.key === rootOf(readState(stateFile)))
       if (expect !== undefined && plan.kind !== expect) throw new Error('그사이 iCloud나 이 기기의 자료가 바뀌었어요. 다시 확인해 주세요.')
+      if (read.started && plan.kind === 'choose' && mode === 'overwrite') {
+        throw new Error(`다른 기기(${read.started.device})가 처음 올리다 멈춘 클라우드라 덮어쓸 수 없어요. 합치기나 가져오기를 골라 주세요.`)
+      }
       // A base from another root would make this profile look already synced: compare everything as new.
       if (plan.kind !== 'resume') forgetRoot(db)
       try {
@@ -227,6 +345,11 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       }
       patchState(stateFile, { provider: kind, root: read.key })
       start(kind)
+      // Finding no folder and making one is how two devices end up apart: that is logged too.
+      if (kind === 'gdrive' && providers.gdrive?.lookup()?.made) log('connect', kind, 'made a new root folder')
+    } catch (error) {
+      log('connect', kind, `error: ${messageOf(error)}`)
+      throw error
     } finally {
       busy = false
       publish()

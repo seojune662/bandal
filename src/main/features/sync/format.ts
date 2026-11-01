@@ -66,7 +66,8 @@ export interface InkObject {
 }
 
 export type ParsedFile =
-  | { kind: 'root'; path: string; format: number }
+  /** `initial_upload` (spec v2.6): the device still on its first upload into this root. */
+  | { kind: 'root'; path: string; format: number; initial_upload?: string }
   | { kind: 'device'; path: string; device: string; name: string; platform: string | null; last_seen: number | null }
   /** `dropped` counts events that failed validation and were left out. */
   | { kind: 'log'; path: string; author: string; seq: number; events: MetaEvent[]; dropped: number }
@@ -206,7 +207,8 @@ export function parseFile({ path, bytes }: RemoteFile): ParsedFile | null {
   if (path === 'bandal.json') {
     const root = json(bytes, MIB)
     if (!isRecord(root) || !Number.isSafeInteger(root.format)) fail('bandal.json format')
-    return { kind: 'root', path, format: root.format as number }
+    // Anything but a lowercase device id is no mark, not a broken root (spec v2.6).
+    return { kind: 'root', path, format: root.format as number, ...(isUuid(root.initial_upload) ? { initial_upload: root.initial_upload } : {}) }
   }
   if ((match = PATHS.device.exec(path))) {
     const device = json(bytes, MIB)
