@@ -53,8 +53,8 @@ interface RemoteDoc {
   name: string
   type: DocType
   hash: string
-  /** PDF only: the bytes `hash` was appended to, from the same event (spec v2.3); null otherwise. */
-  prev: string | null
+  /** PDF only: bytes from which end-page appends lead to `hash` (spec v2.4). */
+  rebindFrom: readonly string[]
   /** Root path of the bytes, `pdf/<sha>.pdf` or a note snapshot; null until it arrives. */
   content: string | null
   /** Synced values with their stamps, the base once applied; `name` is the spec name before any collision rename. */
@@ -164,16 +164,15 @@ export function liveFolder(db: Database, courseId: string): string | null {
 
 interface CourseRow { name: string; color: string; sort_order: number; archived: number; deleted_at: string | null; source: string; workspace_kind: string; folder_path: string }
 
-function courseRemote(id: string, entity: Entity, holding: ReadonlySet<unknown>): Record<string, Stamped> {
+function courseRemote(entity: Entity): Record<string, Stamped> {
   const remote: Record<string, Stamped> = {}
   for (const key of ['name', 'sort', 'color', 'archived']) {
     const field = stamped(entity.fields.get(key))
     // The repository trims names and colours: compare what it would store.
     if (field) remote[key] = typeof field.value === 'string' ? { ...field, value: field.value.trim() } : field
   }
-  // A deleted course that still holds live documents stays (P8).
   const deleted = stamped(entity.deleted)
-  if (deleted) remote.deleted = { ...deleted, value: deleted.value === true && !holding.has(id) }
+  if (deleted) remote.deleted = deleted
   return remote
 }
 
@@ -184,10 +183,8 @@ function courseRemote(id: string, entity: Entity, holding: ReadonlySet<unknown>)
  */
 function applyCourses(merged: MergedState, ctx: ApplyContext, result: ApplyResult, phase: 'upsert' | 'remove'): void {
   const { db } = ctx
-  const holding = new Set<unknown>([...merged.docs.values()].filter(isAlive).map(doc => doc.fields.get('course_id')?.value))
-  for (const copy of merged.conflictCopies) holding.add(copy.course_id)
   for (const [id, entity] of merged.courses) {
-    const remote = courseRemote(id, entity, holding)
+    const remote = courseRemote(entity)
     const row = db.prepare('SELECT * FROM courses WHERE id = ?').get(id) as CourseRow | undefined
     try {
       if (phase === 'upsert' && row === undefined) createCourse(id, remote, ctx, result)
@@ -276,10 +273,9 @@ function remoteDocs(merged: MergedState): Map<string, RemoteState> {
     const hash = stamped(entity.fields.get(type === 'pdf' ? 'pdf_sha256' : 'md_hash'))
     if (typeof course_id?.value !== 'string' || typeof rel_path?.value !== 'string' || typeof name?.value !== 'string' ||
       (type !== 'pdf' && type !== 'md') || typeof hash?.value !== 'string') continue
-    const prev = type === 'pdf' ? entity.fields.get('pdf_prev_sha256')?.value : null
     docs.set(id, {
       course_id: course_id.value, rel_path: rel_path.value, name: renamed.get(id) ?? name.value, type, hash: hash.value,
-      prev: typeof prev === 'string' ? prev : null,
+      rebindFrom: type === 'pdf' ? merged.rebindFrom.get(id) ?? [] : [],
       content: type === 'pdf' ? `pdf/${hash.value}.pdf` : merged.notes.get(id)?.file ?? null, fields: { ...fields, hash }
     })
   }
@@ -287,7 +283,7 @@ function remoteDocs(merged: MergedState): Map<string, RemoteState> {
   // the two cannot be told apart, and its text is in the root's history either way.
   for (const copy of merged.conflictCopies) {
     docs.set(copy.id, {
-      course_id: copy.course_id, rel_path: copy.rel_path, name: copy.name, type: 'md', hash: copy.md_hash, prev: null, content: copy.file,
+      course_id: copy.course_id, rel_path: copy.rel_path, name: copy.name, type: 'md', hash: copy.md_hash, rebindFrom: [], content: copy.file,
       fields: {
         course_id: derived(copy.course_id), rel_path: derived(copy.rel_path), name: derived(copy.name), type: derived('md'),
         hash: derived(copy.md_hash), deleted: derived(false), copy: derived(true)
@@ -346,14 +342,18 @@ function record(db: Database, id: string, courseId: string, path: string, abs: s
 }
 
 /**
- * D6 (spec v2.3): a page appended elsewhere to the bytes this device's drawings
- * are bound to carries the binding to the new bytes. Any other new bytes leave
- * it, so the viewer keeps protecting the drawings from the changed original.
+ * New bytes for a PDF this device has bound (D6, spec v2.4). The binding
+ * follows them when appends lead there from the bytes it is bound to, or when
+ * nothing is drawn or highlighted on this PDF here. Otherwise it stays, and
+ * the viewer keeps protecting the markup from the changed original.
  */
 function rebind(db: Database, doc: RemoteDoc, courseId: string, path: string): void {
-  if (doc.prev === null || !hasTable(db, 'pdf_document_bindings')) return
-  db.prepare(`UPDATE pdf_document_bindings SET bound_sha = ?, evidence = 'sync' WHERE bound_sha = ? AND material_id =
-    (SELECT material_id FROM pdf_document_aliases WHERE course_id = ? AND rel_path = ?)`).run(doc.hash, doc.prev, courseId, path)
+  if (doc.type !== 'pdf' || !hasTable(db, 'pdf_document_bindings')) return
+  const marked = !!db.prepare(`SELECT 1 FROM pdf_drawings WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
+    UNION ALL SELECT 1 FROM annotations WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL LIMIT 1`).get(courseId, path, courseId, path)
+  db.prepare(`UPDATE pdf_document_bindings SET bound_sha = ?, evidence = 'sync' WHERE (? OR bound_sha IN (SELECT value FROM json_each(?)))
+    AND material_id = (SELECT material_id FROM pdf_document_aliases WHERE course_id = ? AND rel_path = ?)`)
+    .run(doc.hash, marked ? 0 : 1, JSON.stringify(doc.rebindFrom), courseId, path)
 }
 
 /** Root asset `assets/<sha>.<ext>` in the course's `assets/` folder; the name is the content, so a file there is it. */
@@ -614,14 +614,19 @@ async function applyInk(merged: MergedState, ctx: ApplyContext, result: ApplyRes
   for (const [id, winner] of merged.ink) {
     if (waiting.has(id)) continue
     const { doc, object } = winner.value
-    const base = db.prepare('SELECT t, device_id, updated_at FROM sync_ink WHERE id = ?').get(id) as { t: number; device_id: string; updated_at: string | null } | undefined
-    const next = { value: null, t: winner.t, device: winner.device }, was = base && { value: null, t: base.t, device: base.device_id }
-    if (was && (older(next, was) || same(next, was))) continue
     const at = db.prepare('SELECT course_id, local_path FROM sync_docs WHERE document_id = ? AND local_hash IS NOT NULL').get(doc) as { course_id: string; local_path: string } | undefined
     const folder = at && /\.pdf$/i.test(at.local_path) ? liveFolder(db, at.course_id) : null
     // Drawings of a document that is not here wait for it (M22).
     if (!at || folder === null) continue
-    const row = db.prepare('SELECT * FROM pdf_drawings WHERE id = ?').get(id) as DrawingRow | undefined
+    const row = db.prepare('SELECT * FROM pdf_drawings WHERE id = ?').get(id) as (DrawingRow & { course_id: string; rel_path: string }) | undefined
+    // A document placed again at another path (brought back after a delete here) leaves its strokes where it was: they follow it.
+    if (row && (row.course_id !== at.course_id || !samePlace(row.rel_path, at.local_path))) {
+      silently(db, () => db.prepare('UPDATE pdf_drawings SET course_id = ?, rel_path = ? WHERE id = ?').run(at.course_id, at.local_path, id))
+      result.changed.push(at.course_id)
+    }
+    const base = db.prepare('SELECT t, device_id, updated_at FROM sync_ink WHERE id = ?').get(id) as { t: number; device_id: string; updated_at: string | null } | undefined
+    const next = { value: null, t: winner.t, device: winner.device }, was = base && { value: null, t: base.t, device: base.device_id }
+    if (was && (older(next, was) || same(next, was))) continue
     // Edited here since the last sync: the export after this pass wins.
     if (row && (base ? row.updated_at !== base.updated_at : Date.parse(row.updated_at) > object.t)) continue
     try {

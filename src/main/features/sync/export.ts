@@ -17,7 +17,7 @@ import { assetExt, courseFields, docLocation, importInkObject, toInkObject, type
 import { basePlace, getRow, hashFile, liveFolder, readBase, samePlace, split, writeBase, type Stamped } from './apply'
 import { sha256, type InkObject, type MetaEvent } from './format'
 import { diskKey, isSyncedFile, reconcileDocs, type Scan, type SyncDocRow } from './localDocs'
-import type { MergedState } from './merge'
+import { isAlive, type MergedState } from './merge'
 
 /** Log and ink files start over past this size (spec "동기화 루프"); readers take log files up to 4 MiB. */
 const ROLLOVER = 1024 * 1024
@@ -76,6 +76,8 @@ interface Batch {
   notes: Map<string, Uint8Array>
   /** Base updates, run in one transaction once every file is written. */
   commits: (() => void)[]
+  /** Courses an upsert in this batch brings back. */
+  revived: Set<string>
   written: string[]
   retry: ExportSession['retry']
   held: ExportResult['held']
@@ -130,14 +132,24 @@ function exportCourse(batch: Batch, id: string, docs: Set<string>): void {
   if (!row || row.deleted_at !== null) {
     if (!alive) return
     emit(batch, 'course.delete', id, {}, { deleted: true })
-    // Its documents go with it: elsewhere a course that still holds live documents stays (P8).
+    // Its documents go with it (spec v2.4).
     for (const doc of baseDocsIn(db, id)) emit(batch, 'doc.delete', doc, {}, { deleted: true })
     return
   }
   const fields = Object.entries(courseFields(row)).filter(([key, value]) => !alive || !isDeepStrictEqual(base.get(key)?.value, value))
   if (fields.length === 0) return
   emit(batch, 'course.upsert', id, Object.fromEntries(fields), { ...Object.fromEntries(fields), deleted: false })
+  batch.revived.add(id)
   if (!alive) docs.add(id)
+}
+
+/** A document written into a course the root has deleted would count as deleted with it (v2.4), so the course comes back too. */
+function reviveCourse(batch: Batch, courseId: string): void {
+  const course = batch.ctx.root.merged.courses.get(courseId)
+  if (course === undefined || isAlive(course) || batch.revived.has(courseId)) return
+  batch.revived.add(courseId)
+  const fields = courseFields(batch.ctx.db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as CourseRow)
+  emit(batch, 'course.upsert', courseId, fields, { ...fields, deleted: false })
 }
 
 async function exportDocs(batch: Batch, courseId: string): Promise<void> {
@@ -230,6 +242,7 @@ async function exportDoc(batch: Batch, row: SyncDocRow, folder: string): Promise
     }
   }
   if (Object.keys(fields).length > 0) {
+    reviveCourse(batch, row.course_id)
     const { pdf_sha256, pdf_prev_sha256, md_hash, md_base, ...place } = fields
     const content = pdf_sha256 ?? md_hash
     emit(batch, 'doc.upsert', id, fields, { ...place, ...(content === undefined ? {} : { hash: content }), deleted: false, ...(fresh ? { copy: false } : {}) })
@@ -389,7 +402,7 @@ export async function exportChanges(ctx: ExportContext, session: ExportSession):
   if (items.length === 0) return { written: [], held: [] }
   const batch: Batch = {
     ctx, session, renames: new Map(ctx.root.merged.renames.map(rename => [rename.id, rename.name])),
-    events: [], ink: new Map(), notes: new Map(), commits: [], written: [], retry: new Map(), held: []
+    events: [], ink: new Map(), notes: new Map(), commits: [], revived: new Set(), written: [], retry: new Map(), held: []
   }
   const ids = (kind: string) => new Set(items.filter(item => item.kind === kind).map(item => item.id))
   const docs = ids('docs')

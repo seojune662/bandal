@@ -48,6 +48,8 @@ export interface MergedState {
   renames: { id: string; name: string }[]
   /** Not appliable yet: a referenced course, document, PDF, asset or note file is missing. */
   waiting: { docs: string[]; ink: string[]; copies: string[] }
+  /** PDF documents: the bytes from which end-page appends lead to the winning pdf_sha256, sorted (spec v2.4). */
+  rebindFrom: Map<string, string[]>
 }
 
 interface NoteVersion {
@@ -108,7 +110,7 @@ const pathKey = (course: string, folder: string, name: string): string => JSON.s
 function emptyState(blocked: MergedState['blocked']): MergedState {
   return {
     blocked, devices: new Map(), courses: new Map(), docs: new Map(), ink: new Map(), notes: new Map(),
-    conflictCopies: [], renames: [], waiting: { docs: [], ink: [], copies: [] }
+    conflictCopies: [], renames: [], waiting: { docs: [], ink: [], copies: [] }, rebindFrom: new Map()
   }
 }
 
@@ -120,6 +122,8 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   const state = emptyState(null), waitingDocs = new Set<string>()
   const copies: (Omit<ConflictCopy, 'file'> & { file: string | null })[] = []
   const present = new Set<string>(), versions = new Map<string, NoteVersion[]>(), noteFiles = new Map<string, NoteFile[]>()
+  /** Appends per document: the bytes before → the bytes after, from every event, winning or not. */
+  const appends = new Map<string, [from: string, to: string][]>()
 
   for (const file of files) {
     if (file.kind === 'device') state.devices.set(file.device, file.name)
@@ -143,6 +147,8 @@ export function merge(files: readonly ParsedFile[]): MergedState {
           const next = { ...stamp, value }
           if (beats(next, entity.fields.get(key))) entity.fields.set(key, next)
         }
+        const { pdf_sha256: pdf, pdf_prev_sha256: prev } = event.fields
+        if (event.op === 'doc.upsert' && typeof pdf === 'string' && typeof prev === 'string') push(appends, event.id, [prev, pdf])
         const hash = event.fields.md_hash
         if (event.op === 'doc.upsert' && typeof hash === 'string') {
           // A missing md_base reads as a fresh start (null): writers must send md_hash and md_base together.
@@ -156,6 +162,35 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   const text = (entity: Entity | undefined, key: string): string | null => {
     const value = entity?.fields.get(key)?.value
     return typeof value === 'string' ? value : null
+  }
+  /** A course this root has, deleted. */
+  const deletedCourse = (id: string | null): boolean => {
+    const course = id === null ? undefined : state.courses.get(id)
+    return course !== undefined && !isAlive(course)
+  }
+
+  // v2.4: a document under a deleted course counts as deleted. Its deletion takes the later stamp of its own and its
+  // course's, so a course brought back brings back the documents that have no tombstone of their own.
+  for (const entity of state.docs.values()) {
+    const course = state.courses.get(text(entity, 'course_id') ?? '')?.deleted
+    if (!course) continue
+    const later = beats(course, entity.deleted) ? course : entity.deleted!
+    entity.deleted = { ...later, value: entity.deleted?.value === true || course.value }
+  }
+  // v2.4: bytes that appends lead to the winner can be rebound to it; a replacement (prev null) breaks the chain.
+  for (const [doc, edges] of appends) {
+    const winner = text(state.docs.get(doc), 'pdf_sha256')
+    if (winner === null) continue
+    const from = new Set<string>(), queue = [winner]
+    for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+      for (const [before, after] of edges) {
+        if (after === next && before !== winner && !from.has(before)) {
+          from.add(before)
+          queue.push(before)
+        }
+      }
+    }
+    state.rebindFrom.set(doc, [...from].sort())
   }
   /** Course, folder and name are all known; until then a document takes part in no naming rule. */
   const place = (entity: Entity | undefined): { course_id: string; rel_path: string; name: string } | null => {
@@ -179,7 +214,8 @@ export function merge(files: readonly ParsedFile[]): MergedState {
     if (isAlive(entity) && (bodyFile === null || missingAssets(bodyFile))) waitingDocs.add(doc)
 
     const where = place(entity)
-    if (where === null) continue
+    // A copy would sit in its document's course: none under a deleted one (v2.4).
+    if (where === null || deletedCourse(where.course_id)) continue
     // A version stops being a head only when a later version (larger t) started from its text, so a revert
     // to an old hash stays a head and the LWW winner always is one. Collect each base's latest t once.
     const latestFrom = new Map<string, number>()
