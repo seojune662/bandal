@@ -14,6 +14,8 @@ const LABELS: Record<WidgetId, { ko: string; en: string }> = {
 export function WidgetSettingsPanel({ settings }: { settings: Settings | null }): JSX.Element {
   const locale = useLocale()
   const ko = locale === 'ko-KR'
+  // The Gmail mailbox waits on Google's restricted-scope review (BANDAL_GMAIL_UI).
+  const gmail = window.bandal?.gmailUi === true
   const services = useUniversityStore((state) => state.services)
   const initUniversity = useUniversityStore((state) => state.init)
   const widgets = settings?.widgets
@@ -71,7 +73,9 @@ export function WidgetSettingsPanel({ settings }: { settings: Settings | null })
                   label={LABELS[id][ko ? 'ko' : 'en']}
                   description={
                     id === 'mail'
-                      ? ko ? '우측 위젯 안에서 메일을 읽고 관리합니다.' : 'Read and manage mail inside the right-side widget.'
+                      ? gmail
+                        ? ko ? '우측 위젯 안에서 메일을 읽고 관리합니다.' : 'Read and manage mail inside the right-side widget.'
+                        : ko ? '우측 위젯에서 학교 메일이나 웹메일을 엽니다.' : 'Opens your school mail or webmail from the right-side widget.'
                       : ko ? '기존 학업 보드 태스크를 사용합니다.' : 'Uses your existing study-board tasks.'
                   }
                   checked={enabled}
@@ -92,7 +96,9 @@ export function WidgetSettingsPanel({ settings }: { settings: Settings | null })
 
       <SettingsCard
         title={ko ? '메일 위젯 연결' : 'Mail widget connection'}
-        description={ko ? 'Gmail은 메일 위젯에서 별도로 연결해 읽기·답장·보관할 수 있습니다. 아래 학교 메일은 전체 메일함 바로가기에 사용합니다.' : 'Connect Gmail separately in the widget to read, reply, and archive. School mail below is used for the full mailbox shortcut.'}
+        description={gmail
+          ? ko ? 'Gmail은 메일 위젯에서 별도로 연결해 읽기·답장·보관할 수 있습니다. 아래 학교 메일은 전체 메일함 바로가기에 사용합니다.' : 'Connect Gmail separately in the widget to read, reply, and archive. School mail below is used for the full mailbox shortcut.'
+          : ko ? '메일 위젯은 아래 학교 메일을 새 탭에서 엽니다.' : 'The mail widget opens the school mail below in a new tab.'}
       >
         <div className="settings-card__rows">
           {mailServices.length > 0 && (

@@ -25,6 +25,8 @@ declare global {
       readonly platform: string
       /** Launched with BANDAL_SYNC_UI=1: Settings › 동기화 is listed. */
       readonly syncUi?: boolean
+      /** Launched with BANDAL_GMAIL_UI=1: the mail widget holds the Gmail mailbox. */
+      readonly gmailUi?: boolean
       readonly browserAuthProbe?: 'product' | 'clean'
       /** Temporary M0 helper — opens the settings window. */
       openSettings(): Promise<void>

@@ -25,6 +25,15 @@ function time(date: string): string {
     : value.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
 }
 
+/** The mail widget while Gmail waits on Google's restricted-scope review (BANDAL_GMAIL_UI): the full mailbox, in a tab. */
+export function WebmailWidget({ fallback }: { fallback: { url: string; label: string } | null }): JSX.Element {
+  return <div className="mail-mini"><div className="mail-mini__connect">
+    <Icon name="archive" /><strong>메일함</strong>
+    {fallback === null && <p>설정 › 위젯에서 학교 메일이나 메일 주소를 정할 수 있어요.</p>}
+    <button type="button" className="mail-mini__primary" onClick={() => createBrowserTab(fallback?.url ?? 'https://mail.google.com/')}>{fallback?.label ?? '전체 Gmail'} 열기 ↗</button>
+  </div></div>
+}
+
 export function NativeMailWidget({ fallback, active = true }: { fallback: { url: string; label: string } | null; active?: boolean }): JSX.Element {
   const [account, setAccount] = useState<MailAccountState | null>(null)
   const [page, setPage] = useState<MailList>({ messages: [], nextPageToken: null })
