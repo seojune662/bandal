@@ -171,7 +171,7 @@ export interface SyncProvider {
 | 변화 감지 | `changes.getStartPageToken` → `changes.list(pageToken, spaces=drive, includeRemoved=true, pageSize=1000, fields=…)`. 간격은 스펙대로 활성 30초, 유휴 5분이고 창에 포커스가 오면 즉시 확인한다. "활성"은 창에 포커스가 있고 최근 5분 안에 입력이 있었던 상태다 |
 | 오류 | 401 → 토큰을 갱신한다. `invalid_grant` → `needs-auth`로 두고 "Google Drive 연결이 끊겼어요" + [다시 연결]을 보여 준다. 403 `rateLimitExceeded`/`userRateLimitExceeded`, 429, 5xx → 지터를 넣은 지수 백오프(최대 15분). 어떤 오류가 나도 로컬 편집은 막지 않는다 |
 | 검증 | 내려받은 PDF와 자산은 파일 이름의 SHA-256과 비교한다. 다르면 버리고 다시 받는다 |
-| 연결 해제 | `https://oauth2.googleapis.com/revoke`로 토큰을 폐기하고 토큰 파일을 지운다. 클라우드 파일은 그대로 둔다 |
+| 연결 해제 | ~~`https://oauth2.googleapis.com/revoke`로 토큰을 폐기하고~~ 토큰 파일을 지운다. 클라우드 파일은 그대로 둔다. 폐기는 프로젝트 전체 권한을 거둬 Gmail과 iPad도 끊으므로 하지 않는다(24.3) |
 
 ### 2.6 공통 규칙
 
@@ -898,7 +898,7 @@ drop policy if exists bandal_assets_create on storage.objects;
 15. 클라이언트 › 데스크톱 클라이언트 `565020221852-c8mv…`에서 **보안 비밀을 추가**한다.
     - 값을 GitHub Actions secret `MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET`과 로컬 `.env.development.local`, `.env.production.local`에 넣는다.
     - 기존 시크릿 값을 모른다면 새로 추가하는 것이 정상 경로다.
-16. iOS 클라이언트(번들 `app.bandal.ipad`)를 **같은 프로젝트**에 만든다(iPad 팀 담당). drive.file 접근은 앱(프로젝트) 단위로 알려져 있다. 다만 같은 프로젝트의 다른 클라이언트가 만든 파일이 보이는지는 X6에서 실측한다.
+16. iOS 클라이언트(번들 `app.bandal.ipad`)를 **같은 프로젝트**에 만든다(iPad 팀 담당). drive.file 접근은 앱(프로젝트) 단위로 알려져 있다. 다만 같은 프로젝트의 다른 클라이언트가 만든 파일이 보이는지는 X6에서 실측한다. iPad는 연결 해제에서 토큰을 revoke하지 않는다(24.3).
 17. 12장의 알림 정책과 결제 예산 알림을 만든다.
 
 ### GitHub (seojune662/bandal)
@@ -1390,3 +1390,118 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
   - 로컬 저장에서 오는 `pdf:markupChanged`(origin 없음)에는 반응하지 않는다. 그래야 획을 저장할 때마다 자기 필기를 다시 읽지 않는다.
 - PDF 바이트가 바뀌는 경우는 지금처럼 `materials:changed`가 "다른 창이나 기기에서 PDF 페이지가 변경되었습니다" 배너를 띄운다.
 
+
+## 24. 3단계 PR7: Google Drive 제공자 (2026-11-01)
+
+### 24.1 범위
+
+- `features/google/oauth.ts`: Gmail의 loopback + PKCE를 꺼내 Gmail과 Drive가 함께 쓴다.
+  - 시스템 브라우저, `127.0.0.1` 임의 포트, state, S256, 토큰 교환에 데스크톱 시크릿.
+  - 클라이언트 ID는 `MAIN_VITE_GMAIL_CLIENT_ID`, 시크릿은 `MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET`이다(릴리스 워크플로가 이미 둘 다 넣는다).
+- `sync/drive.ts`: DriveProvider. 스코프는 `drive.file` 하나다.
+- 런타임이 iCloud와 Drive를 함께 다룬다. 설정 화면에서 저장소를 고른다. Mac은 둘 다, Windows는 Drive만 보인다.
+- 진입점은 여전히 `BANDAL_SYNC_UI=1` 뒤에 있다(#15).
+
+### 24.2 DriveProvider
+
+- **목록**
+  - drive.file이라 앱이 볼 수 있는 파일은 반달 클라이언트가 만든 파일뿐이다. 그래서 처음에 `files.list(q="trashed = false")` 한 번(1000개 단위)으로 모두 받고, 부모를 따라 루트 아래 경로를 만든다.
+  - 그 뒤로는 `changes.list`만 부른다. 시작 토큰은 목록보다 먼저 받아 그사이의 변경을 놓치지 않는다.
+  - 경로가 같은 폴더는 하나로 본다(새로 쓸 때는 먼저 만든 것). 경로가 같은 파일은 modifiedTime이 늦은 쪽을 쓴다(P10).
+  - 버전은 md5Checksum이다.
+- **읽기**
+  - `alt=media`로 받는다. 4 MiB가 넘으면 4 MiB씩 Range로 받고, 조각마다 2분을 준다. md5가 목록과 다르면 버리고 다음 패스에 다시 읽는다.
+  - 메타데이터·필기·노트는 `<profile>/sync/gdrive-cache/<md5>`에 둔다. 재시작해도 바뀐 파일만 받는다.
+  - PDF와 이미지는 과목 폴더에 이미 있으므로 캐시하지 않는다. 전체 목록을 받을 때 쓰이지 않는 캐시를 지운다.
+- **쓰기**
+  - 경로에 파일이 있으면 `files.update`, 없으면 필요한 폴더를 만들고 `files.create`.
+  - 5 MB 이하는 multipart, 넘으면 resumable 세션에 4 MiB씩 PUT한다. 조각마다 2분을 줘서 느린 연결도 끝까지 간다.
+  - 끊기면 그 실행 안에서는 세션을 기억했다가 같은 바이트를 다시 올릴 때 Drive가 받은 곳부터 잇는다(`bytes */N`로 물음). 재시작 뒤에는 처음부터 올린다(2.5의 저널은 미룸).
+  - 이 기기가 올린 메타데이터·필기·노트는 캐시에 바로 넣는다. 폴링이 자기 변경을 알려도 다시 받지 않는다.
+- **루트**
+  - 스펙대로 `name='Bandal'`인 폴더 중 `'root' in parents`를 찾는다. 순서는 bandal.json이 있는 것, createdTime이 이른 것, id 순이다.
+  - 없으면 `appProperties.bandalRoot='2'`로 만들고 다시 찾는다. 처음 연결한 두 기기가 동시에 각자 만들었으면 둘 다 이른 쪽을 고르고, 방금 만든 빈 폴더는 휴지통으로 보낸다.
+  - 고른 폴더 id는 `state.json`의 `root: "gdrive:<id>"`로 고정한다.
+  - 그 폴더가 휴지통으로 가면 "Google Drive에서 반달 폴더를 찾지 못했어요. 연결을 해제한 뒤 다시 연결해 주세요."를 보인다.
+  - 연결 전 확인(prepare)은 폴더를 만들지 않는다. [시작]을 눌렀을 때만 만든다.
+- **폴링**
+  - 5초마다 상태를 본다. 창에 포커스가 있고 최근 5분 안에 입력이 있으면 30초, 아니면 5분마다 `changes.list`를 부른다.
+  - 창에 포커스가 돌아오면 바로 부른다(스펙 "포그라운드 진입 시"). 바뀐 것이 있으면 엔진에 힌트를 준다.
+  - 입력 여부는 `powerMonitor.getSystemIdleTime()`이다. 화면이 잠기면 5분 뒤 유휴가 된다.
+- **오류**
+  - 401 → 한 번 새로 고친다.
+  - `invalid_grant` → `needs-auth`. 화면은 "Google Drive 연결이 끊겼어요"와 [다시 연결]이다.
+  - 429, rate limit, 5xx, 오프라인은 읽을 수 있는 문구로 바꿔 던지고 엔진 백오프에 맡긴다. 엔진 백오프에 지터(50~100%)를 더했다.
+  - Drive가 더 받지 않는 changes 페이지 토큰(400·404·410)이면 다음 번에 전체 목록부터 다시 받는다.
+  - 내보내기에서 올리지 못한 항목(held)이 있으면 엔진은 "동기화됨" 대신 오류로 두고 백오프로 다시 시도한다. 예전에는 다음 정기 패스까지 "동기화됨"으로 보였다(iCloud도 같다).
+- **토큰**
+  - `<profile>/sync/gdrive-token.enc`. `sessionStore`(safeStorage, 원자적 쓰기, 0600)를 그대로 쓴다.
+  - 암호화를 쓸 수 없으면 메모리에만 둔다. 토큰 파일이 없는 프로필은 키체인을 열지 않는다.
+- **로그인**
+  - 매번 `prompt=consent select_account`를 쓴다. 설계(2.5)는 "첫 연결 때만"이었지만, 다시 로그인할 때 refresh token을 받으려면 consent가 필요하다.
+  - 동의 화면에서 Drive를 체크하지 않으면 "Google Drive 접근을 허용해 주세요"로 거부한다.
+  - 계정 주소는 `about.get`으로 받는다(drive.file로 된다).
+
+### 24.3 연결 해제는 토큰을 폐기하지 않는다 (2.5 변경)
+
+- Google 문서(native-app, Token revocation): "Revocation removes all OAuth 2.0 scopes previously granted to a project, invalidating any issued access or refresh tokens for all clients registered under that project."
+- 데스크톱의 Gmail과 Drive는 같은 클라이언트다. iPad의 iOS 클라이언트도 같은 프로젝트다(13장 16).
+  - 그래서 Drive 연결 해제에서 revoke하면 같은 계정의 Gmail과 iPad의 Drive 동기화까지 끊긴다.
+- 그래서 Drive 연결 해제는 이 기기의 토큰 파일과 캐시만 지운다. 권한 철회는 사용자가 Google 계정 설정에서 한다.
+- **같은 이유로 정해야 할 것(결정 필요)**
+  1. 기존 Gmail 연결 해제(`gmailService.disconnect`)는 revoke한다. 동기화가 나가면 Gmail 연결 해제가 같은 계정의 Drive 동기화(데스크톱과 iPad 모두)를 끊는다. 권장: Gmail도 토큰만 지운다.
+  2. iPad도 Drive 연결 해제에서 revoke하지 않아야 한다. revoke하면 데스크톱의 Drive 동기화와 Gmail이 끊긴다.
+
+### 24.4 제공자와 루트
+
+- `state.json`에 `root`를 더했다. base가 어느 루트에서 왔는지(`icloud` 또는 `gdrive:<폴더 id>`)다. 이 필드가 없는 프로필(PR5에서 연결)은 iCloud로 본다.
+- 초기 연결의 `resume`은 같은 루트일 때만 고른다.
+  - 루트가 다르면 과목 id가 겹쳐도 base는 그 루트와 관계가 없다. 그래서 처음 연결처럼 6.2를 거친다(지난 base를 지우고 합치기·덮어쓰기·가져오기 중 고른다).
+  - 예: iCloud에서 Drive로 옮긴 프로필이 다시 iCloud로 가면, iCloud에 같은 과목이 있어도 "이어서"가 아니라 셋 중 고르기를 묻는다.
+  - 이 확인이 없으면 Drive 쪽 base로 iCloud를 비교해서, Drive에만 올린 변경을 iCloud에 올리지 않는다.
+- 한 루트에 한 프로필(6.4)은 루트 키로 비교한다. 다른 계정의 Drive는 다른 루트다.
+- 제공자 전환(6.3)은 지금 [연결 해제] 뒤 다른 저장소로 [연결]하는 두 단계다. 옛 루트의 파일은 지우지 않는다.
+  - `moved_to`와 `bundle_id`(P6)는 스펙에 없어서 넣지 않았다. 다른 기기에 "옮겼어요"를 알리려면 P6를 스펙에 올려야 한다(iPad 팀과 합의 필요).
+- 가져오기(새 프로필)로 Drive에 연결하면 암호화된 토큰 파일을 새 프로필로 복사한다. 그래서 다시 로그인하지 않는다. 남은 프로필은 연결을 풀고 토큰을 지운다(폐기는 하지 않는다).
+
+### 24.5 독립 리뷰에서 고친 것 (0 HIGH, 3 MEDIUM, 7 LOW)
+
+- MEDIUM
+  - 큰 파일: 한 번의 PUT에 10분 제한이라 느린 연결에서는 100 MB PDF가 끝내 올라가지 않았다. 4 MiB 조각, 조각당 2분, 끊긴 곳부터 잇기로 바꿨다. 받기도 Range 조각으로 받는다.
+  - 연결 전 확인(prepare)이 엔진이 아직 도는 동안 Drive 루트를 바꿀 수 있었다. 이제 prepare도 연결 해제가 끝나기를 기다리고, 연결된 동안에는 거부한다.
+  - 옛 토큰의 새로 고침이 늦게 `invalid_grant`로 돌아오면 그사이 새로 로그인한 세션을 `needs-auth`로 만들었다. 이제 세션이 바뀌었는지 먼저 본다.
+- LOW
+  - 새 프로필에 토큰을 복사하다 실패하면 반쯤 쓴 `sync/`가 남아 그 루트를 다른 프로필이 쓰는 것처럼 보였다. 이제 실패하면 지운다. 파일 이름은 경로가 없는 이름만 받는다.
+  - 로그인 대기 중 이 기기의 아무 프로세스나 루프백 포트에 깨진 요청을 보내면 main에서 예외가 났다(Gmail 때부터). 이제 400으로 답한다. 취소된 로그인은 브라우저를 열지 않는다.
+  - 자기 업로드를 다시 받던 것, 캐시가 실행 중에 커지던 것(바뀐 파일의 옛 캐시를 지움), `userRateLimitExceeded` 문구, 루트를 고를 때의 로캘 비교(이제 문자열 순서라 iPad와 같다), 새로 만든 폴더가 목록에 늦게 보일 때.
+  - Gmail 연결 해제의 revoke는 24.3의 결정으로 남긴다. 덧붙여, 로그인할 때마다 새 refresh token이 생기고 폐기하지 않으므로, 한 계정·한 클라이언트에 100개를 넘으면 Google이 가장 오래된 것부터 말없이 끊는다(Gmail과 함께 센다). 보통 사용으로는 닿지 않는다.
+
+### 24.6 검증
+
+- 가짜 Drive API(`tests/main/sync/fakeDrive.ts`)로 확인한 것:
+  - 두 기기의 폴더 공유, 중첩 폴더를 한 번만 만들기, 자기 파일 제자리 덮어쓰기, changes 전달
+  - 같은 경로 중복, 루트가 휴지통으로 간 경우, 조각 업로드와 끊긴 곳부터 잇기, Range 받기, 자기 업로드를 다시 받지 않기, 재시작 때 캐시에서 읽기
+  - 경합한 첫 연결, bandal.json이 있는 루트 우선
+  - 토큰 새로 고침 1회 공유, `invalid_grant`, 늦은 새로 고침이 새 로그인을 덮지 않기, 로그아웃 때 revoke 없음, drive.file 미체크 거부, 루프백 포트의 깨진 요청
+  - 폴링 간격(유휴 5분, 사용 중 30초, 포커스 복귀 즉시)
+- 런타임: 두 컴퓨터가 Drive로 동기화(올리기 → 받기, 과목과 노트 내용 일치). iCloud → Drive → iCloud에서 resume하지 않음.
+- 리뷰 수정까지 변이 25개를 모두 테스트가 잡았다. Gmail 테스트 7개는 공유 OAuth로 옮긴 뒤에도 통과한다.
+
+### 24.7 남은 것
+
+- 실제 계정으로 하는 수동 시험(X6 포함): 24.8.
+- 재시작 후 resumable 이어 올리기, 쿼터 오류가 반복될 때 활성 간격 60초(12장 4)는 미뤘다.
+- Windows의 iCloud(실험적)는 PR8이다.
+- P6(`moved_to`, `bundle_id`)는 스펙 제안으로 남긴다.
+
+### 24.8 수동 시험 (Drive, mac과 Windows 각각, `BANDAL_SYNC_UI=1`로 실행)
+
+1. 설정 › 동기화 › Google Drive › [Google 계정 연결]. 동의 화면에 "이 앱으로 만든 Google Drive 파일" 권한 하나만 보이는지, 로그인 뒤 계정 주소가 보이는지.
+2. [Google Drive에 연결] → "과목 N개, 문서 M개를 Google Drive에 올립니다" → [시작]. drive.google.com에 Bandal 폴더와 `bandal.json`, `log/`, `pdf/`가 생기는지.
+3. 다른 컴퓨터에서 같은 계정으로 연결해 받기. 과목, PDF, 필기, 노트가 같은지.
+4. 한쪽에서 필기. 다른 쪽 창에 포커스를 두면 30초 안에, 창을 다시 클릭하면 곧바로 반영되는지.
+5. Wi-Fi를 끈 채 필기 → "인터넷 연결을 확인해 주세요" → Wi-Fi를 켜면 이어서 올라가는지.
+6. myaccount.google.com › 보안 › 타사 앱에서 반달 접근을 삭제. 다음 확인 때 "Google Drive 연결이 끊겼어요"가 나오고 [다시 연결]로 돌아오는지.
+7. [연결 해제] 뒤 `<userData>/sync/gdrive-token.enc`가 없어지는지, Gmail 위젯 연결은 그대로인지.
+8. 50 MB가 넘는 PDF를 올리고 다른 기기에서 열리는지(resumable).
+9. X6: 같은 프로젝트의 iPad(iOS 클라이언트)가 데스크톱이 만든 Bandal 폴더를 보는지.

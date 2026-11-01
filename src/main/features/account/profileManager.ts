@@ -78,7 +78,7 @@ export function createProfileManager(deps: { db: Database; baseRoot: string; roo
       return { ok: true, cancelled: false, path: destination }
     } finally { if (!retained) { working = false; if (paused) deps.resume() } }
   }
-  return { backup: () => backup(), busy: () => working, cancelSwitch: () => pendingSwitch?.(), async newProfile(options: { sync?: Record<string, unknown> } = {}) {
+  return { backup: () => backup(), busy: () => working, cancelSwitch: () => pendingSwitch?.(), async newProfile(options: { sync?: Record<string, unknown>; syncFiles?: Record<string, Uint8Array> } = {}) {
     const result = await backup(true)
     if (!result.ok) return result
     const pointer = join(deps.baseRoot, POINTER)
@@ -91,14 +91,19 @@ export function createProfileManager(deps: { db: Database; baseRoot: string; roo
       writeFileAtomic(join(root, 'isolated-profile.json'), JSON.stringify({ id, createdAt: new Date().toISOString(), previousBackup: result.path }))
       // Fresh settings prevent implicit attachment of the previous external data root.
       writeFileAtomic(join(root, 'settings.json'), JSON.stringify({ dataRoot: join(root, 'Courses') }))
-      // A profile made to take a sync root's data starts bound to it (design 6.2 "가져오기").
-      if (options.sync) {
-        mkdirSync(join(root, 'sync'), { recursive: true })
-        writeFileAtomic(join(root, 'sync', 'state.json'), JSON.stringify(options.sync), { mode: 0o600 })
-      }
       // Left behind if the switch fails or is taken back, the seed would hold the sync root for a profile no one opens.
       const unseed = () => rmSync(join(root, 'sync'), { recursive: true, force: true })
       try {
+        // A profile made to take a sync root's data starts bound to it (design 6.2 "가져오기").
+        if (options.sync) {
+          mkdirSync(join(root, 'sync'), { recursive: true })
+          writeFileAtomic(join(root, 'sync', 'state.json'), JSON.stringify(options.sync), { mode: 0o600 })
+          // Google Drive's token, still encrypted: the new profile needs no second sign-in.
+          for (const [name, bytes] of Object.entries(options.syncFiles ?? {})) {
+            if (name !== basename(name)) throw new Error(`${name} is not a sync file name`)
+            writeFileAtomic(join(root, 'sync', name), Buffer.from(bytes), { mode: 0o600 })
+          }
+        }
         writeFileAtomic(pointer, JSON.stringify({ id })); switched = true
       } catch (error) {
         unseed()

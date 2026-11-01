@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, sep } from 'node:path'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { createCoursesRepo } from '../../../src/main/features/courses/coursesRepo'
 import { repointMaterialPath } from '../../../src/main/features/links/renameRepoint'
 import { createMaterialsRepo } from '../../../src/main/features/materials/materialsRepo'
+import { createDriveProvider } from '../../../src/main/features/sync/drive'
 import type { MetaEvent } from '../../../src/main/features/sync/format'
 import type { SyncProvider } from '../../../src/main/features/sync/icloud'
 import { readState } from '../../../src/main/features/sync/identity'
@@ -13,6 +14,7 @@ import { repointSyncDocs, type Scan } from '../../../src/main/features/sync/loca
 import { readMerged } from '../../../src/main/features/sync/pull'
 import { createSyncRuntime, profileBoundElsewhere } from '../../../src/main/features/sync/runtime'
 import { createTestDb, type TestDb } from '../helpers/testDb'
+import { createFakeDrive, fakeEncryptor, seedToken, type FakeDrive } from './fakeDrive'
 
 const FIXTURES = join(__dirname, '../../../sync-fixtures')
 const COURSE = 'c0000000-0000-4000-8000-000000000001'
@@ -27,6 +29,7 @@ afterEach(async () => {
   // A pass a connect started may still run: let it finish before its database closes.
   for (const runtime of runtimes.splice(0)) await runtime.stop()
   for (const ctx of open.splice(0)) ctx.cleanup()
+  vi.unstubAllGlobals()
 })
 
 const fixture = (name: string): Map<string, Uint8Array> => {
@@ -54,7 +57,7 @@ function walk(folder: string): Scan {
   return { files, complete: true }
 }
 
-function device(machine: string, options: { boundElsewhere?: string; made?: { ok: boolean; cancelled?: boolean } } = {}) {
+function device(machine: string, options: { boundElsewhere?: string; made?: { ok: boolean; cancelled?: boolean }; drive?: FakeDrive } = {}) {
   const ctx = createTestDb()
   open.push(ctx)
   const courses = createCoursesRepo({ db: ctx.db, getDataRoot: () => join(ctx.dir, 'Courses') })
@@ -70,8 +73,10 @@ function device(machine: string, options: { boundElsewhere?: string; made?: { ok
     })()
   })
   const seeds: Record<string, unknown>[] = []
+  if (options.drive) seedToken(join(ctx.dir, 'sync'))
+  const gdrive = options.drive && createDriveProvider({ dir: join(ctx.dir, 'sync'), root: null, encryptor: fakeEncryptor, activity: () => ({ focused: false, idleSeconds: 0 }) })
   const runtime = createSyncRuntime({
-    db: ctx.db, courses, materials, userDataPath: ctx.dir, appVersion: 'test', provider, machine: async () => machine,
+    db: ctx.db, courses, materials, userDataPath: ctx.dir, appVersion: 'test', providers: { icloud: provider, ...(gdrive ? { gdrive } : {}) }, machine: async () => machine,
     scan: async folder => walk(folder), changed: () => {}, onView: () => {},
     boundElsewhere: () => options.boundElsewhere ?? null,
     newProfile: async seed => {
@@ -96,8 +101,8 @@ test('an empty root takes everything here, and its first pass writes bandal.json
   const a = device('mac-a')
   const { id } = a.courses.create({ name: '물리학', color: 'green' })
   writeFileSync(join(a.folder(id), '요약.md'), '# 요약\n')
-  expect(await a.runtime.prepare()).toEqual({ status: 'ready', plan: { kind: 'upload', local: { courses: 1, docs: 1 }, remote: { courses: 0, docs: 0 }, pairs: [] } })
-  await a.runtime.connect('merge', [])
+  expect(await a.runtime.prepare('icloud')).toEqual({ status: 'ready', plan: { kind: 'upload', local: { courses: 1, docs: 1 }, remote: { courses: 0, docs: 0 }, pairs: [] } })
+  await a.runtime.connect('icloud', 'merge', [])
   await a.runtime.syncNow()
   expect(Buffer.from(root.get('bandal.json')!).toString('utf8')).toBe('{"format":2}')
   expect(a.runtime.view()).toMatchObject({ provider: 'icloud', state: { state: 'synced' }, pending: 0 })
@@ -107,11 +112,42 @@ test('an empty root takes everything here, and its first pass writes bandal.json
 test('an empty profile takes everything from the root', async () => {
   root = fixture('01-basic')
   const b = device('mac-b')
-  expect(await b.runtime.prepare()).toMatchObject({ status: 'ready', plan: { kind: 'download', local: { courses: 0, docs: 0 }, remote: { courses: 1, docs: 2 } } })
-  await b.runtime.connect('merge', [])
+  expect(await b.runtime.prepare('icloud')).toMatchObject({ status: 'ready', plan: { kind: 'download', local: { courses: 0, docs: 0 }, remote: { courses: 1, docs: 2 } } })
+  await b.runtime.connect('icloud', 'merge', [])
   await b.runtime.syncNow()
   expect(b.row('SELECT name FROM courses WHERE id = ?', COURSE)).toEqual({ name: '선형대수학' })
   expect(existsSync(join(b.folder(COURSE), '강의자료/1주차 벡터.pdf'))).toBe(true)
+})
+
+test('two computers sync through Google Drive, and a base from one root is never resumed against another', async () => {
+  root = new Map()
+  const drive = createFakeDrive()
+  vi.stubGlobal('fetch', drive.fetch)
+  const a = device('mac-a', { drive })
+  const { id } = a.courses.create({ name: '물리학', color: 'green' })
+  writeFileSync(join(a.folder(id), '요약.md'), '# 요약\n')
+  await a.runtime.connect('icloud', 'merge', [])
+  await a.runtime.syncNow()
+  await a.runtime.disconnect()
+  // A Drive root: what this profile synced with iCloud says nothing about it.
+  expect(await a.runtime.prepare('gdrive')).toMatchObject({ status: 'ready', plan: { kind: 'upload', local: { courses: 1, docs: 1 } } })
+  await a.runtime.connect('gdrive', 'merge', [], 'upload')
+  await a.runtime.syncNow()
+  expect(a.runtime.view()).toMatchObject({ provider: 'gdrive', account: 'me@example.com', state: { state: 'synced' }, pending: 0 })
+  // Looking for a root while bound would move the provider in use.
+  expect(await a.runtime.prepare('gdrive')).toMatchObject({ status: 'error' })
+
+  const b = device('mac-b', { drive })
+  expect(await b.runtime.prepare('gdrive')).toMatchObject({ plan: { kind: 'download', remote: { courses: 1, docs: 1 } } })
+  await b.runtime.connect('gdrive', 'merge', [], 'download')
+  await b.runtime.syncNow()
+  expect(b.row('SELECT name FROM courses WHERE id = ?', id)).toEqual({ name: '물리학' })
+  expect(readFileSync(join(b.folder(id), '요약.md'), 'utf8')).toBe('# 요약\n')
+
+  // Back to iCloud, which holds the same course: the base is from Drive now, so it asks instead of resuming.
+  await a.runtime.disconnect()
+  expect(existsSync(join(a.dir, 'sync', 'gdrive-token.enc'))).toBe(false)
+  expect(await a.runtime.prepare('icloud')).toMatchObject({ plan: { kind: 'choose' } })
 })
 
 test('a merge joins a same-name course under its own id and takes its same PDF as the remote document', async () => {
@@ -120,9 +156,9 @@ test('a merge joins a same-name course under its own id and takes its same PDF a
   const { id } = b.courses.create({ name: ' 선형대수학 ', color: 'pink' })
   writeFileSync(join(b.folder(id), '1주차.pdf'), PDF)
   writeFileSync(join(b.folder(id), 'B에만 있는 노트.md'), '# B\n')
-  const prepared = await b.runtime.prepare()
+  const prepared = await b.runtime.prepare('icloud')
   expect(prepared).toMatchObject({ status: 'ready', plan: { kind: 'choose', pairs: [{ local: id, remote: COURSE }] } })
-  await b.runtime.connect('merge', [{ local: id, remote: COURSE }])
+  await b.runtime.connect('icloud', 'merge', [{ local: id, remote: COURSE }])
   await b.runtime.syncNow()
   // One course, under this profile's id, with the root's name, colour and places.
   expect(b.row('SELECT COUNT(*) AS n FROM courses')).toEqual({ n: 1 })
@@ -144,7 +180,7 @@ test('an overwrite deletes what only the root had, everywhere, and uploads this 
   const b = device('mac-b')
   const { id } = b.courses.create({ name: '선형대수학', color: 'pink' })
   writeFileSync(join(b.folder(id), 'B 노트.md'), '# B\n')
-  await b.runtime.connect('overwrite', [])
+  await b.runtime.connect('icloud', 'overwrite', [])
   await b.runtime.syncNow()
   const merged = await rootState()
   expect(merged.courses.get(COURSE)!.deleted?.value).toBe(true)
@@ -159,15 +195,15 @@ test('a profile that synced with this root resumes without asking, and an import
   root = new Map()
   const a = device('mac-a')
   a.courses.create({ name: '물리학', color: 'green' })
-  await a.runtime.connect('merge', [])
+  await a.runtime.connect('icloud', 'merge', [])
   await a.runtime.syncNow()
   a.runtime.disconnect()
   expect(readState(join(a.dir, 'sync', 'state.json')).provider).toBeNull()
-  expect(await a.runtime.prepare()).toMatchObject({ status: 'ready', plan: { kind: 'resume' } })
+  expect(await a.runtime.prepare('icloud')).toMatchObject({ status: 'ready', plan: { kind: 'resume' } })
   const c = device('mac-c')
   c.courses.create({ name: '화학', color: 'red' })
-  await c.runtime.connect('import', [])
-  expect(c.seeds).toEqual([{ provider: 'icloud' }])
+  await c.runtime.connect('icloud', 'import', [])
+  expect(c.seeds).toEqual([{ provider: 'icloud', root: 'icloud' }])
   expect(c.runtime.view().provider).toBeNull()
 })
 
@@ -176,7 +212,7 @@ test('a new profile releases a bound one, and leaves no sync state in an unbound
   const a = device('mac-a')
   a.runtime.release()
   expect(existsSync(join(a.dir, 'sync'))).toBe(false)
-  await a.runtime.connect('merge', [])
+  await a.runtime.connect('icloud', 'merge', [])
   a.runtime.release()
   expect(readState(join(a.dir, 'sync', 'state.json')).provider).toBeNull()
 })
@@ -184,9 +220,9 @@ test('a new profile releases a bound one, and leaves no sync state in an unbound
 test('a root another profile here is bound to is refused, and a device name goes to its devices file', async () => {
   root = new Map()
   const other = device('mac-a', { boundElsewhere: '기본 프로필' })
-  await expect(other.runtime.connect('merge', [])).rejects.toThrow('기본 프로필과 연결돼 있어요')
+  await expect(other.runtime.connect('icloud', 'merge', [])).rejects.toThrow('기본 프로필과 연결돼 있어요')
   const a = device('mac-a')
-  await a.runtime.connect('merge', [])
+  await a.runtime.connect('icloud', 'merge', [])
   await a.runtime.syncNow()
   a.runtime.rename('  서준의 MacBook  ')
   await a.runtime.syncNow()
@@ -200,12 +236,12 @@ test('a profile that synced with another root goes up whole to an empty one', as
   root = new Map()
   const a = device('mac-a')
   const { id } = a.courses.create({ name: '물리학', color: 'green' })
-  await a.runtime.connect('merge', [])
+  await a.runtime.connect('icloud', 'merge', [])
   await a.runtime.syncNow()
   await a.runtime.disconnect()
   root = new Map()
-  expect(await a.runtime.prepare()).toMatchObject({ status: 'ready', plan: { kind: 'upload' } })
-  await a.runtime.connect('merge', [], 'upload')
+  expect(await a.runtime.prepare('icloud')).toMatchObject({ status: 'ready', plan: { kind: 'upload' } })
+  await a.runtime.connect('icloud', 'merge', [], 'upload')
   await a.runtime.syncNow()
   expect((await rootState()).courses.get(id)?.fields.get('name')?.value).toBe('물리학')
 })
@@ -215,9 +251,9 @@ test('a merge takes only the pairs the plan offered, each course once, and a pla
   const b = device('mac-b')
   const { id } = b.courses.create({ name: '선형대수학', color: 'pink' })
   const { id: other } = b.courses.create({ name: '물리학', color: 'red' })
-  await expect(b.runtime.connect('merge', [], 'upload')).rejects.toThrow('다시 확인해 주세요')
+  await expect(b.runtime.connect('icloud', 'merge', [], 'upload')).rejects.toThrow('다시 확인해 주세요')
   expect(b.runtime.view().provider).toBeNull()
-  await b.runtime.connect('merge', [{ local: id, remote: COURSE }, { local: other, remote: COURSE }, { local: other, remote: 'c9999999-0000-4000-8000-000000000009' }], 'choose')
+  await b.runtime.connect('icloud', 'merge', [{ local: id, remote: COURSE }, { local: other, remote: COURSE }, { local: other, remote: 'c9999999-0000-4000-8000-000000000009' }], 'choose')
   expect(b.db.prepare('SELECT local_id, remote_id FROM sync_alias').all()).toEqual([{ local_id: id, remote_id: COURSE }])
 })
 
@@ -226,19 +262,19 @@ test('a merge that fails half way leaves nothing behind, so the next connect ask
   const b = device('mac-b')
   const { id } = b.courses.create({ name: '선형대수학', color: 'pink' })
   b.db.exec("CREATE TRIGGER fail_alias BEFORE INSERT ON sync_alias BEGIN SELECT RAISE(ABORT, 'disk full'); END")
-  await expect(b.runtime.connect('merge', [{ local: id, remote: COURSE }], 'choose')).rejects.toThrow('disk full')
+  await expect(b.runtime.connect('icloud', 'merge', [{ local: id, remote: COURSE }], 'choose')).rejects.toThrow('disk full')
   b.db.exec('DROP TRIGGER fail_alias')
   expect(b.runtime.view().provider).toBeNull()
   expect(b.row('SELECT COUNT(*) AS n FROM sync_meta')).toEqual({ n: 0 })
-  expect(await b.runtime.prepare()).toMatchObject({ plan: { kind: 'choose' } })
+  expect(await b.runtime.prepare('icloud')).toMatchObject({ plan: { kind: 'choose' } })
 })
 
 test('an import a person cancels changes nothing; one that fails says so', async () => {
   root = fixture('01-basic')
   const cancelled = device('mac-a', { made: { ok: false, cancelled: true } })
-  await cancelled.runtime.connect('import', [])
+  await cancelled.runtime.connect('icloud', 'import', [])
   const failed = device('mac-b', { made: { ok: false, cancelled: false } })
-  await expect(failed.runtime.connect('import', [])).rejects.toThrow('새 프로필을 만들지 못했어요')
+  await expect(failed.runtime.connect('icloud', 'import', [])).rejects.toThrow('새 프로필을 만들지 못했어요')
 })
 
 test('another profile bound to iCloud is named by when it was made; the open one does not count', () => {
@@ -247,13 +283,13 @@ test('another profile bound to iCloud is named by when it was made; the open one
     const profile = join(base, 'profiles', 'p1')
     mkdirSync(join(profile, 'sync'), { recursive: true })
     writeFileSync(join(profile, 'isolated-profile.json'), JSON.stringify({ id: 'p1', createdAt: '2026-11-01T09:00:00.000Z' }))
-    expect(profileBoundElsewhere(base, base)).toBeNull()
+    expect(profileBoundElsewhere(base, base, 'icloud')).toBeNull()
     writeFileSync(join(profile, 'sync', 'state.json'), JSON.stringify({ provider: 'icloud' }))
-    expect(profileBoundElsewhere(base, base)).toBe('2026-11-01에 만든 프로필')
-    expect(profileBoundElsewhere(base, profile)).toBeNull()
+    expect(profileBoundElsewhere(base, base, 'icloud')).toBe('2026-11-01에 만든 프로필')
+    expect(profileBoundElsewhere(base, profile, 'icloud')).toBeNull()
     mkdirSync(join(base, 'sync'))
     writeFileSync(join(base, 'sync', 'state.json'), JSON.stringify({ provider: 'icloud' }))
-    expect(profileBoundElsewhere(base, profile)).toBe('기본 프로필')
+    expect(profileBoundElsewhere(base, profile, 'icloud')).toBe('기본 프로필')
   } finally {
     rmSync(base, { recursive: true, force: true })
   }

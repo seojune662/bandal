@@ -1,22 +1,18 @@
-import { createHash, randomBytes } from 'node:crypto'
-import { createServer } from 'node:http'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { shell } from 'electron'
 import { runtimeSafeStorage } from '../../lib/safeStorageGate'
+import { authorize, googleClient, granted, revokeToken, tokenRequest, type GoogleTokens } from '../google/oauth'
 import type { MailAccountState, MailList, MailMessage, MailModify, MailReply } from '../../../shared/types/mail'
 import { gmailMessage, gmailSummary, replyMime, type GmailMessage } from './gmailModel'
 
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me'
 interface TokenSet { accessToken: string; refreshToken: string; expiresAt: number; email: string }
-interface TokenResponse { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string }
+type TokenResponse = GoogleTokens
 
-function config(): { clientId: string; clientSecret: string; verified: boolean } {
+function config(): { clientId: string; verified: boolean } {
   const env = import.meta.env as Record<string, string | undefined>
-  const value = (key: string): string => process.env[key] ?? env[key] ?? ''
-  // Google requires the Desktop client secret even with PKCE; it is not confidential for installed apps.
-  return { clientId: value('MAIN_VITE_GMAIL_CLIENT_ID'), clientSecret: value('MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET'), verified: value('MAIN_VITE_GMAIL_VERIFIED') === 'true' }
+  return { clientId: googleClient().clientId, verified: (process.env['MAIN_VITE_GMAIL_VERIFIED'] ?? env['MAIN_VITE_GMAIL_VERIFIED']) === 'true' }
 }
 function validId(value: string): string {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(value)) throw new Error('메일 식별자가 올바르지 않아요.')
@@ -73,12 +69,9 @@ export function createGmailService(userData: string) {
     return { status: !config().clientId ? 'unconfigured' : authPromise ? 'connecting' : needsAuth ? 'reauth-required' : tokens ? 'connected' : 'disconnected', email: tokens?.email ?? null, experimental: !config().verified }
   }
   async function exchange(body: URLSearchParams, generation: number): Promise<TokenResponse> {
-    const { clientSecret } = config()
-    if (clientSecret) body.set('client_secret', clientSecret)
-    const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body, signal: AbortSignal.timeout(30_000) })
-    const result = await response.json() as TokenResponse
+    const { ok, result } = await tokenRequest(body)
     assertSession(generation)
-    if (!response.ok || !result.access_token) {
+    if (!ok || !result.access_token) {
       if (result.error === 'invalid_grant') needsAuth = true
       throw new Error(result.error === 'invalid_grant' ? '메일 연결이 만료되었어요. 다시 연결해 주세요.' : 'Google 메일 인증을 완료하지 못했어요.')
     }
@@ -92,9 +85,7 @@ export function createGmailService(userData: string) {
     if (refreshPromise) return refreshPromise
     const session = tokens, generation = epoch
     refreshPromise = (async () => {
-      const cfg = config()
-      const body = new URLSearchParams({ client_id: cfg.clientId, refresh_token: session.refreshToken, grant_type: 'refresh_token' })
-      const result = await exchange(body, generation)
+      const result = await exchange(new URLSearchParams({ refresh_token: session.refreshToken, grant_type: 'refresh_token' }), generation)
       if (generation !== epoch) throw new Error('메일 연결이 변경되었어요.')
       const next = { ...session, accessToken: result.access_token!, expiresAt: Date.now() + (result.expires_in ?? 3600) * 1000 }
       await persist(next, generation)
@@ -127,37 +118,11 @@ export function createGmailService(userData: string) {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('안전한 인증 정보 저장소를 사용할 수 없어요.')
     const generation = ++epoch
     authPromise = (async () => {
-      const verifier = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url')
-      const server = createServer()
-      let timer: ReturnType<typeof setTimeout> | undefined
+      const controller = new AbortController()
+      cancelAuth = () => controller.abort()
       try {
-        await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve()) })
-        assertSession(generation)
-        const address = server.address()
-        if (!address || typeof address === 'string') throw new Error('인증 창을 열지 못했어요.')
-        const redirect = `http://127.0.0.1:${address.port}/oauth/callback`
-        const codePromise = new Promise<string>((resolve, reject) => {
-          cancelAuth = () => reject(new Error('메일 연결을 취소했어요.'))
-          timer = setTimeout(() => reject(new Error('메일 연결 시간이 지났어요. 다시 시도해 주세요.')), 180_000)
-          server.on('request', (request, response) => {
-            const url = new URL(request.url ?? '/', redirect)
-            if (request.method !== 'GET' || url.pathname !== '/oauth/callback' || url.searchParams.get('state') !== nonce) { response.writeHead(400).end(); return }
-            response.setHeader('Content-Type', 'text/plain; charset=utf-8')
-            response.setHeader('Cache-Control', 'no-store')
-            const code = url.searchParams.get('code')
-            if (url.searchParams.has('error') || !code) { response.end('메일 연결을 취소했어요. Bandal로 돌아가 주세요.'); reject(new Error('Google 메일 연결을 취소했어요.')); return }
-            response.end('Bandal에서 메일 연결을 마무리하고 있어요. 앱으로 돌아가 주세요.')
-            resolve(code)
-          })
-        })
-        // Attach a rejection handler before opening the browser (which can itself fail).
-        void codePromise.catch(() => {})
-        const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-        url.search = new URLSearchParams({ client_id: cfg.clientId, redirect_uri: redirect, response_type: 'code', scope: GMAIL_SCOPE, state: nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', access_type: 'offline', prompt: 'consent select_account' }).toString()
-        await shell.openExternal(url.href)
-        const body = new URLSearchParams({ client_id: cfg.clientId, code: await codePromise, code_verifier: verifier, redirect_uri: redirect, grant_type: 'authorization_code' })
-        const result = await exchange(body, generation)
-        if (!result.refresh_token || (result.scope && !result.scope.split(' ').includes(GMAIL_SCOPE))) throw new Error('메일 읽기·관리 권한을 허용해 주세요.')
+        const result = await exchange(await authorize({ scope: GMAIL_SCOPE, label: '메일', signal: controller.signal }), generation)
+        if (!result.refresh_token || !granted(result, GMAIL_SCOPE)) throw new Error('메일 읽기·관리 권한을 허용해 주세요.')
         const response = await fetch(`${API}/profile`, { headers: { Authorization: `Bearer ${result.access_token}` }, signal: AbortSignal.timeout(30_000) })
         if (!response.ok) throw new Error('메일 계정을 확인하지 못했어요.')
         const profile = await response.json() as { emailAddress?: string }
@@ -167,7 +132,7 @@ export function createGmailService(userData: string) {
         assertSession(generation)
         tokens = next; needsAuth = false; bodies.clear(); loaded = Promise.resolve()
         return { status: 'connected', email: next.email, experimental: !cfg.verified } as MailAccountState
-      } finally { if (timer) clearTimeout(timer); cancelAuth = null; server.closeAllConnections(); server.close() }
+      } finally { cancelAuth = null }
     })().finally(() => { authPromise = null })
     return authPromise
   }
@@ -182,7 +147,7 @@ export function createGmailService(userData: string) {
       // Keep the account visible if removal fails, so the user can retry and
       // the running app agrees with the credentials still saved on disk.
       tokens = null; needsAuth = false; bodies.clear()
-      if (old) await fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', body: new URLSearchParams({ token: old.refreshToken }), signal: AbortSignal.timeout(10_000) }).catch(() => {})
+      if (old) await revokeToken(old.refreshToken)
     })().finally(() => { disconnectPromise = null })
     return disconnectPromise
   }
