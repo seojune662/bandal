@@ -112,7 +112,7 @@ describe('Gmail desktop session', () => {
     expect((await service.state()).status).toBe('disconnected')
     await expect(readFile(join(dir, 'gmail/session.enc'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
-  test('failed disconnect preserves the account and can retry deleting the saved session', async () => {
+  test('failed disconnect preserves the account and can retry deleting the saved session; the grant is never revoked', async () => {
     await seed(Date.now() + 3600_000)
     mockFetch.mockResolvedValue(Response.json({}))
     const service = createGmailService(dir)
@@ -125,6 +125,8 @@ describe('Gmail desktop session', () => {
     await service.disconnect()
     expect((await service.state()).status).toBe('disconnected')
     expect((await createGmailService(dir).state()).status).toBe('disconnected')
+    // Revoking would end Drive sync of the same account on every device (sync design 24.3).
+    expect(mockFetch.mock.calls.map(([url]) => String(url))).not.toContain('https://oauth2.googleapis.com/revoke')
   })
 
   test('revoked refresh tokens require explicit reconnection', async () => {
