@@ -164,7 +164,7 @@ export interface SyncProvider {
 | OAuth | 시스템 브라우저 + loopback(`127.0.0.1:<임의 포트>`) + PKCE(S256) + state. 이미 있는 `src/main/features/mail/gmailService.ts:131-157` 흐름을 `features/google/oauth.ts`로 옮겨 쓰고, 토큰 교환에 `client_secret`을 더한다(F1). 스코프는 `https://www.googleapis.com/auth/drive.file` 하나다. `access_type=offline`을 쓰고 `prompt=consent`는 첫 연결 때만 쓴다. Supabase 로그인과는 무관하다 |
 | 계정 표시 | `about.get?fields=user(emailAddress,displayName)`. drive.file 스코프로 되는지는 PR6에서 확인한다. 안 되면 표시만 생략한다. 이것 때문에 스코프를 늘리지 않는다 |
 | 토큰 | `<userData>/sync/gdrive-token.enc`. `sessionStore.ts`와 같은 방식이다(safeStorage 암호화, 원자적 쓰기, 권한 0600). 암호화를 쓸 수 없으면 메모리에만 두고 다음 실행 때 다시 연결한다. 평문 파일은 만들지 않는다 |
-| 루트 | `files.list(q="name='Bandal' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false")`. drive.file 스코프라 앱이 만든 폴더만 보인다. 만들 때 `appProperties.bandalRoot='2'`를 단다. 같은 폴더가 여러 개면 `bandal.json`이 있고 `createdTime`이 가장 이른 것을 쓴다 |
+| 루트 | ~~`files.list(q="name='Bandal' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false")`.~~ drive.file 스코프라 앱이 만든 폴더만 보인다. ~~만들 때 `appProperties.bandalRoot='2'`를 단다.~~ 같은 폴더가 여러 개면 `bandal.json`이 있고 `createdTime`이 가장 이른 것을 쓴다. 표시와 찾기는 스펙 v2.5로 바뀌었다(25장) |
 | 트리 | 스펙의 경로를 폴더로 그대로 만든다. 경로→폴더 id는 `<userData>/sync/gdrive-ids.json`에 캐시한다. 캐시를 잃으면 목록 조회로 다시 만든다 |
 | 자기 파일 | 경로→fileId를 기억한다. 덮어쓰기는 `files.update`(media)다. 새 파일은 `files.create`로 만들고, 5MB 이하는 multipart, 그 이상은 resumable로 올린다. resumable 세션 URI는 저널에 남겨 재시작 후 이어 올린다. 맵을 잃었으면 같은 이름의 파일을 먼저 찾아 중복 생성을 막는다 |
 | 같은 이름 중복 | 다른 기기의 같은 이름 파일이 둘이면 `modifiedTime`이 늦은 쪽을 쓴다 |
@@ -934,7 +934,7 @@ drop policy if exists bandal_assets_create on storage.objects;
 | P7 | seq는 기기당 카운터 하나를 모든 파일 종류가 함께 쓴다. 세션은 앱 실행 1회다. 노트 파일은 세션당 1개다 | 해석이 갈리면 파일 이름이 겹친다 | 명확화 |
 | P8 | 초기 연결에서 같은 문서 = 같은 과목(같은 id, 또는 사용자가 이름으로 합친 과목) + 같은 sha256. 과목이 다르면 같은 PDF도 다른 문서다. 삭제된 과목에 살아 있는 문서가 있으면 과목을 표시한다(파생 규칙) | "sha가 같으면 같은 문서" 규칙이 과목 경계를 넘으면 안 된다. 삭제와 추가가 동시에 일어나도 손실 0을 지킨다 | 명확화 |
 | P9 | 끝에 페이지를 덧붙이는 것만 허용한다. 같은 document_id에 새 `pdf_sha256`을 쓰고 기존 쪽 번호는 바꾸지 않는다. 그 밖의 재구성은 계속 막는다 | 손글씨 노트에 쪽을 더하는 기능이 막히지 않게 한다. 양쪽이 동시에 덧붙이면 덜 덧붙인 쪽이 지고, 진 쪽의 새 쪽에 쓴 필기는 숨겨진다(삭제되지 않고 보존) | 선택(D6) |
-| P10 | iCloud 임시 파일은 루트 밖에 쓰고 rename으로 넣는다. Drive 루트는 `appProperties.bandalRoot`로 표시하고, 여러 개면 가장 이른 것을 쓴다. Drive에서 같은 이름의 파일이 여럿이면 늦게 바뀐 쪽을 쓴다 | 두 구현의 동작을 맞춘다 | 명확화 |
+| P10 | iCloud 임시 파일은 루트 밖에 쓰고 rename으로 넣는다. Drive 루트는 ~~`appProperties.bandalRoot`로~~ 표시하고(v2.5에서 `properties`와 함께, 25장), 여러 개면 가장 이른 것을 쓴다. Drive에서 같은 이름의 파일이 여럿이면 늦게 바뀐 쪽을 쓴다 | 두 구현의 동작을 맞춘다 | 명확화 |
 | P11 | (측정 후) 필기 JSON 숫자 정밀도를 좌표 소수 6자리, p 4자리로 줄인다 | iPad 조사 §10.1에 따르면 용량의 대부분이 숫자다. 1e-6 × 842pt ≈ 0.0008pt라 눈에 보이지 않는다 | 보류 |
 
 ### P1이 필요한 이유(반례)
@@ -985,7 +985,7 @@ drop policy if exists bandal_assets_create on storage.objects;
 | X3 | iCloud 폴더 감시가 안정적인가 | 하루 동안 iPad에서 파일 200개를 바꾼다. `fs.watch` 이벤트 수와 5분 재스캔 결과를 비교해 누락률을 구한다 | PR5 |
 | X4 | Windows + iCloud for Windows | 같은 측정을 Windows에서 한다. 플레이스홀더를 내려받는 데 걸리는 시간과 오프라인 오류의 형태도 본다 | PR8 |
 | X5 | Drive `changes.list` 단가와 하루 사용량 | 기기 2대로 하루를 쓰고 Cloud Console에서 확인한다 | PR6 |
-| X6 | drive.file이 다른 클라이언트에서도 보이는가 | 데스크톱 클라이언트가 만든 폴더를 같은 프로젝트의 iOS 클라이언트가 `files.list`로 볼 수 있는지 확인한다 | PR6 전 |
+| X6 | drive.file이 다른 클라이언트에서도 보이는가 | 데스크톱 클라이언트가 만든 폴더를 같은 프로젝트의 iOS 클라이언트가 `files.list`로 볼 수 있는지 확인한다. 스펙 v2.5 뒤의 절차는 24.8의 9다 | PR6 전 |
 | X7 | 오프라인 두 기기 동시 편집 후 획 손실 0 | M16 단위 테스트 + 실제 기기로 수동 1회 | PR4, PR5 |
 | X8 | 깨끗한 Windows: 설치 → Google·Apple 로그인 → 딥링크 복귀 | PR2 설치본으로 수동 확인 | PR2 |
 | X9 | 리프레시 토큰 만료 상태에서 로컬 자료가 열리는가 | 7.4의 E2E | PR1 |
@@ -1418,9 +1418,9 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
   - 5 MB 이하는 multipart, 넘으면 resumable 세션에 4 MiB씩 PUT한다. 조각마다 2분을 줘서 느린 연결도 끝까지 간다.
   - 끊기면 그 실행 안에서는 세션을 기억했다가 같은 바이트를 다시 올릴 때 Drive가 받은 곳부터 잇는다(`bytes */N`로 물음). 재시작 뒤에는 처음부터 올린다(2.5의 저널은 미룸).
   - 이 기기가 올린 메타데이터·필기·노트는 캐시에 바로 넣는다. 폴링이 자기 변경을 알려도 다시 받지 않는다.
-- **루트**
-  - 스펙대로 `name='Bandal'`인 폴더 중 `'root' in parents`를 찾는다. 순서는 bandal.json이 있는 것, createdTime이 이른 것, id 순이다.
-  - 없으면 `appProperties.bandalRoot='2'`로 만들고 다시 찾는다. 처음 연결한 두 기기가 동시에 각자 만들었으면 둘 다 이른 쪽을 고르고, 방금 만든 빈 폴더는 휴지통으로 보낸다.
+- **루트** (스펙 v2.5로 바뀜, 25장)
+  - `bandalRoot='2'` 표시(`properties` 또는 `appProperties`)가 있는 폴더를 찾는다. 하나도 없으면 이름이 "Bandal"이고 bandal.json이 있는 폴더를 찾는다. 순서는 bandal.json이 있는 것, createdTime이 이른 것, id 순이다.
+  - 없으면 두 표시를 붙여 만들고 다시 찾는다. 처음 연결한 두 기기가 동시에 각자 만들었으면 둘 다 이른 쪽을 고르고, 방금 만든 빈 폴더는 휴지통으로 보낸다.
   - 고른 폴더 id는 `state.json`의 `root: "gdrive:<id>"`로 고정한다.
   - 그 폴더가 휴지통으로 가면 "Google Drive에서 반달 폴더를 찾지 못했어요. 연결을 해제한 뒤 다시 연결해 주세요."를 보인다.
   - 연결 전 확인(prepare)은 폴더를 만들지 않는다. [시작]을 눌렀을 때만 만든다.
@@ -1448,9 +1448,9 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
 - 데스크톱의 Gmail과 Drive는 같은 클라이언트다. iPad의 iOS 클라이언트도 같은 프로젝트다(13장 16).
   - 그래서 Drive 연결 해제에서 revoke하면 같은 계정의 Gmail과 iPad의 Drive 동기화까지 끊긴다.
 - 그래서 Drive 연결 해제는 이 기기의 토큰 파일과 캐시만 지운다. 권한 철회는 사용자가 Google 계정 설정에서 한다.
-- **같은 이유로 정해야 할 것(결정 필요)**
-  1. 기존 Gmail 연결 해제(`gmailService.disconnect`)는 revoke한다. 동기화가 나가면 Gmail 연결 해제가 같은 계정의 Drive 동기화(데스크톱과 iPad 모두)를 끊는다. 권장: Gmail도 토큰만 지운다.
-  2. iPad도 Drive 연결 해제에서 revoke하지 않아야 한다. revoke하면 데스크톱의 Drive 동기화와 Gmail이 끊긴다.
+- **같은 이유로 정한 것(2026-11-01 사용자 결정)**: 데스크톱과 iPad 모두 revoke하지 않는다.
+  1. Gmail 연결 해제(`gmailService.disconnect`)도 토큰 파일만 지운다. Gmail은 제한 범위 검증을 보류해 `BANDAL_GMAIL_UI=1`로 실행할 때만 보인다.
+  2. iPad도 Drive 연결 해제에서 revoke하지 않는다. iPad의 Gmail 연결 해제도 지금 revoke한다(`bandal-iPad:App/Desktop/DesktopMailService.swift:130`). 같은 프로젝트라 데스크톱의 Drive 동기화를 끊으므로 iPad 팀이 뺀다.
 
 ### 24.4 제공자와 루트
 
@@ -1474,7 +1474,7 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
   - 새 프로필에 토큰을 복사하다 실패하면 반쯤 쓴 `sync/`가 남아 그 루트를 다른 프로필이 쓰는 것처럼 보였다. 이제 실패하면 지운다. 파일 이름은 경로가 없는 이름만 받는다.
   - 로그인 대기 중 이 기기의 아무 프로세스나 루프백 포트에 깨진 요청을 보내면 main에서 예외가 났다(Gmail 때부터). 이제 400으로 답한다. 취소된 로그인은 브라우저를 열지 않는다.
   - 자기 업로드를 다시 받던 것, 캐시가 실행 중에 커지던 것(바뀐 파일의 옛 캐시를 지움), `userRateLimitExceeded` 문구, 루트를 고를 때의 로캘 비교(이제 문자열 순서라 iPad와 같다), 새로 만든 폴더가 목록에 늦게 보일 때.
-  - Gmail 연결 해제의 revoke는 24.3의 결정으로 남긴다. 덧붙여, 로그인할 때마다 새 refresh token이 생기고 폐기하지 않으므로, 한 계정·한 클라이언트에 100개를 넘으면 Google이 가장 오래된 것부터 말없이 끊는다(Gmail과 함께 센다). 보통 사용으로는 닿지 않는다.
+  - Gmail 연결 해제의 revoke는 24.3의 결정으로 남겼다(결정: 하지 않는다). 덧붙여, 로그인할 때마다 새 refresh token이 생기고 폐기하지 않으므로, 한 계정·한 클라이언트에 100개를 넘으면 Google이 가장 오래된 것부터 말없이 끊는다(Gmail과 함께 센다). 보통 사용으로는 닿지 않는다.
 
 ### 24.6 검증
 
@@ -1502,6 +1502,28 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
 4. 한쪽에서 필기. 다른 쪽 창에 포커스를 두면 30초 안에, 창을 다시 클릭하면 곧바로 반영되는지.
 5. Wi-Fi를 끈 채 필기 → "인터넷 연결을 확인해 주세요" → Wi-Fi를 켜면 이어서 올라가는지.
 6. myaccount.google.com › 보안 › 타사 앱에서 반달 접근을 삭제. 다음 확인 때 "Google Drive 연결이 끊겼어요"가 나오고 [다시 연결]로 돌아오는지.
-7. [연결 해제] 뒤 `<userData>/sync/gdrive-token.enc`가 없어지는지, Gmail 위젯 연결은 그대로인지.
+7. [연결 해제] 뒤 `<userData>/sync/gdrive-token.enc`가 없어지는지, Gmail 위젯 연결은 그대로인지. 반대로 Gmail 연결 해제 뒤에도 Drive 동기화가 이어지는지. Gmail을 보려면 `BANDAL_GMAIL_UI=1`도 함께 켠다.
 8. 50 MB가 넘는 PDF를 올리고 다른 기기에서 열리는지(resumable).
-9. X6: 같은 프로젝트의 iPad(iOS 클라이언트)가 데스크톱이 만든 Bandal 폴더를 보는지.
+9. X6: 같은 프로젝트의 iPad(iOS 클라이언트)와 데스크톱이 같은 루트를 쓰는지(스펙 v2.5, 25장). 같은 Google 계정으로 한다.
+   - 매번 시작 전에 그 계정의 반달 폴더를 모두 휴지통으로 보낸다. 휴지통의 폴더는 찾지 않는다. 예전 빌드가 만든 폴더가 남아 있으면 각 앱이 자기 표시(`appProperties`)로 그것을 찾아 결과가 흐려진다.
+   - 데스크톱이 먼저 연결해 만든 폴더에 iPad가 연결하면 그 폴더를 쓰는지. drive.google.com에 반달 폴더가 하나뿐이고 양쪽 자료가 오가야 한다. 순서를 바꿔(iPad 먼저) 한 번 더 한다.
+   - 그 폴더의 이름을 바꾸고 다른 폴더 안으로 옮긴다. 한 기기에서 [연결 해제] 뒤 다시 [연결]해도 같은 폴더를 찾는지(표시로 찾기).
+   - 이름 + bandal.json: v2.5 전 빌드(데스크톱은 `a6c39d9`)로 한쪽에서만 연결해 폴더를 만든다. 그 표시는 만든 클라이언트에만 보인다. 다른 앱이 그 폴더를 찾아 같은 자료를 받는지.
+   - 한 기기에서 [연결 해제]해도 다른 기기의 동기화가 이어지는지(revoke 없음, 24.3).
+
+## 25. 스펙 v2.5 반영: Drive 루트 표시 (2026-11-01)
+
+- 사용자 결정: 루트 표시를 공개 `properties`에 두고 `appProperties`는 함께 붙인다. 표시로 못 찾으면 이름 "Bandal" + bandal.json으로 찾는다. iPad가 `appProperties`는 쓴 클라이언트에만 보인다고 확인했다.
+- `drive.ts` `findRoot`
+  - 먼저 `q = (properties has { key='bandalRoot' and value='2' } or appProperties has { key='bandalRoot' and value='2' }) and mimeType = 'application/vnd.google-apps.folder' and trashed = false`로 찾는다. `'root' in parents`는 뺐다. 그래서 사용자가 옮기거나 이름을 바꿔도 찾는다.
+  - 표시가 보이는 폴더가 없을 때만 `name = 'Bandal'` 폴더 가운데 bandal.json이 있는 것을 찾는다.
+  - 새로 만들 때 두 표시를 함께 붙인다. 경합 처리(둘 다 이른 쪽, 방금 만든 빈 폴더는 휴지통)는 그대로다.
+- 가짜 Drive는 이 클라이언트가 보는 그대로다. 다른 클라이언트가 쓴 `appProperties`는 아예 없다. `has` 조건과 괄호 안의 `or`를 읽는다.
+- 테스트
+  - 표시가 안 보이는 옛 루트는 bandal.json이 있어야 찾는다.
+  - 자기 옛 표시(`appProperties`)로 찾는다.
+  - 다른 클라이언트의 공개 표시로 찾고, bandal.json이 있는 쪽이 먼저다.
+  - 변이 7개(공개 질의, 비공개 질의, 대체 경로의 bandal.json 조건, 대체 경로 없음, 늘 합치기, 만들 때 공개 표시, 만들 때 비공개 표시)를 모두 잡는다.
+- 남은 위험: v2.5 전 루트와 v2.5 루트가 한 계정에 함께 있으면 두 앱이 서로 다른 후보를 볼 수 있다. 동기화가 아직 나가지 않아 v2.5 전 루트는 시험 계정에만 있다. 그래서 옛 루트에 공개 표시를 덧붙이는 단계는 넣지 않았다.
+- 실계정 확인은 24.8의 9(X6)다. 이 질의가 실제 Drive에서 처음 돌아가는 곳은 24.8의 2(첫 연결)다.
+- 독립 리뷰(0 HIGH, 2 MEDIUM, 4 LOW)에서 고친 것: X6에 시작 전 정리를 넣었다. 휴지통에 간 표시 폴더와 id 순서도 테스트로 고정했다. 스펙에 revoke 금지와 처음 만드는 위치를 적었다. 낡은 문장(2.5 루트 행, P10, X6 행, 24.5)에는 이 장을 가리키게 했다. 질의를 한 번에 보내는 `or`는 문서화된 문법이라 그대로 두고, 24.8의 2에서 실제로 확인한다.
