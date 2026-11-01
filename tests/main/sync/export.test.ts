@@ -328,3 +328,26 @@ test('a note edited here in a course another device deleted brings the course ba
   // The PDF went with the delete and stays gone.
   expect(existsSync(join(a.folder(course), '강의/1주차.pdf'))).toBe(false)
 })
+
+test('pages appended here go out with the bytes they grew from, even several appends between two passes; a replacement does not', async () => {
+  const { a, course } = await startedRoot()
+  const pdf = a.row("SELECT document_id FROM sync_docs WHERE local_path = '강의/1주차.pdf'")!.document_id as string
+  const file = join(a.folder(course), '강의/1주차.pdf')
+  const h0 = readFileSync(file), h1 = Buffer.concat([h0, Buffer.from('% page 2\n')]), h2 = Buffer.concat([h1, Buffer.from('% page 3\n')])
+  // What the page editor records (pdfNotes creates this table and its appended column).
+  a.db.exec(`CREATE TABLE IF NOT EXISTS pdf_restructure_log (id TEXT PRIMARY KEY, material_id TEXT NOT NULL, from_sha TEXT NOT NULL,
+    to_sha TEXT NOT NULL, recipe_json TEXT NOT NULL, created_at TEXT NOT NULL, appended INTEGER NOT NULL DEFAULT 0)`)
+  const record = a.db.prepare("INSERT INTO pdf_restructure_log VALUES (?, 'm', ?, ?, '[]', 'now', ?)")
+  record.run('r1', sha(h0), sha(h1), 1)
+  record.run('r2', sha(h1), sha(h2), 1)
+  writeFileSync(file, h2)
+  a.rescan(course)
+  await a.sync()
+  const last = () => a.events().filter(event => event.id === pdf).at(-1)!.fields
+  expect(last()).toMatchObject({ pdf_sha256: sha(h2), pdf_prev_sha256: sha(h0) })
+  const other = Buffer.from('%PDF-1.7 another file\n')
+  writeFileSync(file, other)
+  a.rescan(course)
+  await a.sync()
+  expect(last()).toMatchObject({ pdf_sha256: sha(other), pdf_prev_sha256: null })
+})

@@ -211,6 +211,8 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       publish()
     },
     rename,
+    /** This profile syncs now: its synced PDFs only take end-page appends. */
+    bound: () => engine !== null,
     pause: async () => engine?.pause(),
     resume: () => engine?.resume(),
     stop: () => engine?.stop()

@@ -175,7 +175,7 @@ import { createRecordingService } from '../features/recordings/recordingService'
 import { speechModel } from '../features/recordings/modelCatalog'
 import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
 import { createBoundPDFRepositories, createPDFDocumentBindings, retryPDFMutation } from '../features/pdf/pdfDocumentBinding'
-import { repointSyncDocs } from '../features/sync/localDocs'
+import { repointSyncDocs, trackedDoc } from '../features/sync/localDocs'
 import { createSyncRuntime, profileBoundElsewhere } from '../features/sync/runtime'
 import { MATERIAL_SCAN_MAX_DEPTH, MATERIAL_SCAN_MAX_ENTRIES } from '../features/materials/materialsRepo'
 import { createPDFOriginalPreserver, createPDFRevisionReader } from '../features/pdf/pdfOriginals'
@@ -1029,14 +1029,21 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
 
   const pdfNotes = createPdfNotesService({ db, courses: coursesRepo, materials: materialsRepo, notes: notesRepo,
-    links: materialLinksRepo, pdfBindings, userDataPath: deps.userDataPath, changed: courseId => broadcast('materials:changed', { courseId }) })
+    links: materialLinksRepo, pdfBindings, userDataPath: deps.userDataPath, changed: courseId => broadcast('materials:changed', { courseId }),
+    appendOnly: (courseId, relPath) => syncedPdf(courseId, relPath) })
+  /** A PDF this profile syncs: every device follows an end-page append, nothing else (sync spec "PDF 페이지 재구성"). */
+  const syncedPdf = (courseId: string, relPath: string): boolean => sync.bound() && trackedDoc(db, courseId, relPath) !== null
   const withMaterialLock = async <T>(action: () => Promise<T>): Promise<T> => {
     const release = materialPathLock.tryAcquire()
     if (!release) throw new Error('자료 동기화 중입니다. 잠시 후 다시 시도해 주세요.')
     try { return await action() } finally { release() }
   }
   handle('pdfNotes:create', req => withMaterialLock(() => pdfNotes.create(req)))
-  handle('pdfNotes:info', async req => { const info = await pdfNotes.info(req); pdfBindings.check({ ...req, documentRevision: info.documentRevision }); return info })
+  handle('pdfNotes:info', async req => {
+    const info = await pdfNotes.info(req)
+    pdfBindings.check({ ...req, documentRevision: info.documentRevision })
+    return { ...info, appendOnly: syncedPdf(req.courseId, req.relPath) }
+  })
   handle('pdf:previewSnapshot', req => pdfPreview(req))
   handle('pdf:restructure', req => withMaterialLock(() => pdfNotes.restructure(req)))
   handle('pdfNotes:migrateLegacy', req => withMaterialPathLockWait(materialPathLock, () => pdfNotes.migrateLegacy(req)))
@@ -3792,12 +3799,20 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       const walk = await background.request('scan', { folder, limits: { maxDepth: MATERIAL_SCAN_MAX_DEPTH, maxEntries: MATERIAL_SCAN_MAX_ENTRIES } })
       return { complete: walk.truncation.size === 0, files: walk.files.map(file => ({ relPath: file.relPath, size: file.size ?? 0, mtime: Math.round(file.mtime ?? 0) })) }
     },
-    changed: ({ changed, removed }) => {
+    changed: ({ changed, removed, markup }) => {
       for (const courseId of removed) releaseCourseRuntime(courseId)
-      broadcast('courses:changed', {})
+      if (changed.length > 0 || removed.length > 0) broadcast('courses:changed', {})
       for (const courseId of changed) {
         materialsRepo.invalidateTree(courseId)
         broadcast('materials:changed', { courseId })
+      }
+      // Drawings a pass wrote: an open view of that PDF redraws; other PDFs of the course are left alone.
+      for (const { courseId, relPath } of markup) {
+        try {
+          broadcast('pdf:markupChanged', { courseId, relPath, documentRevision: pdfBindings.check({ courseId, relPath }).documentRevision, origin: 'sync' })
+        } catch {
+          // A protected or vanished PDF has nothing to redraw.
+        }
       }
     },
     onView: view => broadcast('sync:changed', view),

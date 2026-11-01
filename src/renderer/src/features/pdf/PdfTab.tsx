@@ -1203,7 +1203,7 @@ function PdfViewer({
             numPages={numPages}
             currentPage={currentPage}
             onJump={jumpToPage}
-            courseId={courseId} relPath={relPath} revision={noteInfo.documentRevision}
+            courseId={courseId} relPath={relPath} revision={noteInfo.documentRevision} appendOnly={noteInfo.appendOnly === true}
             suspend={async () => { setRestructuring(true); await flushDocumentSaves() }}
             resume={() => setRestructuring(false)}
             onRestructured={onRestructured}
