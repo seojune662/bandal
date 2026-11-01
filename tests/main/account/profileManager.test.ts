@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createTestDb } from '../helpers/testDb'
@@ -151,10 +151,21 @@ test('a profile made to import a sync root starts bound to it, and backups leave
   const f = fixture()
   mkdirSync(join(f.dir, 'sync'))
   writeFileSync(join(f.dir, 'sync/state.json'), JSON.stringify({ device_id: 'kept-out-of-backups' }))
-  const result = await f.manager.newProfile({ sync: { provider: 'icloud' } })
+  const result = await f.manager.newProfile({ sync: { provider: 'gdrive', root: 'gdrive:folder' }, syncFiles: { 'gdrive-token.enc': Buffer.from('sealed') } })
   expect(result.ok).toBe(true)
-  expect(JSON.parse(readFileSync(join(resolveActiveProfile(f.dir), 'sync/state.json'), 'utf8'))).toEqual({ provider: 'icloud' })
+  expect(JSON.parse(readFileSync(join(resolveActiveProfile(f.dir), 'sync/state.json'), 'utf8'))).toEqual({ provider: 'gdrive', root: 'gdrive:folder' })
+  // Google Drive's token goes along still sealed, so the new profile needs no second sign-in.
+  expect(readFileSync(join(resolveActiveProfile(f.dir), 'sync/gdrive-token.enc'), 'utf8')).toBe('sealed')
   expect(existsSync(join(result.path!, 'profile/sync'))).toBe(false)
+})
+
+test('a seed that cannot be written whole leaves nothing behind', async () => {
+  const f = fixture()
+  const result = await f.manager.newProfile({ sync: { provider: 'gdrive', root: 'gdrive:folder' }, syncFiles: { '../escape.enc': Buffer.from('sealed') } }).catch((error: Error) => error)
+  expect(result instanceof Error ? result.message : result.ok).not.toBe(true)
+  expect(existsSync(join(f.dir, 'escape.enc'))).toBe(false)
+  for (const id of existsSync(join(f.dir, 'profiles')) ? readdirSync(join(f.dir, 'profiles')) : []) expect(existsSync(join(f.dir, 'profiles', id, 'sync'))).toBe(false)
+  expect(resolveActiveProfile(f.dir)).toBe(f.dir)
 })
 
 test('a switch tells the old profile to let go of sync, and a switch taken back removes the seed', async () => {

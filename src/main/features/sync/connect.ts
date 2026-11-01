@@ -26,7 +26,8 @@ interface CourseRow { id: string; name: string; color: string; sort_order: numbe
 const localCourses = (db: Database): CourseRow[] =>
   db.prepare(`SELECT * FROM courses WHERE deleted_at IS NULL AND ${MANAGED} ORDER BY id`).all() as CourseRow[]
 
-export async function planConnect(db: Database, merged: MergedState, scan: (folder: string) => Promise<Scan>): Promise<ConnectPlan> {
+/** `sameRoot`: this profile's base is from this root, so a course they share means it synced here before. */
+export async function planConnect(db: Database, merged: MergedState, scan: (folder: string) => Promise<Scan>, sameRoot: boolean): Promise<ConnectPlan> {
   const courses = localCourses(db)
   let docs = 0
   for (const course of courses) {
@@ -43,7 +44,7 @@ export async function planConnect(db: Database, merged: MergedState, scan: (fold
   const remoteOf = new Map((db.prepare("SELECT local_id, remote_id FROM sync_alias WHERE kind = 'course'").all() as { local_id: string; remote_id: string }[])
     .map(row => [row.local_id, row.remote_id]))
   const known = db.prepare("SELECT DISTINCT entity_id AS id FROM sync_meta WHERE kind = 'course'").all() as { id: string }[]
-  if (known.some(row => merged.courses.has(remoteOf.get(row.id) ?? row.id))) return { kind: 'resume', local, remote, pairs: [] }
+  if (sameRoot && known.some(row => merged.courses.has(remoteOf.get(row.id) ?? row.id))) return { kind: 'resume', local, remote, pairs: [] }
   if (remote.courses + remote.docs === 0) return { kind: 'upload', local, remote, pairs: [] }
   if (local.courses === 0) return { kind: 'download', local, remote, pairs: [] }
   const taken = new Set<string>(), pairs: ConnectPlan['pairs'] = []

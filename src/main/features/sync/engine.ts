@@ -154,11 +154,13 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     // Stopped while applying (disconnected): what was applied stays, but nothing more goes to the root.
     if (stopped) return
     const paths = new Set(root.entries.map(entry => entry.path)), own = identity
-    await exportChanges({
+    const exported = await exportChanges({
       db, device: own.device_id, takeSeq: () => takeSeq(deps.stateFile, own, paths),
       root: { paths, merged: pulled.merged, clock: pulled.clock },
       write: (path, bytes) => provider.write(path, bytes), scan: deps.scan, ...(deps.platform ? { platform: deps.platform } : {})
     }, session)
+    // Something could not go up (an upload cut off, a file that would not read): it is tried again, and the state says so.
+    if (exported.held.length > 0) throw new Error(exported.held[0]!.reason)
     if (Date.now() - deviceAt >= timing.deviceMs) {
       const now = Date.now()
       await provider.write(`devices/${own.device_id}.json`, Buffer.from(JSON.stringify({ ...deps.device(), last_seen: now })))
@@ -175,7 +177,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     } catch (error) {
       failures += 1
       set({ state: 'error', message: message(error) })
-      schedule(Math.min(timing.maxRetryMs, timing.retryMs * 2 ** (failures - 1)))
+      // Jittered, so devices that failed together (a Drive outage) do not all retry together.
+      schedule(Math.min(timing.maxRetryMs, timing.retryMs * 2 ** (failures - 1)) * (0.5 + Math.random() / 2))
     }
   }
 

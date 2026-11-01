@@ -10,6 +10,7 @@ import { repointSyncDocs } from '../../../src/main/features/sync/localDocs'
 import { createPull } from '../../../src/main/features/sync/pull'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 
+const PDF = readFileSync(join(__dirname, '../../../sync-fixtures/01-basic/root/pdf/b874efadd08d8148d022b60add6a0b3e942654ed646871f2c984c9c9051fb765.pdf'))
 let home: string, root: string
 const open: { ctx: TestDb; engine: SyncEngine }[] = []
 beforeEach(() => {
@@ -144,6 +145,28 @@ function gate() {
   const entered = new Promise<void>(resolve => { reached = resolve }), open = new Promise<void>(resolve => { release = resolve })
   return { entered, release, pass: async () => { reached(); await open } }
 }
+
+test('a document that could not go up is not reported as synced, and goes up on the next try', async () => {
+  mkdirSync(root, { recursive: true })
+  let refuse = true
+  const a = device('mac-a', {
+    timing: { idleMs: 20, hintMs: 20, retryMs: 50 },
+    wrap: provider => ({
+      ...provider,
+      write: async (path, bytes) => {
+        if (refuse && path.startsWith('pdf/')) throw new Error('업로드가 끊겼어요')
+        return provider.write(path, bytes)
+      }
+    })
+  })
+  const { id: course } = a.courses.create({ name: '물리학', color: 'green' })
+  writeFileSync(join(a.courses.getFolder(course), '강의.pdf'), PDF)
+  a.engine.start()
+  await vi.waitFor(() => expect(a.engine.state()).toMatchObject({ state: 'error', message: expect.stringContaining('업로드가 끊겼어요') }), { timeout: 10_000 })
+  refuse = false
+  await vi.waitFor(() => expect(a.engine.state()).toMatchObject({ state: 'synced' }), { timeout: 10_000 })
+  expect(readdirSync(join(root, 'pdf'))).toHaveLength(1)
+})
 
 test('stopping while the root is listed writes nothing, not even bandal.json', async () => {
   mkdirSync(root, { recursive: true })

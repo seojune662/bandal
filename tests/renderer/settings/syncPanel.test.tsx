@@ -6,7 +6,7 @@ const ipc = vi.hoisted(() => ({ invoke: vi.fn(), onPush: vi.fn(() => () => {}) }
 vi.mock('../../../src/renderer/src/lib/ipc', () => ipc)
 import { ago, SyncPanel } from '../../../src/renderer/src/features/settings/sync/SyncPanel'
 
-const unbound = { available: true, provider: null, state: { state: 'off' }, device: { id: null, name: 'MacBook Air' }, devices: [], pending: 0 }
+const unbound = { available: { icloud: true, gdrive: false }, provider: null, account: null, state: { state: 'off' }, device: { id: null, name: 'MacBook Air' }, devices: [], pending: 0 }
 const bound = {
   ...unbound, provider: 'icloud', state: { state: 'synced', at: Date.now() - 3 * 60_000 }, device: { id: 'aaaa', name: 'MacBook Air' }, pending: 2,
   devices: [
@@ -49,7 +49,7 @@ test('with data on both sides it offers the three ways and merges only the check
     for (const label of ['합치기', '이 기기 자료로 덮어쓰기', '클라우드 자료 가져오기']) expect(element.textContent).toContain(label)
     await click([...element.querySelectorAll('label')].find(label => label.textContent === '물리학')!.querySelector('input'))
     await click(button(element, '시작'))
-    expect(ipc.invoke).toHaveBeenCalledWith('sync:connect', { mode: 'merge', pairs: [{ local: 'l1', remote: 'r1' }], expect: 'choose' })
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:connect', { provider: 'icloud', mode: 'merge', pairs: [{ local: 'l1', remote: 'r1' }], expect: 'choose' })
     expect(element.textContent).toContain('동기화됨 · 3분 전')
   } finally {
     await unmount()
@@ -67,7 +67,7 @@ test('an overwrite says what goes away and sends nothing when declined', async (
     expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:connect')
     confirm.mockReturnValue(true)
     await click(button(element, '시작'))
-    expect(ipc.invoke).toHaveBeenCalledWith('sync:connect', { mode: 'overwrite', pairs: [], expect: 'choose' })
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:connect', { provider: 'icloud', mode: 'overwrite', pairs: [], expect: 'choose' })
   } finally {
     await unmount()
   }
@@ -97,6 +97,33 @@ test('a bound profile shows its state and devices, and renames this device', asy
     })
     await click(button(element, '저장'))
     expect(ipc.invoke).toHaveBeenCalledWith('sync:rename', { name: '서준의 맥' })
+  } finally {
+    await unmount()
+  }
+})
+
+test('Google Drive connects only after a Google sign-in, and a lapsed sign-in is renewed from the state row', async () => {
+  const both = { ...unbound, available: { icloud: true, gdrive: true } }
+  const upload = { kind: 'upload', local: { courses: 1, docs: 4 }, remote: { courses: 0, docs: 0 }, pairs: [] }
+  const driveBound = { ...bound, provider: 'gdrive', account: 'me@example.com' }
+  const { element, unmount } = await render({
+    'sync:status': () => both, 'sync:signIn': () => ({ ...both, account: 'me@example.com' }),
+    'sync:prepare': () => ({ status: 'ready', plan: upload }), 'sync:connect': () => ({ ...driveBound, state: { state: 'needs-auth' } })
+  })
+  try {
+    await click([...element.querySelectorAll('[role="radio"]')].find(item => item.textContent?.startsWith('Google Drive')))
+    expect(button(element, 'Google Drive에 연결')!.disabled).toBe(true)
+    await click(button(element, 'Google 계정 연결'))
+    expect(element.textContent).toContain('me@example.com')
+    await click(button(element, 'Google Drive에 연결'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:prepare', { provider: 'gdrive' })
+    expect(element.textContent).toContain('문서 4개를 Google Drive에 올립니다')
+    await click(button(element, '시작'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:connect', { provider: 'gdrive', mode: 'merge', pairs: [], expect: 'upload' })
+    expect(element.textContent).toContain('Google Drive 연결이 끊겼어요')
+    expect(element.textContent).toContain('Google Drive(me@example.com)의 Bandal 폴더')
+    await click(button(element, '다시 연결'))
+    expect(ipc.invoke.mock.calls.filter(([channel]) => channel === 'sync:signIn')).toHaveLength(2)
   } finally {
     await unmount()
   }

@@ -13,11 +13,11 @@ import { dirname, join, relative, sep } from 'node:path'
 import { isSpecPath, placeholderTarget } from './format'
 import type { RootSnapshot } from './pull'
 
-export type ProviderStatus = 'ready' | 'needs-ipad' | 'unavailable'
+export type ProviderStatus = 'ready' | 'needs-ipad' | 'unavailable' | 'needs-auth'
 
 /** What the engine needs from a cloud root (design 2.3). */
 export interface SyncProvider {
-  /** `needs-ipad`: the container is not here yet. `unavailable`: iCloud Drive is off. */
+  /** `needs-ipad`: the container is not here yet. `unavailable`: iCloud Drive is off. `needs-auth`: Google Drive wants a sign-in. */
   status(): Promise<ProviderStatus>
   list(): Promise<RootSnapshot>
   /** Atomic, and only ever this device's own files or content-named ones. */

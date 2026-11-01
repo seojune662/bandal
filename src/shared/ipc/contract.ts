@@ -157,7 +157,7 @@ import type {
   McpTestResult
 } from '../types/mcp'
 import type { UpdateStatus } from '../types/update'
-import type { ConnectMode, ConnectPlan, ConnectPrepare, SyncView } from '../types/sync'
+import type { ConnectMode, ConnectPlan, ConnectPrepare, SyncProviderKind, SyncView } from '../types/sync'
 import type { PluginLogEntry, PluginSummary } from '../types/plugin'
 import type {
   AuthProvider,
@@ -1608,11 +1608,13 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
   'runtime:syncNow': { req: Record<string, never>; res: RuntimeSyncState }
   'runtime:syncResolveConflict': { req: { id: string; choice: 'local' | 'remote' }; res: RuntimeSyncState }
   'runtime:syncConflicts': { req: Record<string, never>; res: RuntimeSyncConflict[] }
-  // -- sync through iCloud (design 6.1–6.2) -----------------------------------
+  // -- sync through iCloud or Google Drive (design 6.1–6.4) ---------------------
   'sync:status': { req: Record<string, never>; res: SyncView }
-  'sync:prepare': { req: Record<string, never>; res: ConnectPrepare }
+  'sync:prepare': { req: { provider: SyncProviderKind }; res: ConnectPrepare }
   /** `expect`: the plan the user saw; a changed root refuses instead of guessing. */
-  'sync:connect': { req: { mode: ConnectMode; pairs: { local: string; remote: string }[]; expect?: ConnectPlan['kind'] }; res: SyncView }
+  'sync:connect': { req: { provider: SyncProviderKind; mode: ConnectMode; pairs: { local: string; remote: string }[]; expect?: ConnectPlan['kind'] }; res: SyncView }
+  /** Google sign-in for Drive sync, in the browser. */
+  'sync:signIn': { req: Record<string, never>; res: SyncView }
   'sync:disconnect': { req: Record<string, never>; res: SyncView }
   'sync:now': { req: Record<string, never>; res: SyncView }
   'sync:rename': { req: { name: string }; res: SyncView }
@@ -1934,6 +1936,7 @@ export const IPC_CHANNELS = [
   'sync:disconnect',
   'sync:now',
   'sync:rename',
+  'sync:signIn',
   'runtime:syncSetEnabled',
   'runtime:syncNow',
   'runtime:syncResolveConflict',

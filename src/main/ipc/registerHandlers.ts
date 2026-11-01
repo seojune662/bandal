@@ -3816,18 +3816,27 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       }
     },
     onView: view => broadcast('sync:changed', view),
-    boundElsewhere: () => profileBoundElsewhere(process.env['BANDAL_PROFILE_BASE_ROOT'] ?? userDataPath, userDataPath),
-    newProfile: seed => transitions.run(() => profiles.newProfile({ sync: seed }), result => result.ok)
+    boundElsewhere: root => profileBoundElsewhere(process.env['BANDAL_PROFILE_BASE_ROOT'] ?? userDataPath, userDataPath, root),
+    newProfile: (seed, files) => transitions.run(() => profiles.newProfile({ sync: seed, ...(files ? { syncFiles: files } : {}) }), result => result.ok),
+    activity: () => ({ focused: BrowserWindow.getFocusedWindow() !== null, idleSeconds: powerMonitor.getSystemIdleTime() })
   })
   app.on('will-quit', () => sync.stop())
   handle('sync:status', () => sync.view())
-  handle('sync:prepare', () => sync.prepare())
+  const providerKind = (value: unknown) => {
+    if (value !== 'icloud' && value !== 'gdrive') throw new Error('동기화 저장소가 올바르지 않습니다.')
+    return value
+  }
+  handle('sync:prepare', req => sync.prepare(providerKind(req?.provider)))
   handle('sync:connect', async req => {
     const pairs = Array.isArray(req?.pairs) ? req.pairs : null
     if (!['merge', 'overwrite', 'import'].includes(req?.mode) || pairs === null ||
       !pairs.every(pair => typeof pair?.local === 'string' && typeof pair?.remote === 'string') ||
       (req.expect !== undefined && !['upload', 'download', 'choose', 'resume'].includes(req.expect))) throw new Error('동기화 연결 요청이 올바르지 않습니다.')
-    await sync.connect(req.mode, pairs, req.expect)
+    await sync.connect(providerKind(req.provider), req.mode, pairs, req.expect)
+    return sync.view()
+  })
+  handle('sync:signIn', async () => {
+    await sync.signIn()
     return sync.view()
   })
   handle('sync:disconnect', async () => {
