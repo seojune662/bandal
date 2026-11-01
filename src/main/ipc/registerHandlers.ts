@@ -92,7 +92,7 @@ import {
   mkdirSync,
   writeFileSync
 } from 'node:fs'
-import { hostname, release, tmpdir } from 'node:os'
+import { release, tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import {
   app,
@@ -176,10 +176,7 @@ import { speechModel } from '../features/recordings/modelCatalog'
 import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
 import { createBoundPDFRepositories, createPDFDocumentBindings, retryPDFMutation } from '../features/pdf/pdfDocumentBinding'
 import { repointSyncDocs } from '../features/sync/localDocs'
-import { createSyncEngine } from '../features/sync/engine'
-import { createICloudProvider, icloudRoot } from '../features/sync/icloud'
-import { machineFingerprint } from '../features/sync/identity'
-import { createPull } from '../features/sync/pull'
+import { createSyncRuntime, profileBoundElsewhere } from '../features/sync/runtime'
 import { MATERIAL_SCAN_MAX_DEPTH, MATERIAL_SCAN_MAX_ENTRIES } from '../features/materials/materialsRepo'
 import { createPDFOriginalPreserver, createPDFRevisionReader } from '../features/pdf/pdfOriginals'
 import { createPDFPreviewReader } from '../features/pdf/pdfPreview'
@@ -325,7 +322,7 @@ let profileBusy: () => boolean = () => false
 let transitionCommitting: () => boolean = () => false
 let localContentChanged: () => void = () => {}
 // Profile backup/switch keeps the workspace busy; these channels stay usable meanwhile.
-const availableWhileProfileBusy = (channel: string): boolean => channel.startsWith('auth:') || channel.startsWith('profile:') || channel.startsWith('update:') || ['workspace:transitionReady', 'settings:get', 'window:getState', 'app:diagnostics', 'app:openLogs', 'feedback:send'].includes(channel)
+const availableWhileProfileBusy = (channel: string): boolean => channel.startsWith('auth:') || channel.startsWith('profile:') || channel.startsWith('update:') || ['workspace:transitionReady', 'settings:get', 'window:getState', 'app:diagnostics', 'app:openLogs', 'feedback:send', 'sync:status'].includes(channel)
 const changesSyncContent = (channel: string): boolean => /^(courses|courseGroups|materials|notes|annotations|drawings|pdfNotes|pdf|canvas):/.test(channel) && /:(create|write|update|delete|remove|rename|move|reorder|restructure|migrateLegacy|import|restore|set)/.test(channel)
 
 /**
@@ -353,7 +350,7 @@ function handle<K extends IpcChannel>(
   registered.add(channel)
   ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
     assertAppRendererSender(_event)
-    if (transitionCommitting() && !['workspace:transitionReady', 'auth:getState', 'settings:get', 'window:getState', 'runtime:syncState', 'update:status', 'app:diagnostics', 'app:openLogs'].includes(channel)) throw new Error('자료 저장과 계정 전환이 진행 중입니다. 잠시 후 다시 시도해 주세요.')
+    if (transitionCommitting() && !['workspace:transitionReady', 'auth:getState', 'settings:get', 'window:getState', 'runtime:syncState', 'sync:status', 'update:status', 'app:diagnostics', 'app:openLogs'].includes(channel)) throw new Error('자료 저장과 계정 전환이 진행 중입니다. 잠시 후 다시 시도해 주세요.')
     if (!availableWhileProfileBusy(channel) && profileBusy()) throw new Error('자료 백업 중입니다. 잠시 후 다시 시도해 주세요.')
     const start = performance.now()
     try {
@@ -3787,15 +3784,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   app.on('will-quit', () => ipadCompanion.dispose())
   localContentChanged = () => ipadCompanion.localChanged()
-  // Sync v2 through iCloud (design 2.7). Off until the settings screen and initial connect land; BANDAL_SYNC=icloud turns it on for testing.
+  // Sync through the user's iCloud (design 6.1–6.4): bound from Settings › 동기화; only the open profile syncs.
   const userDataPath = deps.userDataPath ?? app.getPath('userData')
-  const syncEngine = process.platform === 'darwin' && process.env['BANDAL_SYNC'] === 'icloud' ? createSyncEngine({
-    db,
-    provider: createICloudProvider({ root: icloudRoot(), tmpDir: join(userDataPath, 'sync', 'tmp') }),
-    pull: createPull({ db, courses: coursesRepo, materials: materialsRepo }),
-    stateFile: join(userDataPath, 'sync', 'state.json'),
-    machine: machineFingerprint,
-    device: { name: hostname().replace(/\.local$/, ''), platform: 'macos', app_version: app.getVersion() },
+  const sync = createSyncRuntime({
+    db, courses: coursesRepo, materials: materialsRepo, userDataPath, appVersion: app.getVersion(),
     scan: async folder => {
       const walk = await background.request('scan', { folder, limits: { maxDepth: MATERIAL_SCAN_MAX_DEPTH, maxEntries: MATERIAL_SCAN_MAX_ENTRIES } })
       return { complete: walk.truncation.size === 0, files: walk.files.map(file => ({ relPath: file.relPath, size: file.size ?? 0, mtime: Math.round(file.mtime ?? 0) })) }
@@ -3807,15 +3799,41 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         materialsRepo.invalidateTree(courseId)
         broadcast('materials:changed', { courseId })
       }
-    }
-  }) : null
-  // While nothing runs the engine, the triggers keep no outbox; its first pass compares everything with the base instead.
-  db.prepare('UPDATE sync_runtime SET enabled = 0').run()
-  syncEngine?.start()
-  app.on('will-quit', () => syncEngine?.stop())
+    },
+    onView: view => broadcast('sync:changed', view),
+    boundElsewhere: () => profileBoundElsewhere(process.env['BANDAL_PROFILE_BASE_ROOT'] ?? userDataPath, userDataPath),
+    newProfile: seed => transitions.run(() => profiles.newProfile({ sync: seed }), result => result.ok)
+  })
+  app.on('will-quit', () => sync.stop())
+  handle('sync:status', () => sync.view())
+  handle('sync:prepare', () => sync.prepare())
+  handle('sync:connect', async req => {
+    const pairs = Array.isArray(req?.pairs) ? req.pairs : null
+    if (!['merge', 'overwrite', 'import'].includes(req?.mode) || pairs === null ||
+      !pairs.every(pair => typeof pair?.local === 'string' && typeof pair?.remote === 'string') ||
+      (req.expect !== undefined && !['upload', 'download', 'choose', 'resume'].includes(req.expect))) throw new Error('동기화 연결 요청이 올바르지 않습니다.')
+    await sync.connect(req.mode, pairs, req.expect)
+    return sync.view()
+  })
+  handle('sync:disconnect', async () => {
+    await sync.disconnect()
+    return sync.view()
+  })
+  // The pass reports through sync:changed; waiting for it here would hold the settings buttons through a whole upload.
+  handle('sync:now', () => {
+    void sync.syncNow()
+    return sync.view()
+  })
+  handle('sync:rename', req => {
+    if (typeof req?.name !== 'string') throw new Error('기기 이름이 올바르지 않습니다.')
+    sync.rename(req.name)
+    return sync.view()
+  })
   const profiles = createProfileManager({ db, root: deps.userDataPath, baseRoot: process.env['BANDAL_PROFILE_BASE_ROOT'] ?? deps.userDataPath,
-    pause: async () => { await Promise.all([ipadCompanion.pauseAndDrain(), syncEngine?.pause()]) },
-    resume: () => { ipadCompanion.resume(); syncEngine?.resume() },
+    pause: async () => { await Promise.all([ipadCompanion.pauseAndDrain(), sync.pause()]) },
+    resume: () => { ipadCompanion.resume(); sync.resume() },
+    // The profile left behind keeps no binding: one iCloud root holds one profile, and the new one may connect.
+    switched: () => sync.release(),
     relaunch: () => { app.relaunch(); app.quit() },
     chooseDestination: async () => {
       const result = await dialog.showSaveDialog({ title: '반달 전체 자료 백업', defaultPath: `반달 백업 ${new Date().toISOString().replace(/[:.]/g, '-')}.bandalbackup`, buttonLabel: '백업' })

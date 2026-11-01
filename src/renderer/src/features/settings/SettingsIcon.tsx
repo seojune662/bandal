@@ -28,11 +28,13 @@ export type IconName =
   | 'folder'
   | 'search'
   | 'sparkles'
+  | 'sync'
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JSX.Element {
   const paths: Record<IconName, ReactNode> = {
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2" /></>,
     tabs: <><rect x="3" y="5" width="18" height="15" rx="2" /><path d="M3 10h18M9 5v5M15 5v5" /></>,
+    sync: <><path d="M7.5 18.5H17a4 4 0 0 0 .4-7.98A5.5 5.5 0 0 0 6.6 9.9 4.3 4.3 0 0 0 7.5 18.5Z" /><path d="M9.5 14.5h5M12.5 12.5l2 2-2 2" /></>,
     account: (
       <>
         <circle cx="12" cy="8" r="3.5" />

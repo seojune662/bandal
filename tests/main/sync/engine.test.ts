@@ -25,7 +25,10 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true })
 })
 
-function device(machine: string, options: { timing?: Record<string, number>; wrap?: (provider: SyncProvider) => SyncProvider } = {}) {
+function device(machine: string, options: {
+  timing?: Record<string, number>; wrap?: (provider: SyncProvider) => SyncProvider
+  wrapPull?: (pull: ReturnType<typeof createPull>) => ReturnType<typeof createPull>
+} = {}) {
   const ctx = createTestDb()
   const courses = createCoursesRepo({ db: ctx.db, getDataRoot: () => join(ctx.dir, 'Courses') })
   const materials = createMaterialsRepo({
@@ -40,10 +43,10 @@ function device(machine: string, options: { timing?: Record<string, number>; wra
   const engine = createSyncEngine({
     db: ctx.db,
     provider: (options.wrap ?? (provider => provider))(createICloudProvider({ root, tmpDir: join(ctx.dir, 'sync', 'tmp') })),
-    pull: createPull({ db: ctx.db, courses, materials }),
+    pull: (options.wrapPull ?? (pull => pull))(createPull({ db: ctx.db, courses, materials })),
     stateFile: join(ctx.dir, 'sync', 'state.json'),
     machine: async () => machine,
-    device: { name: machine, platform: 'macos', app_version: 'test' },
+    device: () => ({ name: machine, platform: 'macos', app_version: 'test' }),
     scan: async folder => ({
       complete: true,
       files: readdirSync(folder, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile()).map(entry => {
@@ -133,4 +136,38 @@ test('a write that keeps failing waits for the backoff instead of running a pass
   // Hints from the files that did get written, and the still outbox, keep coming: none of them may run a pass.
   await new Promise(resolve => setTimeout(resolve, 300))
   expect(passes).toBe(1)
+})
+
+/** A provider call that waits until the test lets it go, after telling the test it was reached. */
+function gate() {
+  let reached!: () => void, release!: () => void
+  const entered = new Promise<void>(resolve => { reached = resolve }), open = new Promise<void>(resolve => { release = resolve })
+  return { entered, release, pass: async () => { reached(); await open } }
+}
+
+test('stopping while the root is listed writes nothing, not even bandal.json', async () => {
+  mkdirSync(root, { recursive: true })
+  const listing = gate()
+  const a = device('mac-a', { wrap: provider => ({ ...provider, list: async () => { await listing.pass(); return provider.list() } }) })
+  a.engine.start()
+  await listing.entered
+  const stopped = a.engine.stop()
+  listing.release()
+  await stopped
+  expect(readdirSync(root)).toEqual([])
+})
+
+test('stopping while a pull applies lets it finish but exports nothing after', async () => {
+  mkdirSync(root, { recursive: true })
+  writeFileSync(join(root, 'bandal.json'), '{"format":2}')
+  const pulling = gate()
+  const a = device('mac-a', { wrapPull: pull => async snapshot => { await pulling.pass(); return pull(snapshot) } })
+  a.courses.create({ name: '물리학', color: 'green' })
+  a.engine.start()
+  await pulling.entered
+  const stopped = a.engine.stop()
+  pulling.release()
+  await stopped
+  expect(readdirSync(root)).toEqual(['bandal.json'])
+  expect(a.engine.state()).toEqual({ state: 'off' })
 })

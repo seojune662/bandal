@@ -87,6 +87,7 @@ const PUSH_CHANNELS = [
   'shortcut:passthrough',
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed',
+  'sync:changed',
   // -- auto update ----------------------------------------------------------
   'update:changed',
   'agent:install-progress',

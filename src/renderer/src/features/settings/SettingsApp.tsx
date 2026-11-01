@@ -41,6 +41,7 @@ import {
   type ThemePreference,
 } from "../../../../shared/types/settings";
 import { AccountPanel } from "./AccountPanel";
+import { SyncPanel } from "./sync/SyncPanel";
 import { AdvancedPanel } from "./advanced/AdvancedPanel";
 import { AssistantPanel } from "./assistant/AssistantPanel";
 import { ExperimentalPanel } from "./advanced/ExperimentalPanel";
@@ -440,6 +441,7 @@ export function SettingsApp({
   const panel: Record<SettingsPanelId, ReactNode> = {
     tabs: null,
     account: <AccountPanel />,
+    sync: <SyncPanel />,
     general: <GeneralPanel settings={settings} />,
     appearance: (
       <AppearancePanel

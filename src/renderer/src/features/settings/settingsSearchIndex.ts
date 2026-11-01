@@ -27,6 +27,8 @@ export const SETTINGS_SEARCH_ROWS = [
   { category: 'ai', ko: '모델', en: 'Model' },
   { category: 'assistant', ko: '화면 도우미', en: 'Screen assistant' },
   { category: 'account', ko: '로그인', en: 'Sign in' },
+  { category: 'sync', ko: 'iCloud 동기화 · iPad', en: 'iCloud sync and iPad' },
+  { category: 'sync', ko: '기기 이름', en: 'Device name' },
   { category: 'account', ko: '프로필', en: 'Profile' },
   { category: 'account', ko: '닉네임', en: 'Nickname' },
   { category: 'general', ko: '언어', en: 'Language' },

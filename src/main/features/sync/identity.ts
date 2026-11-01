@@ -21,7 +21,7 @@ export interface SyncIdentity {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
-function readState(file: string): Record<string, unknown> {
+export function readState(file: string): Record<string, unknown> {
   try {
     const value: unknown = JSON.parse(readFileSync(file, 'utf8'))
     return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -30,11 +30,13 @@ function readState(file: string): Record<string, unknown> {
   }
 }
 
-/** The state file also holds the provider binding (later PRs); keys this module does not own are kept. */
-function saveState(file: string, identity: SyncIdentity): void {
+/** Updates some keys of the state file and keeps the rest: identity here, the binding and device name elsewhere. */
+export function patchState(file: string, patch: Record<string, unknown>): void {
   mkdirSync(dirname(file), { recursive: true })
-  writeFileAtomic(file, JSON.stringify({ ...readState(file), ...identity }, null, 2), { mode: 0o600 })
+  writeFileAtomic(file, JSON.stringify({ ...readState(file), ...patch }, null, 2), { mode: 0o600 })
 }
+
+const saveState = (file: string, identity: SyncIdentity): void => patchState(file, { ...identity })
 
 /** A missing or unreadable state file, or one made on another machine, starts a new device (M25). */
 export function loadIdentity(file: string, machine: string): SyncIdentity {

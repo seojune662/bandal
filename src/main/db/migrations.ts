@@ -1163,6 +1163,14 @@ export const migrations: Migration[] = [
       trigger('sync_doc_update', 'UPDATE OF rel_path, kind, size, mtime, deleted_at ON materials_index', `(${doc('NEW')} OR ${doc('OLD')}) AND ${on}`, 'docs', 'NEW.course_id'),
       trigger('sync_doc_delete', 'DELETE ON materials_index', `${doc('OLD')} AND ${on}`, 'docs', 'OLD.course_id')
     ].join('\n'))
+  } },
+  // Initial connect (design 6.2): a course merged with a remote one of the same name keeps its own id here,
+  // and the root's id is translated where the merged root comes in and where events go out.
+  { version: 40, name: 'sync-alias', up: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS sync_alias (
+      kind TEXT NOT NULL, remote_id TEXT NOT NULL, local_id TEXT NOT NULL,
+      PRIMARY KEY (kind, remote_id), UNIQUE (kind, local_id)
+    )`)
   } }
 ]
 

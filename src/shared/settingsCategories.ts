@@ -19,6 +19,7 @@ export const SETTINGS_CATEGORIES = [
   { id: 'ai', group: 'ai' },
   { id: 'assistant', group: 'ai' },
   { id: 'account', group: 'setup' },
+  { id: 'sync', group: 'setup' },
   { id: 'general', group: 'setup' },
   { id: 'university', group: 'setup' },
   { id: 'packs', group: 'workflows' },
