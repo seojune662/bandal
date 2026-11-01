@@ -73,6 +73,7 @@ where exists (select 1 from public.bandal_records r where r.user_id = u.id)
 >
 > - 로그인은 선택입니다. 로그인하지 않아도 자료와 필기 기능을 모두 쓸 수 있습니다. 커뮤니티처럼 계정이 필요한 기능에서만 로그인을 요청합니다.
 > - 카카오 로그인은 더 이상 제공하지 않습니다. Apple 또는 Google로 로그인해 주세요. 카카오로 쓰던 계정이 필요하면 hi@bandal.io로 알려 주세요.
+> - 메일 위젯의 Gmail 받은편지함은 학교 메일이나 Gmail을 새 탭에서 여는 웹메일 버튼으로 바뀝니다.
 >
 > 궁금한 점은 hi@bandal.io로 보내 주세요.
 
@@ -96,6 +97,7 @@ where exists (select 1 from public.bandal_records r where r.user_id = u.id)
 >
 > - Signing in is optional. Every materials and ink feature works without an account. Only features that need one, such as the community, ask you to sign in.
 > - Kakao sign-in is no longer available. Please sign in with Apple or Google. If you need the account you used with Kakao, email hi@bandal.io.
+> - The Gmail inbox in the mail widget becomes a webmail button that opens your school mail or Gmail in a new tab.
 >
 > Questions? Email hi@bandal.io.
 
