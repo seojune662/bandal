@@ -35,7 +35,7 @@ test('two devices share one Bandal folder: nested own files go up once and are r
   const a = device(), b = device()
   expect(await b.findRoot(false)).toBeNull()
   const root = (await a.findRoot(true))!
-  expect(drive.files.get(root)).toMatchObject({ name: 'Bandal', parents: ['ROOT'], appProperties: { bandalRoot: '2' } })
+  expect(drive.files.get(root)).toMatchObject({ name: 'Bandal', parents: ['ROOT'], properties: { bandalRoot: '2' }, appProperties: { bandalRoot: '2' } })
   expect(await b.findRoot(true)).toBe(root)
   await a.list()
   await a.write('bandal.json', Buffer.from('{"format":2}'))
@@ -116,6 +116,31 @@ test('first connects that race take the same earliest folder, and one holding ba
   const started = drive.folder()
   drive.file('bandal.json', started.id, Buffer.from('{"format":2}'))
   expect(await device().findRoot(true)).toBe(started.id)
+})
+
+test('a root is found by its mark wherever it is and whatever it is called, and only with no mark in sight by the name Bandal and bandal.json (spec v2.5)', async () => {
+  // Made before v2.5 by another client: its only mark is private to that client.
+  const early = drive.folder('Bandal', 'ROOT', {})
+  expect(await device().findRoot(false)).toBeNull()
+  drive.file('bandal.json', early.id, Buffer.from('{"format":2}'))
+  expect(await device().findRoot(false)).toBe(early.id)
+  // This client's own private mark, from before v2.5, moved and renamed.
+  const own = drive.folder('반달 백업', 'f-elsewhere', { appProperties: { bandalRoot: '2' } })
+  expect(await device().findRoot(false)).toBe(own.id)
+  // Another client's public mark; it holds bandal.json, so it goes first.
+  const shared = drive.folder('동기화', 'f-elsewhere')
+  drive.file('bandal.json', shared.id, Buffer.from('{"format":2}'))
+  expect(await device().findRoot(false)).toBe(shared.id)
+  // Equal on bandal.json and createdTime: the smaller id as a string, though Drive lists it after.
+  const twin = drive.folder('Bandal', 'ROOT')
+  drive.files.delete(twin.id)
+  drive.files.set('a-twin', { ...twin, id: 'a-twin', createdTime: drive.files.get(shared.id)!.createdTime })
+  drive.file('bandal.json', 'a-twin', Buffer.from('{"format":2}'))
+  expect(await device().findRoot(false)).toBe('a-twin')
+  // A marked folder in the trash is not looked at.
+  drive.trash(shared.id)
+  drive.trash('a-twin')
+  expect(await device().findRoot(false)).toBe(own.id)
 })
 
 test('an expired token is refreshed once for parallel calls; a revoked grant asks for a sign-in; signing out keeps the grant', async () => {

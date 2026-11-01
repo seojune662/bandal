@@ -1,6 +1,6 @@
 /**
  * Google Drive through its REST API (design 2.5, spec 저장소 루트): the
- * "Bandal" folder in My Drive that a Bandal client made. Under the
+ * folder a Bandal client made and marked as the root. Under the
  * `drive.file` scope the app sees only what Bandal clients of this Cloud
  * project made, so one listing of everything visible is the whole tree.
  * Remote changes come from `changes.list`, polled every 30 s while a window
@@ -76,6 +76,8 @@ const md5 = (bytes: Uint8Array): string => createHash('md5').update(bytes).diges
 const order = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 const query = (params: Record<string, string>): string => new URLSearchParams(params).toString()
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=UTF-8' }
+/** The root's mark (spec v2.5): in public `properties` every client of the project sees, and in `appProperties` only the client that wrote it sees. */
+const ROOT_MARK = { bandalRoot: '2' }
 
 /** A failed request, said for people; `status` stays for the code. */
 async function failure(response: Response): Promise<Error & { status: number }> {
@@ -437,24 +439,33 @@ export function createDriveProvider(options: DriveOptions): DriveProvider {
       rmSync(cacheDir, { recursive: true, force: true })
     },
     async findRoot(make) {
-      const candidates = async (): Promise<DriveFile[]> => (await json<{ files: DriveFile[] }>(`${API}/files?${query({
-        q: `name = 'Bandal' and mimeType = '${FOLDER}' and 'root' in parents and trashed = false`, spaces: 'drive', pageSize: '100', fields: `files(${FIELDS})`
+      const folders = async (q: string): Promise<DriveFile[]> => (await json<{ files: DriveFile[] }>(`${API}/files?${query({
+        q: `${q} and mimeType = '${FOLDER}' and trashed = false`, spaces: 'drive', pageSize: '100', fields: `files(${FIELDS})`
       })}`)).files
+      const started = new Set<string>()
+      const look = async (found: DriveFile[]): Promise<DriveFile[]> => {
+        for (const folder of found) {
+          const marker = await json<{ files: DriveFile[] }>(`${API}/files?${query({ q: `'${folder.id}' in parents and name = 'bandal.json' and trashed = false`, spaces: 'drive', fields: 'files(id)' })}`)
+          if (marker.files.length > 0) started.add(folder.id)
+        }
+        return found
+      }
+      // A marked folder wherever it is, under any name. With none, a root another client made before v2.5
+      // (its mark private to that client): a "Bandal" folder that holds bandal.json.
+      const candidates = async (): Promise<DriveFile[]> => {
+        const marked = await look(await folders(`(properties has { key='bandalRoot' and value='2' } or appProperties has { key='bandalRoot' and value='2' })`))
+        return marked.length > 0 ? marked : (await look(await folders(`name = 'Bandal'`))).filter(folder => started.has(folder.id))
+      }
       let found = await candidates(), made: string | null = null
       if (found.length === 0 && !make) return null
       if (found.length === 0) {
         const folder = await json<DriveFile>(`${API}/files?fields=${FIELDS}`, {
-          method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ name: 'Bandal', mimeType: FOLDER, parents: ['root'], appProperties: { bandalRoot: '2' } })
+          method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ name: 'Bandal', mimeType: FOLDER, parents: ['root'], properties: ROOT_MARK, appProperties: ROOT_MARK })
         })
         made = folder.id
         upsert(folder)
         // Another device may have made one at the same moment: each takes the same, earliest one.
         found = await candidates()
-      }
-      const started = new Set<string>()
-      for (const candidate of found) {
-        const marker = await json<{ files: DriveFile[] }>(`${API}/files?${query({ q: `'${candidate.id}' in parents and name = 'bandal.json' and trashed = false`, spaces: 'drive', fields: 'files(id)' })}`)
-        if (marker.files.length > 0) started.add(candidate.id)
       }
       const [chosen] = [...found].sort((a, b) => Number(started.has(b.id)) - Number(started.has(a.id)) ||
         order(a.createdTime ?? '', b.createdTime ?? '') || order(a.id, b.id))
