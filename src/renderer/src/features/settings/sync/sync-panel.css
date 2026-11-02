@@ -21,8 +21,14 @@
   cursor: pointer;
 }
 
-.sync-connect__mode:hover {
+.sync-connect__mode:not(:disabled):hover {
   border-color: var(--border-strong);
+}
+
+/* Overwrite while another device's first upload stopped partway (spec v2.6). */
+.sync-connect__mode:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .sync-connect__mode:focus-visible {

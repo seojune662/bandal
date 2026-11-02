@@ -3,7 +3,7 @@
  * iCloud or Google Drive, choose what happens when both sides hold data, and
  * watch the state. Nothing here goes through Bandal's servers.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ConnectMode, ConnectPlan, ConnectPrepare, SyncProviderKind, SyncView } from '../../../../../shared/types/sync'
 import { showToast } from '../../../app/toast'
 import { invoke, onPush } from '../../../lib/ipc'
@@ -11,6 +11,8 @@ import { SettingsCard } from '../primitives'
 import './sync-panel.css'
 
 const MINUTE = 60_000
+/** While another device's first upload runs (spec v2.6) or root files are still arriving, the root is checked again this often. */
+const RECHECK_MS = 30_000
 const NAME: Record<SyncProviderKind, string> = { icloud: 'iCloud', gdrive: 'Google Drive' }
 
 export function ago(at: number, now = Date.now()): string {
@@ -36,7 +38,7 @@ function stateLine(view: SyncView, provider: SyncProviderKind): { text: string; 
   }
 }
 
-const PREPARE_TEXT: Record<Exclude<ConnectPrepare['status'], 'ready' | 'error' | 'waiting'>, string> = {
+const PREPARE_TEXT: Record<Exclude<ConnectPrepare['status'], 'ready' | 'error' | 'waiting' | 'uploading'>, string> = {
   'needs-ipad': 'iPad에서 먼저 iCloud 동기화를 켜 주세요. iPad가 iCloud에 반달 폴더를 만들면 여기서 연결할 수 있어요.',
   unavailable: '이 Mac에서 iCloud Drive가 꺼져 있어요. 시스템 설정 › Apple 계정 › iCloud에서 iCloud Drive를 켜 주세요.',
   'update-required': '다른 기기에서 더 새 반달을 쓰고 있어요. 앱을 업데이트한 뒤 연결해 주세요.',
@@ -44,7 +46,9 @@ const PREPARE_TEXT: Record<Exclude<ConnectPrepare['status'], 'ready' | 'error' |
 }
 const prepareText = (prepared: Exclude<ConnectPrepare, { status: 'ready' }>, provider: SyncProviderKind): string =>
   prepared.status === 'error' ? `연결할 수 없어요: ${prepared.message}`
-    : prepared.status === 'waiting' ? `${NAME[provider]}에서 파일을 아직 받고 있어요. 잠시 뒤 다시 확인해 주세요.` : PREPARE_TEXT[prepared.status]
+    : prepared.status === 'waiting' ? `${NAME[provider]}에서 파일을 아직 받고 있어요. 잠시 뒤 다시 확인해 주세요.`
+      : prepared.status === 'uploading' ? `다른 기기(${prepared.device})가 아직 올리고 있어요. 다 올리면 연결할 수 있어요. 30초마다 다시 확인해요.`
+        : PREPARE_TEXT[prepared.status]
 
 function message(error: unknown): string {
   return error instanceof Error && error.message.trim() !== '' ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : '동기화 요청을 처리하지 못했어요.'
@@ -98,19 +102,32 @@ function ConnectCard({ view, onView }: { view: SyncView; onView: (view: SyncView
   const [mode, setMode] = useState<ConnectMode>('merge')
   const [skipped, setSkipped] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
+  /** Counts finished checks, so the next recheck is set even when one failed and nothing else changed. */
+  const [checks, setChecks] = useState(0)
+  const checking = useRef(false)
 
-  const prepare = async (): Promise<void> => {
+  /** `quiet`: a recheck nobody asked for; if it fails, the waiting goes on without a toast. */
+  const prepare = async (quiet = false): Promise<void> => {
+    if (checking.current) return
+    checking.current = true
     setBusy(true)
     try {
       setPrepared(await invoke('sync:prepare', { provider }))
       setMode('merge')
       setSkipped(new Set())
     } catch (error) {
-      showToast(message(error), 'danger')
+      if (!quiet) showToast(message(error), 'danger')
     } finally {
+      checking.current = false
       setBusy(false)
+      setChecks(count => count + 1)
     }
   }
+  useEffect(() => {
+    if (prepared?.status !== 'uploading' && prepared?.status !== 'waiting') return
+    const timer = setTimeout(() => void prepare(true), RECHECK_MS)
+    return () => clearTimeout(timer)
+  }, [prepared, checks])
   const start = async (plan: ConnectPlan): Promise<void> => {
     const chosen = plan.kind === 'choose' ? mode : 'merge'
     if (chosen === 'overwrite' &&
@@ -158,12 +175,18 @@ function ConnectCard({ view, onView }: { view: SyncView; onView: (view: SyncView
         {prepared !== null && prepared.status !== 'ready' && (
           <div className="setting-row">
             <span className="setting-row__description settings-feedback--error" role="alert">{prepareText(prepared, provider)}</span>
+            <button type="button" className="secondary-button" disabled={busy} onClick={() => setPrepared(null)}>취소</button>
             <button type="button" className="secondary-button" disabled={busy} onClick={() => void prepare()}>다시 확인</button>
           </div>
         )}
         {plan !== null && (
           <div className="sync-connect">
-            <p className="setting-row__description">{planText(plan, provider)}</p>
+            <p className="setting-row__description" role="status">{planText(plan, provider)}</p>
+            {plan.interrupted !== undefined && (
+              <p id="sync-interrupted" className="setting-row__description" role="note">
+                다른 기기({plan.interrupted})가 처음 올리다 멈췄어요. 그 기기가 다시 켜지면 나머지를 이어 올려요. 그때까지 덮어쓰기는 쓸 수 없어요.
+              </p>
+            )}
             {plan.kind === 'choose' && (
               <div className="sync-connect__modes" role="radiogroup" aria-label="맞추는 방법">
                 {([
@@ -171,7 +194,8 @@ function ConnectCard({ view, onView }: { view: SyncView; onView: (view: SyncView
                   ['overwrite', '이 기기 자료로 덮어쓰기', '이 기기에 없는 과목과 문서는 모든 기기에서 사라집니다. 클라우드 파일은 지우지 않습니다.'],
                   ['import', '클라우드 자료 가져오기', '지금 자료는 이 프로필에 그대로 두고, 백업 뒤 새 프로필로 클라우드 자료를 받습니다.']
                 ] as const).map(([value, label, detail]) => (
-                  <button key={value} type="button" role="radio" aria-checked={mode === value}
+                  <button key={value} type="button" role="radio" aria-checked={mode === value} disabled={value === 'overwrite' && plan.interrupted !== undefined}
+                    aria-describedby={value === 'overwrite' && plan.interrupted !== undefined ? 'sync-interrupted' : undefined}
                     className={`sync-connect__mode${mode === value ? ' sync-connect__mode--selected' : ''}`} onClick={() => setMode(value)}>
                     <span className="setting-row__label">{label}</span>
                     <span className="setting-row__description">{detail}</span>

@@ -119,12 +119,12 @@ test('first connects that race take the same earliest folder, and one holding ba
 })
 
 test('a root is found by its mark wherever it is and whatever it is called, and only with no mark in sight by the name Bandal and bandal.json (spec v2.5)', async () => {
-  // Made before v2.5 by another client: its only mark is private to that client.
+  // A folder with no mark this client can read (the fallback; v2.5 thought another client's appProperties hid it).
   const early = drive.folder('Bandal', 'ROOT', {})
   expect(await device().findRoot(false)).toBeNull()
   drive.file('bandal.json', early.id, Buffer.from('{"format":2}'))
   expect(await device().findRoot(false)).toBe(early.id)
-  // This client's own private mark, from before v2.5, moved and renamed.
+  // Only the appProperties mark, moved and renamed.
   const own = drive.folder('반달 백업', 'f-elsewhere', { appProperties: { bandalRoot: '2' } })
   expect(await device().findRoot(false)).toBe(own.id)
   // Another client's public mark; it holds bandal.json, so it goes first.

@@ -58,6 +58,15 @@ export interface DriveProvider extends SyncProvider {
   signOut(): Promise<void>
   /** The Bandal folder the spec picks, which becomes this provider's root; `make` makes one when there is none. */
   findRoot(make: boolean): Promise<string | null>
+  /** The folders the last findRoot looked at and the one it picked, for the connect log (spec v2.6). */
+  lookup(): RootLookup | null
+}
+
+export interface RootLookup {
+  folders: { id: string; name: string; created: string | null; by: 'mark' | 'name'; bandal_json: boolean }[]
+  chosen: string | null
+  /** No folder was found, so this lookup made the one it chose. */
+  made: boolean
 }
 
 export interface DriveOptions {
@@ -76,7 +85,7 @@ const md5 = (bytes: Uint8Array): string => createHash('md5').update(bytes).diges
 const order = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 const query = (params: Record<string, string>): string => new URLSearchParams(params).toString()
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=UTF-8' }
-/** The root's mark (spec v2.5): in public `properties` every client of the project sees, and in `appProperties` only the client that wrote it sees. */
+/** The root's mark (spec v2.5), in `properties` and `appProperties`; every client of the Cloud project sees both (measured, v2.6). */
 const ROOT_MARK = { bandalRoot: '2' }
 
 /** A failed request, said for people; `status` stays for the code. */
@@ -94,7 +103,7 @@ export function createDriveProvider(options: DriveOptions): DriveProvider {
   const timing = { ...POLL, ...options.timing }
   const store = createSessionStore({ filePath: join(options.dir, DRIVE_TOKEN_FILE), encryptor: options.encryptor ?? runtimeSafeStorage() })
   const cacheDir = join(options.dir, 'gdrive-cache')
-  let token: Token | null = null, needsAuth = false, root = options.root
+  let token: Token | null = null, needsAuth = false, root = options.root, lookup: RootLookup | null = null
   let refreshing: Promise<string> | null = null, catching: Promise<boolean> | null = null, signingIn: AbortController | null = null
   /** Upload sessions cut off this run, by path and bytes: the next try of the same bytes goes on from what Drive has. */
   const sessions = new Map<string, { location: string; digest: string }>()
@@ -438,23 +447,29 @@ export function createDriveProvider(options: DriveOptions): DriveProvider {
       await store.removeItem('token')
       rmSync(cacheDir, { recursive: true, force: true })
     },
+    lookup: () => lookup,
     async findRoot(make) {
       const folders = async (q: string): Promise<DriveFile[]> => (await json<{ files: DriveFile[] }>(`${API}/files?${query({
         q: `${q} and mimeType = '${FOLDER}' and trashed = false`, spaces: 'drive', pageSize: '100', fields: `files(${FIELDS})`
       })}`)).files
-      const started = new Set<string>()
-      const look = async (found: DriveFile[]): Promise<DriveFile[]> => {
+      const started = new Set<string>(), looked = new Map<string, RootLookup['folders'][number]>()
+      // Kept as it goes, so a lookup that fails half way still says what it saw, and never what an earlier one did.
+      const note = (chosen: string | null = null, made = false): void => { lookup = { folders: [...looked.values()], chosen, made } }
+      note()
+      const look = async (found: DriveFile[], by: 'mark' | 'name'): Promise<DriveFile[]> => {
         for (const folder of found) {
           const marker = await json<{ files: DriveFile[] }>(`${API}/files?${query({ q: `'${folder.id}' in parents and name = 'bandal.json' and trashed = false`, spaces: 'drive', fields: 'files(id)' })}`)
           if (marker.files.length > 0) started.add(folder.id)
+          looked.set(folder.id, { id: folder.id, name: folder.name, created: folder.createdTime ?? null, by, bandal_json: marker.files.length > 0 })
+          note()
         }
         return found
       }
-      // A marked folder wherever it is, under any name. With none, a root another client made before v2.5
-      // (its mark private to that client): a "Bandal" folder that holds bandal.json.
+      // A marked folder wherever it is, under any name. With none, a "Bandal" folder that holds bandal.json (a folder
+      // without a mark; the v2.5 reason, a mark only its writer sees, was wrong: both marks show to the whole project, v2.6).
       const candidates = async (): Promise<DriveFile[]> => {
-        const marked = await look(await folders(`(properties has { key='bandalRoot' and value='2' } or appProperties has { key='bandalRoot' and value='2' })`))
-        return marked.length > 0 ? marked : (await look(await folders(`name = 'Bandal'`))).filter(folder => started.has(folder.id))
+        const marked = await look(await folders(`(properties has { key='bandalRoot' and value='2' } or appProperties has { key='bandalRoot' and value='2' })`), 'mark')
+        return marked.length > 0 ? marked : (await look(await folders(`name = 'Bandal'`), 'name')).filter(folder => started.has(folder.id))
       }
       let found = await candidates(), made: string | null = null
       if (found.length === 0 && !make) return null
@@ -475,6 +490,7 @@ export function createDriveProvider(options: DriveOptions): DriveProvider {
       // The empty folder made a moment ago lost to an earlier one: out of the person's way.
       if (made !== null && made !== id) await call(`${API}/files/${made}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ trashed: true }) }).catch(() => {})
       if (chosen) upsert(chosen)
+      note(id, made === id)
       root = id
       return root
     }

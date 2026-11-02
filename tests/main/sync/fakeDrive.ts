@@ -15,7 +15,7 @@ interface Stored {
   id: string; name: string; mimeType: string; parents: string[]; createdTime: string; modifiedTime: string
   trashed: boolean; properties?: Record<string, string>; appProperties?: Record<string, string>; bytes?: Buffer
 }
-/** Every request comes from this client, so `appProperties` another client wrote are not here at all. */
+/** A folder's marks as this client reads them. Real Drive shows `appProperties` to every client of the project (measured, spec v2.6); a test leaves them out to stand for a folder without that mark. */
 type Marks = Pick<Stored, 'properties' | 'appProperties'>
 
 export const fakeEncryptor = {
@@ -192,7 +192,7 @@ export function createFakeDrive() {
 
   return {
     fetch, files, state, calls, valid,
-    /** A root another device made, as this client sees it: marked in public `properties` since spec v2.5, unmarked before. */
+    /** A root another device made: marked in `properties` by default; `{}` for a folder with no mark at all. */
     folder: (name = 'Bandal', parent = 'ROOT', marks: Marks = { properties: { bandalRoot: '2' } }) => put({ name, parents: [parent], mimeType: FOLDER, ...marks }),
     file: (name: string, parent: string, bytes: Buffer) => put({ name, parents: [parent], bytes }),
     pathOf(id: string): string {

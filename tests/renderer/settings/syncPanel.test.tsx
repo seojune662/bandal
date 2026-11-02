@@ -133,3 +133,71 @@ test('times read in minutes, hours and days', () => {
   const now = Date.UTC(2026, 10, 1)
   expect([ago(now - 30_000, now), ago(now - 5 * 60_000, now), ago(now - 3 * 3_600_000, now), ago(now - 2 * 86_400_000, now)]).toEqual(['방금', '5분 전', '3시간 전', '2일 전'])
 })
+
+test('another device\'s first upload is waited on and asked again every 30 s (v2.6)', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    let asked = 0
+    const { element, unmount } = await render({
+      'sync:status': () => unbound,
+      'sync:prepare': () => (++asked === 1 ? { status: 'uploading', device: 'iPad Pro' } : { status: 'ready', plan: { ...plan, kind: 'download', pairs: [] } })
+    })
+    try {
+      await click(button(element, 'iCloud에 연결'))
+      expect(element.textContent).toContain('다른 기기(iPad Pro)가 아직 올리고 있어요')
+      await act(async () => { vi.advanceTimersByTime(29_000) })
+      expect(asked).toBe(1)
+      await act(async () => { vi.advanceTimersByTime(1_000) })
+      expect(asked).toBe(2)
+      expect(element.textContent).toContain('이 기기로 받습니다')
+    } finally {
+      await unmount()
+    }
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a first upload that stopped partway offers merge and import, not overwrite (v2.6)', async () => {
+  const { element, unmount } = await render({ 'sync:status': () => unbound, 'sync:prepare': () => ({ status: 'ready', plan: { ...plan, interrupted: 'iPad Pro' } }) })
+  try {
+    await click(button(element, 'iCloud에 연결'))
+    expect(element.textContent).toContain('다른 기기(iPad Pro)가 처음 올리다 멈췄어요')
+    const modes = [...element.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
+    expect(modes.filter(mode => mode.disabled).map(mode => mode.textContent)).toEqual([expect.stringContaining('이 기기 자료로 덮어쓰기')])
+  } finally {
+    await unmount()
+  }
+})
+
+test('the recheck goes on after a failed or a waiting check, and stops on cancel and when the screen closes (v2.6)', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    const answers: (() => unknown)[] = [
+      () => ({ status: 'uploading', device: 'iPad Pro' }),
+      () => { throw new Error('offline') },
+      () => ({ status: 'waiting' }),
+      () => ({ status: 'uploading', device: 'iPad Pro' })
+    ]
+    let asked = 0
+    const { element, unmount } = await render({ 'sync:status': () => unbound, 'sync:prepare': () => answers[Math.min(asked++, answers.length - 1)]!() })
+    try {
+      await click(button(element, 'iCloud에 연결'))
+      for (const expected of [2, 3, 4]) {
+        await act(async () => { vi.advanceTimersByTime(30_000) })
+        expect(asked).toBe(expected)
+      }
+      await click(button(element, '취소'))
+      await act(async () => { vi.advanceTimersByTime(120_000) })
+      expect(asked).toBe(4)
+      await click(button(element, 'iCloud에 연결'))
+      expect(asked).toBe(5)
+    } finally {
+      await unmount()
+    }
+    await act(async () => { vi.advanceTimersByTime(120_000) })
+    expect(asked).toBe(5)
+  } finally {
+    vi.useRealTimers()
+  }
+})

@@ -41,12 +41,16 @@ export interface ConnectPlan {
   remote: { courses: number; docs: number }
   /** Courses of the same name on both sides, offered for a merge. */
   pairs: { local: string; remote: string; name: string }[]
+  /** Another device began this root and stopped partway (spec v2.6): its name. Overwrite is not offered. */
+  interrupted?: string
 }
 
 /** What connecting would do, or why it cannot start now. */
 export type ConnectPrepare =
   | { status: 'ready'; plan: ConnectPlan }
   | { status: 'needs-ipad' | 'unavailable' | 'waiting' | 'update-required' | 'needs-auth' }
+  /** Another device is still on its first upload into this root (spec v2.6): its name. Asked again in 30 s. */
+  | { status: 'uploading'; device: string }
   | { status: 'error'; message: string }
 
 export type ConnectMode = 'merge' | 'overwrite' | 'import'

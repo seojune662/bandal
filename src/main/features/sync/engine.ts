@@ -9,6 +9,7 @@ import type { Database } from 'better-sqlite3'
 import type { SyncDevice, SyncState } from '../../../shared/types/sync'
 import type { ApplyResult } from './apply'
 import { createExportSession, exportChanges } from './export'
+import { parseFile, SYNC_FORMAT } from './format'
 import type { SyncProvider } from './icloud'
 import { loadIdentity, takeSeq, type SyncIdentity } from './identity'
 import type { Scan } from './localDocs'
@@ -25,7 +26,9 @@ const TIMING = {
   waitingMs: 30_000,
   retryMs: 5_000,
   maxRetryMs: 15 * 60_000,
-  deviceMs: 60 * 60_000
+  deviceMs: 60 * 60_000,
+  /** During this device's first upload into a root, others judge from `last_seen` whether it still runs (spec v2.6: 10 minutes at most). */
+  startingDeviceMs: 10 * 60_000
 }
 
 export interface SyncEngineDeps {
@@ -62,6 +65,7 @@ export interface SyncEngine {
 }
 
 const MANAGED = "c.source = 'managed' AND c.workspace_kind = 'course'"
+const ROOT_FILE = Buffer.from(JSON.stringify({ format: SYNC_FORMAT }))
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /**
@@ -70,6 +74,18 @@ const message = (error: unknown): string => (error instanceof Error ? error.mess
  * minutes after (edits made outside the app, and edits an apply had to leave
  * because they were not exported yet).
  */
+/** Whether `bandal.json` still carries this device's first-upload mark: only the marking device clears it, and only its own (spec v2.6). */
+async function markedBy(provider: SyncProvider, device: string): Promise<boolean> {
+  const root = await provider.list()
+  if (!root.entries.some(entry => entry.path === 'bandal.json')) return false
+  try {
+    const file = parseFile({ path: 'bandal.json', bytes: await root.read('bandal.json') })
+    return file?.kind === 'root' && file.initial_upload === device
+  } catch {
+    return false
+  }
+}
+
 function enqueue(db: Database): void {
   db.transaction(() => {
     db.prepare(`INSERT INTO sync_outbox (kind, id) SELECT 'docs', c.id FROM courses c WHERE c.deleted_at IS NULL AND ${MANAGED}`).run()
@@ -92,6 +108,11 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   let timer: NodeJS.Timeout | undefined, hintTimer: NodeJS.Timeout | undefined, ticker: NodeJS.Timeout | undefined
   let unwatch: (() => void) | null = null, devices: SyncDevice[] = []
 
+  const writeDevice = async (id: string): Promise<void> => {
+    const now = Date.now()
+    await deps.provider.write(`devices/${id}.json`, Buffer.from(JSON.stringify({ ...deps.device(), last_seen: now })))
+    deviceAt = now
+  }
   const set = (next: SyncState): void => {
     // A pass still finishing after stop() must not bring the state back.
     if (stopped && next.state !== 'off') return
@@ -128,11 +149,15 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     unwatch ??= provider.watch(hint)
     set({ state: 'syncing' })
     identity ??= loadIdentity(deps.stateFile, await deps.machine())
+    const own = identity
     let root = await provider.list()
     if (stopped) return
     if (root.entries.length === 0) {
-      // An empty root: this device starts it, and everything here goes up (spec 초기 연결).
-      await provider.write('bandal.json', Buffer.from('{"format":2}'))
+      // An empty root: this device starts it, and everything here goes up (spec 초기 연결). Marked as its first
+      // upload until all of it has, so another device does not connect to half a root (v2.6). Its device file,
+      // which says the upload runs, is the next write (below, before the uploads).
+      await provider.write('bandal.json', Buffer.from(JSON.stringify({ format: SYNC_FORMAT, initial_upload: own.device_id })))
+      deviceAt = 0
       root = await provider.list()
     }
     if (Date.now() >= rescanAt) {
@@ -153,19 +178,28 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     if (pulled.changed.length > 0 || pulled.removed.length > 0 || pulled.markup.length > 0) deps.changed(pulled)
     // Stopped while applying (disconnected): what was applied stays, but nothing more goes to the root.
     if (stopped) return
-    const paths = new Set(root.entries.map(entry => entry.path)), own = identity
+    const paths = new Set(root.entries.map(entry => entry.path))
+    // This device's own first upload, begun just now or cut off on an earlier run: kept seen while it lasts, even inside one long export.
+    const starting = pulled.merged.initialUpload === own.device_id
+    const deviceMs = starting ? timing.startingDeviceMs : timing.deviceMs
+    // A first upload just marked, or begun on an earlier run: seen before the scan and the uploads.
+    if (starting && Date.now() - deviceAt >= deviceMs) await writeDevice(own.device_id)
     const exported = await exportChanges({
       db, device: own.device_id, takeSeq: () => takeSeq(deps.stateFile, own, paths),
       root: { paths, merged: pulled.merged, clock: pulled.clock },
-      write: (path, bytes) => provider.write(path, bytes), scan: deps.scan, ...(deps.platform ? { platform: deps.platform } : {})
+      write: async (path, bytes) => {
+        await provider.write(path, bytes)
+        // ponytail: checked between writes, so one write longer than the hour shows this device as stopped; a timer would need concurrent provider writes.
+        if (starting && Date.now() - deviceAt >= deviceMs) await writeDevice(own.device_id).catch(() => {})
+      },
+      scan: deps.scan, ...(deps.platform ? { platform: deps.platform } : {})
     }, session)
     // Something could not go up (an upload cut off, a file that would not read): it is tried again, and the state says so.
     if (exported.held.length > 0) throw new Error(exported.held[0]!.reason)
-    if (Date.now() - deviceAt >= timing.deviceMs) {
-      const now = Date.now()
-      await provider.write(`devices/${own.device_id}.json`, Buffer.from(JSON.stringify({ ...deps.device(), last_seen: now })))
-      deviceAt = now
-    }
+    if (Date.now() - deviceAt >= deviceMs) await writeDevice(own.device_id)
+    // Everything queued has gone up: the first upload is done (v2.6). Read again first: a device that started the
+    // same empty root at the same moment may have marked it since, and that mark is not this device's to clear.
+    if (starting && await markedBy(provider, own.device_id)) await provider.write('bandal.json', ROOT_FILE)
     set({ state: 'synced', at: Date.now() })
     schedule(Math.max(0, rescanAt - Date.now()))
   }
