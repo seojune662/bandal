@@ -44,6 +44,12 @@ export interface SyncEngineDeps {
   /** An apply changed or removed courses: refresh the windows and release what was removed. */
   changed(result: ApplyResult): void
   onState?(state: SyncState): void
+  /**
+   * A move into an empty root (spec v2.7): the old root's clock when this
+   * device left it. Its first upload is stamped from there, not from now, so
+   * what other devices changed in the old root since wins over it.
+   */
+  asOf?(): number | null
   timing?: Partial<typeof TIMING>
   platform?: NodeJS.Platform
 }
@@ -52,6 +58,8 @@ export interface SyncEngine {
   start(): void
   /** The device files of the last root this engine read. */
   devices(): SyncDevice[]
+  /** The largest t in the last root this engine read. */
+  clock(): number
   /** This device's file is written again on the next pass (a new name). */
   deviceChanged(): void
   /** Runs a pass now, after any running one; resolves when it is done. */
@@ -106,7 +114,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   let running: Promise<void> | null = null, queued: Promise<void> | null = null, queuedFor: 'poke' | 'ask' = 'poke', stopped = true, paused = false
   let failures = 0, rescanAt = 0, deviceAt = 0, lastSeq: number | null = null, kickedSeq: number | null = null
   let timer: NodeJS.Timeout | undefined, hintTimer: NodeJS.Timeout | undefined, ticker: NodeJS.Timeout | undefined
-  let unwatch: (() => void) | null = null, devices: SyncDevice[] = []
+  let unwatch: (() => void) | null = null, devices: SyncDevice[] = [], clock = 0
 
   const writeDevice = async (id: string): Promise<void> => {
     const now = Date.now()
@@ -160,10 +168,6 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       deviceAt = 0
       root = await provider.list()
     }
-    if (Date.now() >= rescanAt) {
-      enqueue(db)
-      rescanAt = Date.now() + timing.rescanMs
-    }
     if (stopped) return
     const pulled = await deps.pull(root)
     if (pulled.status === 'blocked') {
@@ -174,19 +178,29 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       set({ state: 'waiting', pending: pulled.pending.length })
       return schedule(timing.waitingMs)
     }
-    devices = [...pulled.merged.devices].map(([id, device]) => ({ id, ...device }))
+    clock = pulled.clock
+    // The spec calls Google Drive "drive" (v2.7 moved_to); the app calls it gdrive.
+    devices = [...pulled.merged.devices].map(([id, { moved_to: to, ...device }]) => ({
+      id, ...device, moved_to: to && { provider: to.provider === 'drive' ? 'gdrive' as const : 'icloud' as const, t: to.t }
+    }))
     if (pulled.changed.length > 0 || pulled.removed.length > 0 || pulled.markup.length > 0) deps.changed(pulled)
     // Stopped while applying (disconnected): what was applied stays, but nothing more goes to the root.
     if (stopped) return
+    // After the pull, so the comparison sees the base it left (a move rebases it there, spec v2.7).
+    if (Date.now() >= rescanAt) {
+      enqueue(db)
+      rescanAt = Date.now() + timing.rescanMs
+    }
     const paths = new Set(root.entries.map(entry => entry.path))
     // This device's own first upload, begun just now or cut off on an earlier run: kept seen while it lasts, even inside one long export.
     const starting = pulled.merged.initialUpload?.device === own.device_id
     const deviceMs = starting ? timing.startingDeviceMs : timing.deviceMs
     // A first upload just marked, or begun on an earlier run: seen before the scan and the uploads.
     if (starting && Date.now() - deviceAt >= deviceMs) await writeDevice(own.device_id)
+    const asOf = starting ? deps.asOf?.() ?? null : null
     const exported = await exportChanges({
       db, device: own.device_id, takeSeq: () => takeSeq(deps.stateFile, own, paths),
-      root: { paths, merged: pulled.merged, clock: pulled.clock },
+      root: { paths, merged: pulled.merged, clock: pulled.clock }, ...(asOf === null ? {} : { now: () => asOf }),
       write: async (path, bytes) => {
         await provider.write(path, bytes)
         // ponytail: checked between writes, so one write longer than the hour shows this device as stopped; a timer would need concurrent provider writes.
@@ -258,6 +272,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     },
     syncNow: () => run('ask'),
     devices: () => devices,
+    clock: () => clock,
     deviceChanged() {
       deviceAt = 0
       void run('ask')

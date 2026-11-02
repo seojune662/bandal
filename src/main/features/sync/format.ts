@@ -65,10 +65,16 @@ export interface InkObject {
   [key: string]: unknown
 }
 
+/** Where a device went when it left this root for the other storage, and when (spec v2.7). */
+export interface MovedTo {
+  provider: 'icloud' | 'drive'
+  t: number
+}
+
 export type ParsedFile =
   /** `initial_upload` (spec v2.6): the device still on its first upload into this root; `started`: when it marked it. */
   | { kind: 'root'; path: string; format: number; initial_upload?: string; started?: number }
-  | { kind: 'device'; path: string; device: string; name: string; platform: string | null; last_seen: number | null }
+  | { kind: 'device'; path: string; device: string; name: string; platform: string | null; last_seen: number | null; moved_to: MovedTo | null }
   /** `dropped` counts events that failed validation and were left out. */
   | { kind: 'log'; path: string; author: string; seq: number; events: MetaEvent[]; dropped: number }
   | { kind: 'ink'; path: string; author: string; seq: number; doc: string; objects: InkObject[]; dropped: number }
@@ -214,9 +220,12 @@ export function parseFile({ path, bytes }: RemoteFile): ParsedFile | null {
   if ((match = PATHS.device.exec(path))) {
     const device = json(bytes, MIB)
     if (!isRecord(device) || typeof device.name !== 'string') fail('device name')
+    // A moved_to with an unknown storage or a bad time is none, not a broken file (spec v2.7).
+    const moved = device.moved_to
     return {
       kind: 'device', path, device: match[1]!, name: device.name,
-      platform: typeof device.platform === 'string' ? device.platform : null, last_seen: isStamp(device.last_seen) ? device.last_seen : null
+      platform: typeof device.platform === 'string' ? device.platform : null, last_seen: isStamp(device.last_seen) ? device.last_seen : null,
+      moved_to: isRecord(moved) && (moved.provider === 'icloud' || moved.provider === 'drive') && isStamp(moved.t) ? { provider: moved.provider, t: moved.t } : null
     }
   }
   if ((match = PATHS.log.exec(path))) {

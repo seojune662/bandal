@@ -4,14 +4,16 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, test, vi } from 'vitest'
 const ipc = vi.hoisted(() => ({ invoke: vi.fn(), onPush: vi.fn(() => () => {}) }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ipc)
+const toast = vi.hoisted(() => ({ showToast: vi.fn() }))
+vi.mock('../../../src/renderer/src/app/toast', () => toast)
 import { ago, SyncPanel } from '../../../src/renderer/src/features/settings/sync/SyncPanel'
 
-const unbound = { available: { icloud: true, gdrive: false }, provider: null, account: null, state: { state: 'off' }, device: { id: null, name: 'MacBook Air' }, devices: [], pending: 0 }
+const unbound = { available: { icloud: true, gdrive: false }, provider: null, account: null, state: { state: 'off' }, device: { id: null, name: 'MacBook Air' }, devices: [], pending: 0, moving: null, moved: null }
 const bound = {
   ...unbound, provider: 'icloud', state: { state: 'synced', at: Date.now() - 3 * 60_000 }, device: { id: 'aaaa', name: 'MacBook Air' }, pending: 2,
   devices: [
-    { id: 'aaaa', name: 'MacBook Air', platform: 'macos', last_seen: Date.now(), self: true },
-    { id: 'bbbb', name: 'iPad Pro', platform: 'ipados', last_seen: Date.now() - 10 * 60_000, self: false }
+    { id: 'aaaa', name: 'MacBook Air', platform: 'macos', last_seen: Date.now(), self: true, moved_to: null },
+    { id: 'bbbb', name: 'iPad Pro', platform: 'ipados', last_seen: Date.now() - 10 * 60_000, self: false, moved_to: null }
   ]
 }
 const plan = {
@@ -199,5 +201,147 @@ test('the recheck goes on after a failed or a waiting check, and stops on cancel
     expect(asked).toBe(5)
   } finally {
     vi.useRealTimers()
+  }
+})
+
+const MOVED_AT = Date.UTC(2026, 10, 2, 4)
+/** Bound to iCloud on a Mac that can use both; the iPad has moved to Google Drive. */
+const offered = {
+  ...bound, available: { icloud: true, gdrive: true }, moved: { device: 'iPad Pro', provider: 'gdrive', t: MOVED_AT },
+  devices: [bound.devices[0], { ...bound.devices[1], moved_to: { provider: 'gdrive', t: MOVED_AT } }]
+}
+const join = { kind: 'join', local: { courses: 1, docs: 2 }, remote: { courses: 1, docs: 2 }, pairs: [] }
+
+test('another device\'s move is followed in one step: a Google sign-in when needed, then the move (v2.7)', async () => {
+  const { element, unmount } = await render({
+    'sync:status': () => offered, 'sync:signIn': () => ({ ...offered, account: 'me@example.com' }),
+    'sync:prepareMove': () => ({ status: 'ready', plan: join }), 'sync:move': () => ({ ...bound, provider: 'gdrive', moving: 'icloud', moved: null })
+  })
+  try {
+    expect(element.querySelector('.sync-move-offer')!.textContent).toContain('iPad Pro에서 Google Drive로 옮겼어요')
+    expect(element.textContent).toContain('iPad Pro · Google Drive로 옮김')
+    await click(button(element, '옮기기'))
+    expect(ipc.invoke.mock.calls.map(([channel]) => channel).filter(channel => channel !== 'sync:status')).toEqual(['sync:signIn', 'sync:prepareMove', 'sync:move'])
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'join' })
+    expect(element.textContent).toContain('Google Drive로 옮기는 중이에요. 다 올리면 iCloud에 알리고 연결을 끊어요.')
+    expect(element.querySelector('.sync-move-offer')).toBeNull()
+  } finally {
+    await unmount()
+  }
+})
+
+test('"나중에" puts the offer away, and a storage this computer cannot use is only told (v2.7)', async () => {
+  const { element, unmount } = await render({ 'sync:status': () => offered, 'sync:dismissMove': () => ({ ...offered, moved: null }) })
+  try {
+    await click(button(element, '나중에'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:dismissMove', { t: MOVED_AT })
+    expect(element.querySelector('.sync-move-offer')).toBeNull()
+  } finally {
+    await unmount()
+  }
+  const windows = {
+    ...offered, provider: 'gdrive', available: { icloud: false, gdrive: true }, moved: { device: 'iPad Pro', provider: 'icloud', t: MOVED_AT },
+    devices: [bound.devices[0], { ...bound.devices[1], moved_to: { provider: 'icloud', t: MOVED_AT } }]
+  }
+  const other = await render({ 'sync:status': () => windows, 'sync:dismissMove': () => ({ ...windows, moved: null }) })
+  try {
+    expect(other.element.textContent).toContain('이 기기에서는 iCloud를 쓸 수 없어 지금처럼 Google Drive와 동기화해요')
+    expect(button(other.element, '옮기기')).toBeUndefined()
+    // Nor is iCloud offered as a place to move to.
+    expect(other.element.textContent).not.toContain('저장소 옮기기')
+    await click(button(other.element, '닫기'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:dismissMove', { t: MOVED_AT })
+  } finally {
+    await other.unmount()
+  }
+})
+
+test('moving from Settings shows the plan first, and disconnecting sits under 고급 (v2.7)', async () => {
+  const upload = { kind: 'upload', local: { courses: 2, docs: 5 }, remote: { courses: 0, docs: 0 }, pairs: [] }
+  const both = { ...bound, available: { icloud: true, gdrive: true }, account: 'me@example.com' }
+  const { element, unmount } = await render({ 'sync:status': () => both, 'sync:prepareMove': () => ({ status: 'ready', plan: upload }), 'sync:move': () => ({ ...both, provider: 'gdrive', moving: 'icloud' }) })
+  try {
+    expect(button(element, '연결 해제')!.closest('details')!.querySelector('summary')!.textContent).toBe('고급')
+    await click(button(element, 'Google Drive로 옮기기'))
+    expect(element.textContent).toContain('이 기기의 과목 2개, 문서 5개를 Google Drive로 옮깁니다. 다 올리면 iCloud 연결을 끊어요.')
+    expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:move')
+    await click(button(element, '옮기기'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'upload' })
+    expect(element.textContent).not.toContain('Google Drive로 옮기기')
+  } finally {
+    await unmount()
+  }
+})
+
+test('a one-step move waits while the other storage is still being filled, and moves once it can (v2.7)', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    let asked = 0
+    const { element, unmount } = await render({
+      'sync:status': () => ({ ...offered, account: 'me@example.com' }),
+      'sync:prepareMove': () => (++asked === 1 ? { status: 'uploading', device: 'iPad Pro' } : { status: 'ready', plan: join }),
+      'sync:move': () => ({ ...bound, provider: 'gdrive', moving: 'icloud' })
+    })
+    try {
+      await click(button(element, '옮기기'))
+      expect(element.textContent).toContain('다른 기기(iPad Pro)가 아직 올리고 있어요')
+      expect(element.textContent).toContain('이 화면을 열어 두면 준비되는 대로 옮겨요')
+      await act(async () => { vi.advanceTimersByTime(30_000) })
+      expect(asked).toBe(2)
+      expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'join' })
+    } finally {
+      await unmount()
+    }
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a move that fails after a quiet recheck says so and stops checking (v2.7)', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    let asked = 0, moves = 0
+    const { element, unmount } = await render({
+      'sync:status': () => ({ ...offered, account: 'me@example.com' }),
+      'sync:prepareMove': () => (++asked === 1 ? { status: 'uploading', device: 'iPad Pro' } : { status: 'ready', plan: join }),
+      'sync:move': () => {
+        moves++
+        throw new Error('iCloud와 아직 다 맞추지 못했어요.')
+      }
+    })
+    try {
+      await click(button(element, '옮기기'))
+      await act(async () => { vi.advanceTimersByTime(30_000) })
+      expect(moves).toBe(1)
+      expect(toast.showToast).toHaveBeenCalledWith('iCloud와 아직 다 맞추지 못했어요.', 'danger')
+      // Back to the offer; nothing is checked again by itself.
+      expect(element.querySelector('.sync-move-offer')).not.toBeNull()
+      await act(async () => { vi.advanceTimersByTime(90_000) })
+      expect([asked, moves]).toEqual([2, 1])
+    } finally {
+      await unmount()
+    }
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a one-step move into storage that looks empty stops and asks: another Google account, or iCloud still downloading (v2.7)', async () => {
+  const upload = { kind: 'upload', local: { courses: 1, docs: 2 }, remote: { courses: 0, docs: 0 }, pairs: [] }
+  const { element, unmount } = await render({
+    'sync:status': () => ({ ...offered, account: 'other@example.com' }),
+    'sync:prepareMove': () => ({ status: 'ready', plan: upload }),
+    'sync:move': () => ({ ...bound, provider: 'gdrive', moving: 'icloud' })
+  })
+  try {
+    await click(button(element, '옮기기'))
+    expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:move')
+    expect(element.textContent).toContain('iPad Pro에서 옮긴 자료가 Google Drive에 아직 보이지 않아요. 같은 Google 계정인지 확인해 주세요.')
+    await click(button(element, '다시 확인'))
+    expect(ipc.invoke.mock.calls.filter(([channel]) => channel === 'sync:prepareMove')).toHaveLength(2)
+    await click(button(element, '옮기기'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'upload' })
+  } finally {
+    await unmount()
   }
 })

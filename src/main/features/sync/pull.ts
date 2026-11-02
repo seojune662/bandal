@@ -98,8 +98,12 @@ export function localize(merged: MergedState, db: Database): MergedState {
   }
 }
 
-/** One pull at a time: a second call waits for the first. */
-export function createPull(ctx: Omit<ApplyContext, 'read'>): (root: RootSnapshot) => Promise<PullResult> {
+/**
+ * One pull at a time: a second call waits for the first. `beforeApply` sees
+ * each merged root (this profile's ids) right before it applies: a move
+ * rebases on the very state its first pass applies (spec v2.7).
+ */
+export function createPull(ctx: Omit<ApplyContext, 'read'> & { beforeApply?(merged: MergedState): void }): (root: RootSnapshot) => Promise<PullResult> {
   // ponytail: every metadata and note file stays in memory by version; spill to disk if roots grow past tens of MB.
   const cache: Cache = new Map()
   let running: Promise<unknown> = Promise.resolve()
@@ -107,6 +111,7 @@ export function createPull(ctx: Omit<ApplyContext, 'read'>): (root: RootSnapshot
     const read = await readMerged(root, cache)
     if (read.status !== 'merged') return read
     const merged = localize(read.merged, ctx.db)
+    ctx.beforeApply?.(merged)
     return { status: 'applied', errors: read.errors, merged, clock: read.clock, ...await applyMerged(merged, { ...ctx, read: path => root.read(path) }) }
   }
   return root => {

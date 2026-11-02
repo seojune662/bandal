@@ -1618,6 +1618,12 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
   'sync:disconnect': { req: Record<string, never>; res: SyncView }
   'sync:now': { req: Record<string, never>; res: SyncView }
   'sync:rename': { req: { name: string }; res: SyncView }
+  /** What moving to the other storage would do (spec v2.7), or why it cannot start now. */
+  'sync:prepareMove': { req: { provider: SyncProviderKind }; res: ConnectPrepare }
+  /** Moves this profile to the other storage; `expect`: the plan the user saw, as for sync:connect. */
+  'sync:move': { req: { provider: SyncProviderKind; expect?: ConnectPlan['kind'] }; res: SyncView }
+  /** "나중에" on another device's move: that move is not offered again. */
+  'sync:dismissMove': { req: { t: number }; res: SyncView }
 
   // -- auth -----------------------------------------------------------------
   /** Projected auth state. Never contains a token or an e-mail address. */
@@ -1937,6 +1943,9 @@ export const IPC_CHANNELS = [
   'sync:now',
   'sync:rename',
   'sync:signIn',
+  'sync:prepareMove',
+  'sync:move',
+  'sync:dismissMove',
   'runtime:syncSetEnabled',
   'runtime:syncNow',
   'runtime:syncResolveConflict',
