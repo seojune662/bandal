@@ -155,8 +155,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     if (root.entries.length === 0) {
       // An empty root: this device starts it, and everything here goes up (spec 초기 연결). Marked as its first
       // upload until all of it has, so another device does not connect to half a root (v2.6). Its device file,
-      // which says the upload runs, is the next write (below, before the uploads).
-      await provider.write('bandal.json', Buffer.from(JSON.stringify({ format: SYNC_FORMAT, initial_upload: own.device_id })))
+      // which says the upload runs, is the next write (below, before the uploads); `started` says so until then.
+      await provider.write('bandal.json', Buffer.from(JSON.stringify({ format: SYNC_FORMAT, initial_upload: own.device_id, started: Date.now() })))
       deviceAt = 0
       root = await provider.list()
     }
@@ -180,7 +180,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     if (stopped) return
     const paths = new Set(root.entries.map(entry => entry.path))
     // This device's own first upload, begun just now or cut off on an earlier run: kept seen while it lasts, even inside one long export.
-    const starting = pulled.merged.initialUpload === own.device_id
+    const starting = pulled.merged.initialUpload?.device === own.device_id
     const deviceMs = starting ? timing.startingDeviceMs : timing.deviceMs
     // A first upload just marked, or begun on an earlier run: seen before the scan and the uploads.
     if (starting && Date.now() - deviceAt >= deviceMs) await writeDevice(own.device_id)

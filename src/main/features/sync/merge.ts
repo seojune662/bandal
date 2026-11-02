@@ -36,8 +36,8 @@ export interface ConflictCopy {
 export interface MergedState {
   /** Set when `bandal.json` is missing or not format 2: nothing else is read. */
   blocked: 'missing-root' | 'update-required' | 'unsupported-format' | null
-  /** The device whose first upload into this root has not finished (spec v2.6), or null. */
-  initialUpload: string | null
+  /** The device whose first upload into this root has not finished, and when it marked it (spec v2.6), or null. */
+  initialUpload: { device: string; started: number | null } | null
   devices: Map<string, { name: string; platform: string | null; last_seen: number | null }>
   courses: Map<string, Entity>
   docs: Map<string, Entity>
@@ -122,7 +122,7 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   if (root.format !== SYNC_FORMAT) return emptyState(root.format > SYNC_FORMAT ? 'update-required' : 'unsupported-format')
 
   const state = emptyState(null), waitingDocs = new Set<string>()
-  state.initialUpload = root.initial_upload ?? null
+  state.initialUpload = root.initial_upload === undefined ? null : { device: root.initial_upload, started: root.started ?? null }
   const copies: (Omit<ConflictCopy, 'file'> & { file: string | null })[] = []
   const present = new Set<string>(), versions = new Map<string, NoteVersion[]>(), noteFiles = new Map<string, NoteFile[]>()
   /** Appends per document: the bytes before → the bytes after, from every event, winning or not. */

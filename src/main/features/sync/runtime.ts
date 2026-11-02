@@ -52,13 +52,16 @@ const run = promisify(execFile)
 const MAX_NAME = 64
 /** A first upload whose device was seen within this long still runs (spec v2.6). */
 const FIRST_UPLOAD_SEEN_MS = 60 * 60_000
+/** Until the marking device's file has a `last_seen`, a mark started within this long still runs. */
+const FIRST_UPLOAD_START_MS = 5 * 60_000
 /** sync.log starts over past this size. */
 const MAX_LOG = 1 << 20
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-/** A first-upload mark (spec v2.6): the marking device, with the name and `last_seen` of its device file when there is one. */
+/** A first-upload mark (spec v2.6): the marking device and `started`, with the name and `last_seen` of its device file when there is one. */
 export interface FirstUploadMark {
   device: string
+  started: number | null
   name: string | null
   last_seen: number | null
   /** The device file is listed but cannot be read yet: whether the upload still runs cannot be told. */
@@ -66,13 +69,14 @@ export interface FirstUploadMark {
 }
 
 /**
- * Another device's first upload into this root, by name, and whether it stopped (spec v2.6): no device file or
- * `last_seen`, or one more than an hour away from now either way (a clock far ahead would hold everyone back).
+ * Another device's first upload into this root, by name, and whether it stopped (spec v2.6): `last_seen` more than an
+ * hour away from now either way (a clock far ahead would hold everyone back). Before the device file or its `last_seen`
+ * is there, `started` stands in for 5 minutes; without either, the upload stopped.
  */
 export function firstUpload(mark: FirstUploadMark | null, own: string | null, now = Date.now()): { device: string; stopped: boolean } | null {
   if (mark === null || mark.device === own) return null
-  const seen = mark.last_seen
-  return { device: (mark.name?.trim() || mark.device.slice(0, 8)).slice(0, MAX_NAME), stopped: seen === null || Math.abs(now - seen) > FIRST_UPLOAD_SEEN_MS }
+  const [at, within] = mark.last_seen === null ? [mark.started, FIRST_UPLOAD_START_MS] : [mark.last_seen, FIRST_UPLOAD_SEEN_MS]
+  return { device: (mark.name?.trim() || mark.device.slice(0, 8)).slice(0, MAX_NAME), stopped: at === null || Math.abs(now - at) > within }
 }
 
 /**
@@ -100,10 +104,10 @@ async function readMark(root: RootSnapshot): Promise<FirstUploadMark | null | 'u
   const file = await read('bandal.json')
   if (file === 'unreadable') return 'unreadable'
   if (file?.kind !== 'root' || file.initial_upload === undefined) return null
-  const path = `devices/${file.initial_upload}.json`, there = listed(path)
+  const path = `devices/${file.initial_upload}.json`, there = listed(path), mark = { device: file.initial_upload, started: file.started ?? null }
   const device = there === 'file' ? await read(path) : null
-  if (there === 'placeholder' || device === 'unreadable') return { device: file.initial_upload, name: null, last_seen: null, pending: true }
-  return { device: file.initial_upload, name: device?.kind === 'device' ? device.name : null, last_seen: device?.kind === 'device' ? device.last_seen : null }
+  if (there === 'placeholder' || device === 'unreadable') return { ...mark, name: null, last_seen: null, pending: true }
+  return { ...mark, name: device?.kind === 'device' ? device.name : null, last_seen: device?.kind === 'device' ? device.last_seen : null }
 }
 
 /** The Mac's name as System Settings shows it ("서준의 MacBook Air"); the host name if that cannot be read. */

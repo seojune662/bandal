@@ -219,10 +219,16 @@ test('an empty root is marked as this first upload, its device file right after,
   })
   const { id: course } = a.courses.create({ name: '물리학', color: 'green' })
   writeFileSync(join(a.courses.getFolder(course), '요약.md'), '# 요약\n')
+  const before = Date.now()
   a.engine.start()
   await a.engine.syncNow()
   const id = readState(a.stateFile).device_id as string
-  expect(writes.slice(0, 2)).toEqual([`bandal.json {"format":2,"initial_upload":"${id}"}`, `devices/${id}.json`])
+  // Who, and since when: until the device file is there, `started` says the upload runs.
+  const mark = JSON.parse(writes[0]!.replace(/^bandal\.json /, '')) as { started: number }
+  expect(mark).toEqual({ format: 2, initial_upload: id, started: expect.any(Number) })
+  expect(mark.started).toBeGreaterThanOrEqual(before)
+  expect(mark.started).toBeLessThanOrEqual(Date.now())
+  expect(writes[1]).toBe(`devices/${id}.json`)
   expect(writes.slice(2, -1).some(path => path.startsWith('log/'))).toBe(true)
   expect(writes.at(-1)).toBe('bandal.json {"format":2}')
   expect(a.engine.state()).toMatchObject({ state: 'synced' })
@@ -245,7 +251,7 @@ test('a first upload cut off keeps the mark, and the next run carries on and the
   await a.engine.syncNow()
   const id = readState(a.stateFile).device_id as string
   expect(a.engine.state()).toEqual({ state: 'error', message: 'offline' })
-  expect(JSON.parse(rootFile('bandal.json'))).toEqual({ format: 2, initial_upload: id })
+  expect(JSON.parse(rootFile('bandal.json'))).toEqual({ format: 2, initial_upload: id, started: expect.any(Number) })
   failing = false
   writes.length = 0
   const again = await a.restart()
@@ -317,7 +323,7 @@ test('a PDF that could not go up keeps the mark until a pass gets everything up 
   await a.engine.syncNow()
   const id = readState(a.stateFile).device_id as string
   expect(a.engine.state()).toEqual({ state: 'error', message: 'quota' })
-  expect(JSON.parse(rootFile('bandal.json'))).toEqual({ format: 2, initial_upload: id })
+  expect(JSON.parse(rootFile('bandal.json'))).toEqual({ format: 2, initial_upload: id, started: expect.any(Number) })
   refusing = false
   await a.engine.syncNow()
   expect(rootFile('bandal.json')).toBe('{"format":2}')
