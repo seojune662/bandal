@@ -15,6 +15,8 @@ const MINUTE = 60_000
 const RECHECK_MS = 30_000
 const NAME: Record<SyncProviderKind, string> = { icloud: 'iCloud', gdrive: 'Google Drive' }
 const OTHER: Record<SyncProviderKind, SyncProviderKind> = { icloud: 'gdrive', gdrive: 'icloud' }
+/** A storage with the account another device moved to, when it said (spec v2.7 account_hint): "Google Drive(me@example.com)". */
+const storageOf = (moved: { provider: SyncProviderKind; account_hint: string | null }): string => `${NAME[moved.provider]}${moved.account_hint ? `(${moved.account_hint})` : ''}`
 
 export function ago(at: number, now = Date.now()): string {
   const minutes = Math.floor(Math.max(0, now - at) / MINUTE)
@@ -293,16 +295,17 @@ function MoveCards({ view, onView }: { view: SyncView; onView: (view: SyncView) 
     const timer = setTimeout(() => void look(target, oneStep, true), RECHECK_MS)
     return () => clearTimeout(timer)
   }, [prepared, checks])
-  const follow = async (provider: SyncProviderKind): Promise<void> => {
+  /** Following another device's move: a Google sign-in first when there is none (or `again`), offering the account it moved to. */
+  const follow = async (provider: SyncProviderKind, again = false): Promise<void> => {
     setTarget(provider)
     setOneStep(true)
-    if (provider === 'gdrive' && view.account === null) {
+    if (provider === 'gdrive' && (again || view.account === null)) {
       setBusy(true)
       try {
-        onView(await invoke('sync:signIn', {}))
+        onView(await invoke('sync:signIn', { follow: true }))
       } catch (error) {
         showToast(message(error), 'danger')
-        reset()
+        if (!again) reset()
         return
       } finally {
         setBusy(false)
@@ -345,7 +348,7 @@ function MoveCards({ view, onView }: { view: SyncView; onView: (view: SyncView) 
           <div className="settings-card__rows">
             <div className="setting-row" role="status">
               <div className="setting-row__copy">
-                <span className="setting-row__label">{offer.device}에서 {NAME[offer.provider]}로 옮겼어요</span>
+                <span className="setting-row__label">{offer.device}에서 {storageOf(offer)}로 옮겼어요</span>
                 <span className="setting-row__description">{view.available[offer.provider]
                   ? `이 기기도 옮길까요? 같은 자료는 다시 올리지 않고, ${NAME[from]}의 파일은 지우지 않아요.`
                   : `이 기기에서는 ${NAME[offer.provider]}를 쓸 수 없어 지금처럼 ${NAME[from]}와 동기화해요.`}</span>
@@ -398,7 +401,11 @@ function MoveCards({ view, onView }: { view: SyncView; onView: (view: SyncView) 
                 <p className="setting-row__description" role="status">{moveText(plan, from, to)}</p>
                 {oneStep && plan.kind === 'upload' && (
                   <p className="setting-row__description" role="note">
-                    {view.moved?.device ?? '다른 기기'}에서 옮긴 자료가 {NAME[to]}에 아직 보이지 않아요. {to === 'gdrive' ? '같은 Google 계정인지 확인해 주세요.' : 'iCloud가 아직 내려받는 중일 수 있어요.'} 그대로 옮기면 이 기기의 자료를 새로 올려요.
+                    {view.moved?.device ?? '다른 기기'}에서 옮긴 자료가 {NAME[to]}에 아직 보이지 않아요.{' '}
+                    {to === 'gdrive'
+                      ? `같은 Google 계정${view.moved?.account_hint ? `(${view.moved.account_hint})` : ''}인지 확인해 주세요.${view.account ? ` 지금 로그인한 계정: ${view.account}.` : ''}`
+                      : 'iCloud가 아직 내려받는 중일 수 있어요.'}{' '}
+                    그대로 옮기면 이 기기의 자료를 새로 올려요.
                   </p>
                 )}
                 {plan.interrupted !== undefined && (
@@ -408,6 +415,7 @@ function MoveCards({ view, onView }: { view: SyncView; onView: (view: SyncView) 
                 )}
                 <div className="sync-connect__actions">
                   <button type="button" className="secondary-button" disabled={busy} onClick={reset}>취소</button>
+                  {oneStep && plan.kind === 'upload' && to === 'gdrive' && <button type="button" className="secondary-button" disabled={busy} onClick={() => void follow(to, true)}>Google 계정 다시 고르기</button>}
                   {oneStep && plan.kind === 'upload' && <button type="button" className="secondary-button" disabled={busy} onClick={() => void look(to, true)}>다시 확인</button>}
                   <button type="button" className="secondary-button" disabled={busy} onClick={() => void move(plan)}>{busy ? '옮기는 중' : '옮기기'}</button>
                 </div>

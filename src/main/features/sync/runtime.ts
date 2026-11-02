@@ -15,7 +15,7 @@ import type { ApplyContext, ApplyResult } from './apply'
 import { forgetRoot, joinRoot, movePlan, overwriteRoot, planConnect, rebase } from './connect'
 import { createDriveProvider, DRIVE_TOKEN_FILE, type DriveProvider } from './drive'
 import { createSyncEngine, type SyncEngine } from './engine'
-import { parseFile, placeholderTarget, type ParsedFile } from './format'
+import { isAccountHint, parseFile, placeholderTarget, type ParsedFile } from './format'
 import { createICloudProvider, icloudRoot, type SyncProvider } from './icloud'
 import { loadIdentity, machineFingerprint, patchState, readState, takeSeq } from './identity'
 import type { Scan } from './localDocs'
@@ -199,7 +199,7 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     for (const device of devices) {
       const to = device.moved_to
       if (device.self || to === null || to.provider === provider || to.t <= dismissed || (moved !== null && moved.t >= to.t)) continue
-      moved = { device: deviceLabel(device.name, device.id), provider: to.provider, t: to.t }
+      moved = { device: deviceLabel(device.name, device.id), provider: to.provider, t: to.t, account_hint: to.account_hint }
     }
     return {
       available: { icloud: providers.icloud !== undefined, gdrive: providers.gdrive !== undefined },
@@ -267,9 +267,13 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       if (moving === null || to === null || to === moving.provider) return
       const old = providers[moving.provider], id = await ownDevice()
       if (old && id !== null && await old.status() === 'ready') {
-        const now = Date.now()
+        // t is an event's: after every t this device has seen, in either root. The Google account goes along as a hint for the devices that follow.
+        const now = Date.now(), t = Math.max(now, (moving.clock ?? 0) + 1, (engine?.clock() ?? 0) + 1)
+        const account = to === 'gdrive' ? providers.gdrive?.account() : null
         try {
-          await old.write(`devices/${id}.json`, Buffer.from(JSON.stringify({ ...deviceFile(), last_seen: now, moved_to: { provider: SPEC_NAME[to], t: now } })))
+          await old.write(`devices/${id}.json`, Buffer.from(JSON.stringify({
+            ...deviceFile(), last_seen: now, moved_to: { provider: SPEC_NAME[to], t, ...(isAccountHint(account) ? { account_hint: account } : {}) }
+          })))
         } catch (error) {
           if (Date.now() - moving.at < MOVE_TELL_MS) return
           log('move', moving.provider, `gave up telling the old root: ${messageOf(error)}`)
@@ -537,10 +541,15 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     publish()
   }
 
-  /** Google sign-in for sync: before connecting, or again when the token stopped working. */
-  async function signIn(): Promise<void> {
+  /**
+   * Google sign-in for sync: before connecting, or again when the token
+   * stopped working. `follow`: following another device's move to Drive, its
+   * account is offered first (spec v2.7 account_hint; a hint, nothing more).
+   */
+  async function signIn(follow = false): Promise<void> {
     if (!providers.gdrive) throw new Error('이 기기에서는 Google Drive 동기화를 쓸 수 없어요.')
-    await providers.gdrive.signIn()
+    const moved = follow ? view().moved : null
+    await providers.gdrive.signIn(moved?.provider === 'gdrive' ? moved.account_hint ?? undefined : undefined)
     publish()
     void engine?.syncNow()
   }

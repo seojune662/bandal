@@ -49,7 +49,8 @@ export interface DriveProvider extends SyncProvider {
   /** The Google account signed in for sync, or null. */
   account(): string | null
   signedIn(): boolean
-  signIn(): Promise<void>
+  /** `loginHint`: the account to offer first, following another device's move here (spec v2.7 account_hint). */
+  signIn(loginHint?: string): Promise<void>
   /**
    * Forgets the token here. It is not revoked: a revoke withdraws every scope
    * this Cloud project holds for the account, which would also cut off Gmail
@@ -410,13 +411,13 @@ export function createDriveProvider(options: DriveOptions): DriveProvider {
     },
     account: () => token?.account ?? null,
     signedIn: () => token !== null,
-    async signIn() {
+    async signIn(loginHint) {
       if (!googleClient().clientId) throw new Error('이 빌드에는 Google 연결 설정이 없어요.')
       signingIn?.abort()
       const controller = new AbortController()
       signingIn = controller
       try {
-        const grant = await authorize({ scope: DRIVE_SCOPE, label: 'Google Drive', signal: controller.signal })
+        const grant = await authorize({ scope: DRIVE_SCOPE, label: 'Google Drive', signal: controller.signal, ...(loginHint ? { loginHint } : {}) })
         const { ok, result } = await tokenRequest(grant).catch(() => {
           throw new Error(OFFLINE)
         })

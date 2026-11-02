@@ -28,6 +28,8 @@ const EXT_RE = /^[a-z0-9]{1,16}$/
 /** Unicode control characters (Cc): C0, DEL and C1. */
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]/
 const NOTE_ASSET_RE = /\.\.\/\.\.\/assets\/([0-9a-f]{64})\.([a-z0-9]{1,16})/g
+/** An address as account_hint (spec v2.7): one @ with text on both sides, no space (U+0020) and no control character. */
+const ACCOUNT_HINT_RE = /^[^@\u0000-\u0020\u007f-\u009f]+@[^@\u0000-\u0020\u007f-\u009f]+$/
 const ID = '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
 const PATHS = {
   device: new RegExp(`^devices/${ID}\\.json$`),
@@ -65,10 +67,12 @@ export interface InkObject {
   [key: string]: unknown
 }
 
-/** Where a device went when it left this root for the other storage, and when (spec v2.7). */
+/** Where a device went when it left this root for the other storage, when, and the account it went to (spec v2.7). */
 export interface MovedTo {
   provider: 'icloud' | 'drive'
   t: number
+  /** The Google account's address, a hint for signing in and for the banner only; null when absent or not an address. */
+  account_hint: string | null
 }
 
 export type ParsedFile =
@@ -95,6 +99,7 @@ const isUuid = (value: unknown): value is string => typeof value === 'string' &&
 export const isSha = (value: unknown): value is string => typeof value === 'string' && SHA_RE.test(value)
 export const isAssetExt = (value: unknown): value is string => typeof value === 'string' && EXT_RE.test(value)
 export const sha256 = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
+export const isAccountHint = (value: unknown): value is string => typeof value === 'string' && ACCOUNT_HINT_RE.test(value)
 
 /**
  * What JSON.parse lets through but the spec does not: Infinity (`1e999`), an
@@ -220,12 +225,13 @@ export function parseFile({ path, bytes }: RemoteFile): ParsedFile | null {
   if ((match = PATHS.device.exec(path))) {
     const device = json(bytes, MIB)
     if (!isRecord(device) || typeof device.name !== 'string') fail('device name')
-    // A moved_to with an unknown storage or a bad time is none, not a broken file (spec v2.7).
+    // A moved_to with an unknown storage or a bad time is none, not a broken file (spec v2.7). A bad account_hint is none; the rest stays.
     const moved = device.moved_to
     return {
       kind: 'device', path, device: match[1]!, name: device.name,
       platform: typeof device.platform === 'string' ? device.platform : null, last_seen: isStamp(device.last_seen) ? device.last_seen : null,
-      moved_to: isRecord(moved) && (moved.provider === 'icloud' || moved.provider === 'drive') && isStamp(moved.t) ? { provider: moved.provider, t: moved.t } : null
+      moved_to: isRecord(moved) && (moved.provider === 'icloud' || moved.provider === 'drive') && isStamp(moved.t)
+        ? { provider: moved.provider, t: moved.t, account_hint: isAccountHint(moved.account_hint) ? moved.account_hint : null } : null
     }
   }
   if ((match = PATHS.log.exec(path))) {

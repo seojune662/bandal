@@ -181,7 +181,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     clock = pulled.clock
     // The spec calls Google Drive "drive" (v2.7 moved_to); the app calls it gdrive.
     devices = [...pulled.merged.devices].map(([id, { moved_to: to, ...device }]) => ({
-      id, ...device, moved_to: to && { provider: to.provider === 'drive' ? 'gdrive' as const : 'icloud' as const, t: to.t }
+      id, ...device, moved_to: to && { provider: to.provider === 'drive' ? 'gdrive' as const : 'icloud' as const, t: to.t, account_hint: to.account_hint }
     }))
     if (pulled.changed.length > 0 || pulled.removed.length > 0 || pulled.markup.length > 0) deps.changed(pulled)
     // Stopped while applying (disconnected): what was applied stays, but nothing more goes to the root.

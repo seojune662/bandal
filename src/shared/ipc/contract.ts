@@ -1613,8 +1613,8 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
   'sync:prepare': { req: { provider: SyncProviderKind }; res: ConnectPrepare }
   /** `expect`: the plan the user saw; a changed root refuses instead of guessing. */
   'sync:connect': { req: { provider: SyncProviderKind; mode: ConnectMode; pairs: { local: string; remote: string }[]; expect?: ConnectPlan['kind'] }; res: SyncView }
-  /** Google sign-in for Drive sync, in the browser. */
-  'sync:signIn': { req: Record<string, never>; res: SyncView }
+  /** Google sign-in for Drive sync, in the browser. `follow`: following another device's move there, its account is offered first. */
+  'sync:signIn': { req: { follow?: boolean }; res: SyncView }
   'sync:disconnect': { req: Record<string, never>; res: SyncView }
   'sync:now': { req: Record<string, never>; res: SyncView }
   'sync:rename': { req: { name: string }; res: SyncView }

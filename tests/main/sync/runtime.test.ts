@@ -6,7 +6,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { createCoursesRepo } from '../../../src/main/features/courses/coursesRepo'
 import { repointMaterialPath } from '../../../src/main/features/links/renameRepoint'
 import { createMaterialsRepo } from '../../../src/main/features/materials/materialsRepo'
-import { createDriveProvider } from '../../../src/main/features/sync/drive'
+import { createDriveProvider, type DriveProvider } from '../../../src/main/features/sync/drive'
 import type { MetaEvent } from '../../../src/main/features/sync/format'
 import type { SyncProvider } from '../../../src/main/features/sync/icloud'
 import { loadIdentity, readState } from '../../../src/main/features/sync/identity'
@@ -57,7 +57,7 @@ function walk(folder: string): Scan {
   return { files, complete: true }
 }
 
-function device(machine: string, options: { boundElsewhere?: string; made?: { ok: boolean; cancelled?: boolean }; drive?: FakeDrive; logFile?: string } = {}) {
+function device(machine: string, options: { boundElsewhere?: string; made?: { ok: boolean; cancelled?: boolean }; drive?: FakeDrive; logFile?: string; wrapDrive?: (provider: DriveProvider) => DriveProvider } = {}) {
   const ctx = createTestDb()
   open.push(ctx)
   const courses = createCoursesRepo({ db: ctx.db, getDataRoot: () => join(ctx.dir, 'Courses') })
@@ -75,8 +75,9 @@ function device(machine: string, options: { boundElsewhere?: string; made?: { ok
   const seeds: Record<string, unknown>[] = []
   if (options.drive) seedToken(join(ctx.dir, 'sync'))
   const launch = (driveRoot: string | null = null) => {
-    const gdrive = options.drive && createDriveProvider({ dir: join(ctx.dir, 'sync'), root: driveRoot, encryptor: fakeEncryptor, activity: () => ({ focused: false, idleSeconds: 0 }) })
-    const made = createSyncRuntime({
+    const made = options.drive && createDriveProvider({ dir: join(ctx.dir, 'sync'), root: driveRoot, encryptor: fakeEncryptor, activity: () => ({ focused: false, idleSeconds: 0 }) })
+    const gdrive = made && (options.wrapDrive?.(made) ?? made)
+    const runtime = createSyncRuntime({
       db: ctx.db, courses, materials, userDataPath: ctx.dir, appVersion: 'test', providers: { icloud: provider, ...(gdrive ? { gdrive } : {}) }, machine: async () => machine,
       logFile: options.logFile ?? join(ctx.dir, 'logs', 'sync.log'),
       scan: async folder => walk(folder), changed: () => {}, onView: () => {},
@@ -86,8 +87,8 @@ function device(machine: string, options: { boundElsewhere?: string; made?: { ok
         return options.made ?? { ok: true }
       }
     })
-    runtimes.push(made)
-    return made
+    runtimes.push(runtime)
+    return runtime
   }
   const runtime = launch()
   const row = (sql: string, ...params: unknown[]) => ctx.db.prepare(sql).get(...params) as Record<string, any> | undefined
@@ -572,13 +573,16 @@ test('a move goes up whole to the empty storage, then tells the old root; a devi
     expect([...up.docs.keys()].sort()).toEqual([PDF_DOC, NOTE_DOC])
     expect([...up.ink.keys()].sort()).toEqual(STROKES)
     // The old root learns where A went, and nothing else of A's changes there.
-    expect(json(root.get(`devices/${ids.a}.json`))).toMatchObject({ name: 'A의 Mac', moved_to: { provider: 'drive', t: moved } })
+    expect(json(root.get(`devices/${ids.a}.json`))).toMatchObject({ name: 'A의 Mac', moved_to: { provider: 'drive', t: moved, account_hint: 'me@example.com' } })
     expect([...root.keys()].filter(path => path.includes(ids.a) && !path.startsWith('devices/'))).toEqual([])
 
     // B, still on iCloud, is offered the move; meanwhile it renames the course, erases a stroke and draws one.
     at(2)
     await b.runtime.syncNow()
-    expect(b.runtime.view()).toMatchObject({ moved: { device: 'A의 Mac', provider: 'gdrive', t: moved }, devices: expect.arrayContaining([expect.objectContaining({ id: ids.a, moved_to: { provider: 'gdrive', t: moved } })]) })
+    expect(b.runtime.view()).toMatchObject({
+      moved: { device: 'A의 Mac', provider: 'gdrive', t: moved, account_hint: 'me@example.com' },
+      devices: expect.arrayContaining([expect.objectContaining({ id: ids.a, moved_to: { provider: 'gdrive', t: moved, account_hint: 'me@example.com' } })])
+    })
     b.courses.rename({ courseId: COURSE, name: '선형대수학 2' })
     const erased = new Date().toISOString()
     b.db.prepare('UPDATE pdf_drawings SET deleted_at = ?, updated_at = ? WHERE id = ?').run(erased, erased, STROKES[0])
@@ -925,12 +929,56 @@ test('moving back to the storage it left offers this device nothing, and its own
     await a.runtime.move('icloud', 'join')
     await a.runtime.syncNow()
     expect(a.runtime.view()).toMatchObject({ provider: 'icloud', state: { state: 'error' }, moved: null })
-    expect(a.runtime.view().devices).toEqual(expect.arrayContaining([expect.objectContaining({ id: self, moved_to: { provider: 'gdrive', t: expect.any(Number) } })]))
+    expect(a.runtime.view().devices).toEqual(expect.arrayContaining([expect.objectContaining({ id: self, moved_to: { provider: 'gdrive', t: expect.any(Number), account_hint: 'me@example.com' } })]))
   } finally {
     provider.write = write
   }
   await a.runtime.syncNow()
   expect(a.runtime.view()).toMatchObject({ provider: 'icloud', moving: null, moved: null, account: null })
   expect(json(root.get(`devices/${self}.json`)).moved_to).toBeUndefined()
-  expect(json(inDrive(drive).get(`devices/${self}.json`))).toMatchObject({ moved_to: { provider: 'icloud' } })
+  // iCloud has no account to hint at.
+  expect(json(inDrive(drive).get(`devices/${self}.json`)).moved_to).toEqual({ provider: 'icloud', t: expect.any(Number) })
+})
+
+test('moved_to.t comes after every t the moving device has seen, past its own clock (v2.7)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    at(0)
+    root = new Map()
+    const drive = createFakeDrive()
+    vi.stubGlobal('fetch', drive.fetch)
+    // A device whose clock runs a day ahead made the course.
+    const ahead = Date.now() + 24 * 60 * 60_000
+    root.set('bandal.json', Buffer.from('{"format":2}'))
+    root.set(`log/${IPAD}/00000001.json`, Buffer.from(JSON.stringify([{ t: ahead, op: 'course.upsert', id: COURSE, fields: { name: '선형대수학', sort: 0, color: 'blue', archived: false } }])))
+    const a = device('mac-a', { drive })
+    await a.runtime.connect('icloud', 'merge', [], 'download')
+    await a.runtime.syncNow()
+    at(1)
+    await a.runtime.move('gdrive', 'upload')
+    await a.runtime.syncNow()
+    expect(json(root.get(`devices/${a.runtime.view().device.id}.json`)).moved_to.t).toBeGreaterThan(ahead)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a sign-in to follow a move to Google Drive offers the account it went to; other sign-ins offer none (v2.7)', async () => {
+  root = new Map()
+  const drive = createFakeDrive()
+  vi.stubGlobal('fetch', drive.fetch)
+  const hints: (string | undefined)[] = []
+  const a = device('mac-a', { drive }), b = device('mac-b', { drive, wrapDrive: provider => ({ ...provider, signIn: async (hint?: string) => { hints.push(hint) } }) })
+  a.courses.create({ name: '물리학', color: 'green' })
+  await a.runtime.connect('icloud', 'merge', [])
+  await a.runtime.syncNow()
+  await b.runtime.connect('icloud', 'merge', [], 'download')
+  await b.runtime.syncNow()
+  await a.runtime.move('gdrive', 'upload')
+  await a.runtime.syncNow()
+  await b.runtime.syncNow()
+  expect(b.runtime.view().moved).toMatchObject({ provider: 'gdrive', account_hint: 'me@example.com' })
+  await b.runtime.signIn()
+  await b.runtime.signIn(true)
+  expect(hints).toEqual([undefined, 'me@example.com'])
 })

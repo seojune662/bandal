@@ -3835,8 +3835,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     await sync.connect(providerKind(req.provider), req.mode, pairs, req.expect)
     return sync.view()
   })
-  handle('sync:signIn', async () => {
-    await sync.signIn()
+  handle('sync:signIn', async req => {
+    await sync.signIn(req?.follow === true)
     return sync.view()
   })
   handle('sync:disconnect', async () => {
