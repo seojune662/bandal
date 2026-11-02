@@ -3,7 +3,7 @@
  * only on the set of files, never on their order or on reading one twice.
  */
 import { v5 as uuidv5 } from 'uuid'
-import { SYNC_FORMAT, type InkObject, type ParsedFile } from './format'
+import { SYNC_FORMAT, type InkObject, type MovedTo, type ParsedFile } from './format'
 
 export const CONFLICT_COPY_NAMESPACE = '9b1f6a2e-3c4d-4e5f-8a6b-7c8d9e0f1a2b'
 
@@ -38,7 +38,7 @@ export interface MergedState {
   blocked: 'missing-root' | 'update-required' | 'unsupported-format' | null
   /** The device whose first upload into this root has not finished, and when it marked it (spec v2.6), or null. */
   initialUpload: { device: string; started: number | null } | null
-  devices: Map<string, { name: string; platform: string | null; last_seen: number | null }>
+  devices: Map<string, { name: string; platform: string | null; last_seen: number | null; moved_to: MovedTo | null }>
   courses: Map<string, Entity>
   docs: Map<string, Entity>
   /** Winning version per drawing id, with the document its file sits under. */
@@ -52,6 +52,8 @@ export interface MergedState {
   waiting: { docs: string[]; ink: string[]; copies: string[] }
   /** PDF documents: the bytes from which end-page appends lead to the winning pdf_sha256, sorted (spec v2.4). */
   rebindFrom: Map<string, string[]>
+  /** md documents: every md_hash this root's log names for each, winning or not, sorted. A move asks whether a text is in the root (spec v2.7). */
+  noteHashes: Map<string, string[]>
 }
 
 interface NoteVersion {
@@ -112,7 +114,7 @@ const pathKey = (course: string, folder: string, name: string): string => JSON.s
 function emptyState(blocked: MergedState['blocked']): MergedState {
   return {
     blocked, initialUpload: null, devices: new Map(), courses: new Map(), docs: new Map(), ink: new Map(), notes: new Map(),
-    conflictCopies: [], renames: [], waiting: { docs: [], ink: [], copies: [] }, rebindFrom: new Map()
+    conflictCopies: [], renames: [], waiting: { docs: [], ink: [], copies: [] }, rebindFrom: new Map(), noteHashes: new Map()
   }
 }
 
@@ -129,7 +131,7 @@ export function merge(files: readonly ParsedFile[]): MergedState {
   const appends = new Map<string, [from: string, to: string][]>()
 
   for (const file of files) {
-    if (file.kind === 'device') state.devices.set(file.device, { name: file.name, platform: file.platform, last_seen: file.last_seen })
+    if (file.kind === 'device') state.devices.set(file.device, { name: file.name, platform: file.platform, last_seen: file.last_seen, moved_to: file.moved_to ?? null })
     else if (file.kind === 'pdf' || file.kind === 'asset') present.add(file.path)
     else if (file.kind === 'note') push(noteFiles, file.doc, file)
     else if (file.kind === 'ink') {
@@ -205,6 +207,7 @@ export function merge(files: readonly ParsedFile[]): MergedState {
       .sort((a, b) => Number(b.author === author) - Number(a.author === author) || b.seq - a.seq || (b.path > a.path ? 1 : -1))[0] ?? null
   const missingAssets = (file: NoteFile | null): boolean => file?.assets.some(asset => !present.has(asset)) ?? false
 
+  for (const [doc, own] of versions) state.noteHashes.set(doc, [...new Set(own.map(version => version.hash))].sort())
   for (const [doc, entity] of state.docs) {
     const body = text(entity, 'md_hash')
     if (body === null) continue

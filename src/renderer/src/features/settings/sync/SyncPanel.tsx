@@ -14,6 +14,7 @@ const MINUTE = 60_000
 /** While another device's first upload runs (spec v2.6) or root files are still arriving, the root is checked again this often. */
 const RECHECK_MS = 30_000
 const NAME: Record<SyncProviderKind, string> = { icloud: 'iCloud', gdrive: 'Google Drive' }
+const OTHER: Record<SyncProviderKind, SyncProviderKind> = { icloud: 'gdrive', gdrive: 'icloud' }
 
 export function ago(at: number, now = Date.now()): string {
   const minutes = Math.floor(Math.max(0, now - at) / MINUTE)
@@ -230,6 +231,195 @@ function ConnectCard({ view, onView }: { view: SyncView; onView: (view: SyncView
   )
 }
 
+function moveText(plan: ConnectPlan, from: SyncProviderKind, to: SyncProviderKind): string {
+  return plan.kind === 'upload'
+    ? `이 기기의 과목 ${plan.local.courses}개, 문서 ${plan.local.docs}개를 ${NAME[to]}로 옮깁니다. 다 올리면 ${NAME[from]} 연결을 끊어요.`
+    : `${NAME[to]}에 이미 과목 ${plan.remote.courses}개가 있어요. 같은 자료는 다시 올리지 않고, 이 기기에만 있거나 바뀐 것만 올려 합칩니다. 다 맞추면 ${NAME[from]} 연결을 끊어요.`
+}
+
+/**
+ * Moving this profile to the other storage (spec v2.7): from its card after a
+ * look at the plan, or in one step from the banner another device's move
+ * shows, which moves as soon as that storage can take this profile.
+ */
+function MoveCards({ view, onView }: { view: SyncView; onView: (view: SyncView) => void }): JSX.Element | null {
+  const from = view.provider ?? 'icloud', to = OTHER[from]
+  const [target, setTarget] = useState<SyncProviderKind | null>(null)
+  const [oneStep, setOneStep] = useState(false)
+  const [prepared, setPrepared] = useState<ConnectPrepare | null>(null)
+  const [busy, setBusy] = useState(false)
+  /** Counts finished checks, so the next recheck is set even when one failed and nothing else changed. */
+  const [checks, setChecks] = useState(0)
+  const checking = useRef(false)
+
+  const reset = (): void => {
+    setTarget(null)
+    setOneStep(false)
+    setPrepared(null)
+  }
+  /**
+   * `step`: moves right away once the storage holds the data another device
+   * moved there; one that looks empty (another Google account, iCloud still
+   * downloading) is shown first. `quiet`: a recheck nobody asked for; if the
+   * check fails, the waiting goes on. A move that fails always says so.
+   */
+  const look = async (provider: SyncProviderKind, step: boolean, quiet = false): Promise<void> => {
+    if (checking.current) return
+    checking.current = true
+    setBusy(true)
+    try {
+      let next: ConnectPrepare
+      try {
+        next = await invoke('sync:prepareMove', { provider })
+      } catch (error) {
+        if (quiet) return
+        throw error
+      }
+      if (step && next.status === 'ready' && next.plan.kind === 'join') {
+        onView(await invoke('sync:move', { provider, expect: next.plan.kind }))
+        reset()
+      } else setPrepared(next)
+    } catch (error) {
+      showToast(message(error), 'danger')
+      if (step) reset()
+    } finally {
+      checking.current = false
+      setBusy(false)
+      setChecks(count => count + 1)
+    }
+  }
+  useEffect(() => {
+    if (target === null || (prepared?.status !== 'uploading' && prepared?.status !== 'waiting')) return
+    const timer = setTimeout(() => void look(target, oneStep, true), RECHECK_MS)
+    return () => clearTimeout(timer)
+  }, [prepared, checks])
+  const follow = async (provider: SyncProviderKind): Promise<void> => {
+    setTarget(provider)
+    setOneStep(true)
+    if (provider === 'gdrive' && view.account === null) {
+      setBusy(true)
+      try {
+        onView(await invoke('sync:signIn', {}))
+      } catch (error) {
+        showToast(message(error), 'danger')
+        reset()
+        return
+      } finally {
+        setBusy(false)
+      }
+    }
+    await look(provider, true)
+  }
+  const begin = (): void => {
+    setTarget(to)
+    setOneStep(false)
+    setPrepared(null)
+    if (to !== 'gdrive' || view.account !== null) void look(to, false)
+  }
+  const move = async (plan: ConnectPlan): Promise<void> => {
+    setBusy(true)
+    try {
+      onView(await invoke('sync:move', { provider: to, expect: plan.kind }))
+    } catch (error) {
+      showToast(message(error), 'danger')
+    } finally {
+      setBusy(false)
+      reset()
+    }
+  }
+  const dismiss = async (t: number): Promise<void> => {
+    try {
+      onView(await invoke('sync:dismissMove', { t }))
+    } catch (error) {
+      showToast(message(error), 'danger')
+    }
+  }
+
+  // A move under way: the state card says so.
+  if (view.moving !== null) return null
+  const offer = target === null ? view.moved : null, plan = prepared?.status === 'ready' ? prepared.plan : null
+  return (
+    <>
+      {offer !== null && (
+        <SettingsCard className="sync-move-offer">
+          <div className="settings-card__rows">
+            <div className="setting-row" role="status">
+              <div className="setting-row__copy">
+                <span className="setting-row__label">{offer.device}에서 {NAME[offer.provider]}로 옮겼어요</span>
+                <span className="setting-row__description">{view.available[offer.provider]
+                  ? `이 기기도 옮길까요? 같은 자료는 다시 올리지 않고, ${NAME[from]}의 파일은 지우지 않아요.`
+                  : `이 기기에서는 ${NAME[offer.provider]}를 쓸 수 없어 지금처럼 ${NAME[from]}와 동기화해요.`}</span>
+              </div>
+              <button type="button" className="secondary-button" disabled={busy} onClick={() => void dismiss(offer.t)}>
+                {view.available[offer.provider] ? '나중에' : '닫기'}
+              </button>
+              {view.available[offer.provider] && <button type="button" className="secondary-button" disabled={busy} onClick={() => void follow(offer.provider)}>옮기기</button>}
+            </div>
+          </div>
+        </SettingsCard>
+      )}
+      {view.available[to] && (
+        <SettingsCard title="저장소 옮기기" description={`자료를 ${NAME[to]}로 옮기고 이 기기를 그쪽에 연결해요. 다른 기기에는 따라 옮길지 묻는 안내가 떠요. ${NAME[from]}의 파일은 지우지 않아요.`}>
+          <div className="settings-card__rows">
+            {target === null && (
+              <div className="setting-row">
+                <span className="setting-row__description">지금은 {NAME[from]}와 동기화하고 있어요.</span>
+                <button type="button" className="secondary-button" disabled={busy} onClick={begin}>{NAME[to]}로 옮기기</button>
+              </div>
+            )}
+            {target !== null && to === 'gdrive' && view.account === null && !oneStep && (
+              <>
+                <GoogleAccountRow view={view} onView={onView} />
+                <div className="sync-connect__actions">
+                  <button type="button" className="secondary-button" disabled={busy} onClick={reset}>취소</button>
+                </div>
+              </>
+            )}
+            {target !== null && prepared === null && (oneStep || to !== 'gdrive' || view.account !== null) && (
+              <div className="setting-row">
+                <span className="setting-row__description" role="status">
+                  {!busy ? `${NAME[to]}를 확인할게요.` : to === 'gdrive' && view.account === null ? '브라우저에서 Google 로그인을 기다리는 중' : `${NAME[to]}를 확인하는 중`}
+                </span>
+                <button type="button" className="secondary-button" disabled={busy} onClick={reset}>취소</button>
+                {!busy && <button type="button" className="secondary-button" onClick={() => void look(to, oneStep)}>확인</button>}
+              </div>
+            )}
+            {prepared !== null && prepared.status !== 'ready' && (
+              <div className="setting-row">
+                <span className="setting-row__description settings-feedback--error" role="alert">
+                  {prepareText(prepared, to)}{oneStep && (prepared.status === 'uploading' || prepared.status === 'waiting') ? ' 이 화면을 열어 두면 준비되는 대로 옮겨요.' : ''}
+                </span>
+                <button type="button" className="secondary-button" disabled={busy} onClick={reset}>취소</button>
+                <button type="button" className="secondary-button" disabled={busy} onClick={() => void look(to, oneStep)}>다시 확인</button>
+              </div>
+            )}
+            {plan !== null && (
+              <div className="sync-connect">
+                <p className="setting-row__description" role="status">{moveText(plan, from, to)}</p>
+                {oneStep && plan.kind === 'upload' && (
+                  <p className="setting-row__description" role="note">
+                    {view.moved?.device ?? '다른 기기'}에서 옮긴 자료가 {NAME[to]}에 아직 보이지 않아요. {to === 'gdrive' ? '같은 Google 계정인지 확인해 주세요.' : 'iCloud가 아직 내려받는 중일 수 있어요.'} 그대로 옮기면 이 기기의 자료를 새로 올려요.
+                  </p>
+                )}
+                {plan.interrupted !== undefined && (
+                  <p className="setting-row__description" role="note">
+                    다른 기기({plan.interrupted})가 {NAME[to]}에 처음 올리다 멈췄어요. 옮기면 그 자료와 합쳐요.
+                  </p>
+                )}
+                <div className="sync-connect__actions">
+                  <button type="button" className="secondary-button" disabled={busy} onClick={reset}>취소</button>
+                  {oneStep && plan.kind === 'upload' && <button type="button" className="secondary-button" disabled={busy} onClick={() => void look(to, true)}>다시 확인</button>}
+                  <button type="button" className="secondary-button" disabled={busy} onClick={() => void move(plan)}>{busy ? '옮기는 중' : '옮기기'}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </SettingsCard>
+      )}
+    </>
+  )
+}
+
 function BoundCards({ view, onView }: { view: SyncView; onView: (view: SyncView) => void }): JSX.Element {
   const [name, setName] = useState(view.device.name)
   const [busy, setBusy] = useState(false)
@@ -256,6 +446,7 @@ function BoundCards({ view, onView }: { view: SyncView; onView: (view: SyncView)
             <div className="setting-row__copy">
               <span className={`setting-row__label sync-state sync-state--${line.tone}`} role="status">{line.text}</span>
               {view.pending > 0 && <span className="setting-row__description">보낼 변경 {view.pending}건</span>}
+              {view.moving !== null && <span className="setting-row__description">{storage}로 옮기는 중이에요. 다 올리면 {NAME[view.moving]}에 알리고 연결을 끊어요.</span>}
             </div>
             {view.state.state === 'needs-auth'
               ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void run(() => invoke('sync:signIn', {}))}>다시 연결</button>
@@ -265,11 +456,12 @@ function BoundCards({ view, onView }: { view: SyncView; onView: (view: SyncView)
           </div>
         </div>
       </SettingsCard>
+      <MoveCards view={view} onView={onView} />
       <SettingsCard title="기기" description={`이 ${storage}와 맞추는 기기들이에요. 이 기기의 이름은 충돌 사본 이름에도 쓰여요.`}>
         <ul className="sync-devices">
           {view.devices.map(device => (
             <li key={device.id}>
-              <span>{device.name}{device.self ? ' (이 기기)' : ''}</span>
+              <span>{device.name}{device.self ? ' (이 기기)' : ''}{device.moved_to !== null && !device.self ? ` · ${NAME[device.moved_to.provider]}로 옮김` : ''}</span>
               {!device.self && device.last_seen !== null && <span className="setting-row__description">{ago(device.last_seen)}</span>}
             </li>
           ))}
@@ -287,22 +479,27 @@ function BoundCards({ view, onView }: { view: SyncView; onView: (view: SyncView)
           </form>
         </div>
       </SettingsCard>
+      {/* Disconnecting and connecting again stays as an advanced choice; moving is the way to change storage (spec v2.7). */}
       <SettingsCard>
-        <div className="settings-card__rows">
-          <div className="setting-row">
-            <div className="setting-row__copy">
-              <span className="setting-row__label">연결 해제</span>
-              <span className="setting-row__description">
-                이 기기의 동기화를 끕니다. 이 기기의 자료와 {storage}의 파일은 그대로 둡니다.{provider === 'gdrive' ? ' 이 기기에 저장한 Google 로그인도 지웁니다.' : ''}
-              </span>
+        <details className="sync-advanced">
+          <summary>고급</summary>
+          <div className="settings-card__rows">
+            <div className="setting-row">
+              <div className="setting-row__copy">
+                <span className="setting-row__label">연결 해제</span>
+                <span className="setting-row__description">
+                  이 기기의 동기화를 끕니다. 이 기기의 자료와 {storage}의 파일은 그대로 둡니다.{provider === 'gdrive' ? ' 이 기기에 저장한 Google 로그인도 지웁니다.' : ''}
+                  {' '}다시 연결하면 처음 연결할 때처럼 합치기·덮어쓰기·가져오기를 고릅니다.{view.available[OTHER[provider]] ? ' 저장소를 바꿀 때는 저장소 옮기기를 쓰세요.' : ''}
+                </span>
+              </div>
+              <button type="button" className="secondary-button settings-advanced-danger-button" disabled={busy} onClick={() => {
+                if (window.confirm(`이 기기의 동기화를 끌까요? 자료와 ${storage} 파일은 그대로 둡니다.`)) void run(() => invoke('sync:disconnect', {}))
+              }}>
+                연결 해제
+              </button>
             </div>
-            <button type="button" className="secondary-button settings-advanced-danger-button" disabled={busy} onClick={() => {
-              if (window.confirm(`이 기기의 동기화를 끌까요? 자료와 ${storage} 파일은 그대로 둡니다.`)) void run(() => invoke('sync:disconnect', {}))
-            }}>
-              연결 해제
-            </button>
           </div>
-        </div>
+        </details>
       </SettingsCard>
     </>
   )

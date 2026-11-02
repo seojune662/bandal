@@ -15,6 +15,8 @@ export interface SyncDevice {
   name: string
   platform: string | null
   last_seen: number | null
+  /** The device left this root for the other storage (spec v2.7 `moved_to`), and when. */
+  moved_to: { provider: SyncProviderKind; t: number } | null
 }
 
 export interface SyncView {
@@ -28,15 +30,20 @@ export interface SyncView {
   devices: (SyncDevice & { self: boolean })[]
   /** Local changes not written to the root yet. */
   pending: number
+  /** A move's last step is still to come (spec v2.7): the storage this profile left, which is told and let go once the new one holds everything. */
+  moving: SyncProviderKind | null
+  /** Another device of this root moved to the other storage and this one has not followed or said later (spec v2.7): the latest one. */
+  moved: { device: string; provider: SyncProviderKind; t: number } | null
 }
 
 export interface ConnectPlan {
   /**
    * `upload`: the root holds nothing alive. `download`: this profile has no
    * course. `choose`: both hold data and never synced together. `resume`:
-   * this profile synced with this root before.
+   * this profile synced with this root before. `join`: a move into a root
+   * that holds data, merged by id (spec v2.7).
    */
-  kind: 'upload' | 'download' | 'choose' | 'resume'
+  kind: 'upload' | 'download' | 'choose' | 'resume' | 'join'
   local: { courses: number; docs: number }
   remote: { courses: number; docs: number }
   /** Courses of the same name on both sides, offered for a merge. */

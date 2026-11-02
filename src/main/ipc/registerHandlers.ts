@@ -3853,6 +3853,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     sync.rename(req.name)
     return sync.view()
   })
+  // Moving to the other storage (spec v2.7): from Settings › 동기화, or from another device's move.
+  handle('sync:prepareMove', req => sync.prepareMove(providerKind(req?.provider)))
+  handle('sync:move', async req => {
+    if (req?.expect !== undefined && !['upload', 'join'].includes(req.expect)) throw new Error('저장소 옮기기 요청이 올바르지 않습니다.')
+    await sync.move(providerKind(req?.provider), req?.expect)
+    return sync.view()
+  })
+  handle('sync:dismissMove', req => {
+    if (!Number.isSafeInteger(req?.t)) throw new Error('저장소 옮기기 요청이 올바르지 않습니다.')
+    sync.dismissMove(req.t)
+    return sync.view()
+  })
   const profiles = createProfileManager({ db, root: deps.userDataPath, baseRoot: process.env['BANDAL_PROFILE_BASE_ROOT'] ?? deps.userDataPath,
     pause: async () => { await Promise.all([ipadCompanion.pauseAndDrain(), sync.pause()]) },
     resume: () => { ipadCompanion.resume(); sync.resume() },

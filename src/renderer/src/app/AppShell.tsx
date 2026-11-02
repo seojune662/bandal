@@ -26,6 +26,7 @@ import { WorkspaceControls } from './WorkspaceControls'
 import { HomeSidebar } from './HomeSidebar'
 import { AnnotationOverlay } from '../features/annotation/AnnotationOverlay'
 import { IpadAnnouncement } from '../features/announcements/IpadAnnouncement'
+import { SyncMoveNotice } from '../features/settings/sync/SyncMoveNotice'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { TourOverlay } from '../features/onboarding/tour/TourOverlay'
@@ -494,6 +495,7 @@ export function AppShell(): JSX.Element {
       <ShareImportDialog />
       {!isOnboardingVisible && !settingsPresent && <CommunityPromotion />}
       <IpadAnnouncement mainScreenVisible={!isOnboardingVisible && !settingsPresent} />
+      <SyncMoveNotice />
       <LearningDialogsHost />
       <PresentationProgress />
       {settingsPresent && (

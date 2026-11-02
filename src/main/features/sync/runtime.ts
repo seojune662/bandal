@@ -12,7 +12,7 @@ import { promisify } from 'node:util'
 import type { ConnectMode, ConnectPlan, ConnectPrepare, SyncProviderKind, SyncView } from '../../../shared/types/sync'
 import { googleClient } from '../google/oauth'
 import type { ApplyContext, ApplyResult } from './apply'
-import { forgetRoot, joinRoot, overwriteRoot, planConnect } from './connect'
+import { forgetRoot, joinRoot, movePlan, overwriteRoot, planConnect, rebase } from './connect'
 import { createDriveProvider, DRIVE_TOKEN_FILE, type DriveProvider } from './drive'
 import { createSyncEngine, type SyncEngine } from './engine'
 import { parseFile, placeholderTarget, type ParsedFile } from './format'
@@ -44,12 +44,29 @@ export interface SyncRuntimeDeps extends Omit<ApplyContext, 'read'> {
 }
 
 const NAME: Record<SyncProviderKind, string> = { icloud: 'iCloud', gdrive: 'Google Drive' }
+/** The spec's names (v2.7 `moved_to.provider`). */
+const SPEC_NAME: Record<SyncProviderKind, 'icloud' | 'drive'> = { icloud: 'icloud', gdrive: 'drive' }
 const kindOf = (value: unknown): SyncProviderKind | null => (value === 'icloud' || value === 'gdrive' ? value : null)
 /** The root a base is from. A profile bound before Google Drive existed was bound to iCloud. */
 const rootOf = (state: Record<string, unknown>): string => (typeof state.root === 'string' ? state.root : 'icloud')
+/**
+ * A move whose last step is still to come (spec v2.7): the storage and root
+ * this profile left, when, that root's clock then, and whether the base is
+ * still to be rebased onto the new root (its first pull does it).
+ */
+interface Moving { provider: SyncProviderKind; root: string; at: number; clock: number | null; rebase: boolean }
+const movingOf = (state: Record<string, unknown>): Moving | null => {
+  const moving = state.moving as Record<string, unknown> | null | undefined, provider = kindOf(moving?.provider)
+  if (provider === null || typeof moving?.root !== 'string') return null
+  return { provider, root: moving.root, at: typeof moving.at === 'number' ? moving.at : 0, clock: typeof moving.clock === 'number' ? moving.clock : null, rebase: moving.rebase === true }
+}
 
 const run = promisify(execFile)
 const MAX_NAME = 64
+/** A device as people read it: its name, or the start of its id while it has none. */
+const deviceLabel = (name: string | null, id: string): string => (name?.trim() || id.slice(0, 8)).slice(0, MAX_NAME)
+/** A move's last write to the old root is tried again after each pass for this long (spec v2.7: it only tells other devices). */
+const MOVE_TELL_MS = 7 * 24 * 60 * 60_000
 /** A first upload whose device was seen within this long still runs (spec v2.6). */
 const FIRST_UPLOAD_SEEN_MS = 60 * 60_000
 /** Until the marking device's file has a `last_seen`, a mark started within this long still runs. */
@@ -76,7 +93,7 @@ export interface FirstUploadMark {
 export function firstUpload(mark: FirstUploadMark | null, own: string | null, now = Date.now()): { device: string; stopped: boolean } | null {
   if (mark === null || mark.device === own) return null
   const [at, within] = mark.last_seen === null ? [mark.started, FIRST_UPLOAD_START_MS] : [mark.last_seen, FIRST_UPLOAD_SEEN_MS]
-  return { device: (mark.name?.trim() || mark.device.slice(0, 8)).slice(0, MAX_NAME), stopped: at === null || Math.abs(now - at) > within }
+  return { device: deviceLabel(mark.name, mark.device), stopped: at === null || Math.abs(now - at) > within }
 }
 
 /**
@@ -110,6 +127,12 @@ async function readMark(root: RootSnapshot): Promise<FirstUploadMark | null | 'u
   return { ...mark, name: device?.kind === 'device' ? device.name : null, last_seen: device?.kind === 'device' ? device.last_seen : null }
 }
 
+/** The Drive folder a profile's provider starts from: the one it is bound to, or the one a move left and is still to tell (spec v2.7). */
+export function driveRootOf(state: Record<string, unknown>): string | null {
+  const key = [state.root, movingOf(state)?.root].find(value => typeof value === 'string' && value.startsWith('gdrive:'))
+  return typeof key === 'string' ? key.slice('gdrive:'.length) : null
+}
+
 /** The Mac's name as System Settings shows it ("서준의 MacBook Air"); the host name if that cannot be read. */
 async function computerName(): Promise<string> {
   try {
@@ -126,23 +149,35 @@ async function computerName(): Promise<string> {
 export function createSyncRuntime(deps: SyncRuntimeDeps) {
   const { db } = deps
   const stateFile = join(deps.userDataPath, 'sync', 'state.json')
-  const saved = readState(stateFile).root
   const providers = deps.providers ?? {
     ...(process.platform === 'darwin' ? { icloud: createICloudProvider({ root: icloudRoot(), tmpDir: join(deps.userDataPath, 'sync', 'tmp') }) } : {}),
     ...(googleClient().clientId ? {
       gdrive: createDriveProvider({
-        dir: join(deps.userDataPath, 'sync'), root: typeof saved === 'string' && saved.startsWith('gdrive:') ? saved.slice('gdrive:'.length) : null,
+        dir: join(deps.userDataPath, 'sync'), root: driveRootOf(readState(stateFile)),
         activity: deps.activity ?? (() => ({ focused: false, idleSeconds: Infinity }))
       })
     } : {})
   }
   const machine = deps.machine ?? machineFingerprint
-  const pull = createPull({ db, courses: deps.courses, materials: deps.materials, ...(deps.platform ? { platform: deps.platform } : {}) })
+  const pull = createPull({
+    db, courses: deps.courses, materials: deps.materials, ...(deps.platform ? { platform: deps.platform } : {}),
+    // A move's first pass in the new root (spec v2.7): the base is rebased on the very state that pass applies.
+    beforeApply: merged => {
+      const state = readState(stateFile), moving = movingOf(state)
+      // Disconnected while the root was read: nothing applies to an unbound profile.
+      if (kindOf(state.provider) === null) throw new Error('동기화 연결이 해제됐어요.')
+      if (!moving?.rebase) return
+      rebase(db, merged)
+      patchState(stateFile, { moving: { ...moving, rebase: false } })
+    }
+  })
   let fallbackName = hostname().replace(/\.local$/, '')
   void computerName().then(name => {
     fallbackName = name
   })
-  let engine: SyncEngine | null = null, busy = false, stopping: Promise<void> | null = null
+  let engine: SyncEngine | null = null, busy = false, stopping: Promise<void> | null = null, finishing: Promise<void> | null = null
+  /** A backup or profile switch holds sync still; an engine a move starts meanwhile starts held too. */
+  let paused = false
   /** The root the last connect step listed, for the log. */
   let looked: { key: string | null; entries: number; bandal_json: boolean; initial_upload: string | null } | null = null
   /** Whether the last connect step asked Google Drive for its folders: only then does its lookup belong in the log. */
@@ -152,15 +187,24 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     const name = readState(stateFile).device_name
     return typeof name === 'string' && name.trim() !== '' ? name : fallbackName
   }
+  /** This device's `devices/<id>.json`, less `last_seen`. */
+  const deviceFile = () => ({ name: deviceName(), platform: process.platform === 'win32' ? 'windows' : 'macos', app_version: deps.appVersion })
   const view = (): SyncView => {
-    const state = readState(stateFile), id = typeof state.device_id === 'string' ? state.device_id : null
+    const state = readState(stateFile), id = typeof state.device_id === 'string' ? state.device_id : null, provider = kindOf(state.provider)
     const pending = (db.prepare('SELECT COUNT(*) AS n FROM (SELECT DISTINCT kind, id FROM sync_outbox)').get() as { n: number }).n
+    const devices = (engine?.devices() ?? []).map(device => ({ ...device, self: device.id === id })).sort((a, b) => Number(b.self) - Number(a.self) || a.name.localeCompare(b.name))
+    // Another device's move to the other storage (spec v2.7), the latest one, unless "나중에" covered it.
+    const dismissed = typeof state.move_dismissed === 'number' ? state.move_dismissed : 0
+    let moved: SyncView['moved'] = null
+    for (const device of devices) {
+      const to = device.moved_to
+      if (device.self || to === null || to.provider === provider || to.t <= dismissed || (moved !== null && moved.t >= to.t)) continue
+      moved = { device: deviceLabel(device.name, device.id), provider: to.provider, t: to.t }
+    }
     return {
       available: { icloud: providers.icloud !== undefined, gdrive: providers.gdrive !== undefined },
-      provider: kindOf(state.provider), account: providers.gdrive?.signedIn() ? providers.gdrive.account() ?? '' : null, state: engine?.state() ?? { state: 'off' },
-      device: { id, name: deviceName() },
-      devices: (engine?.devices() ?? []).map(device => ({ ...device, self: device.id === id })).sort((a, b) => Number(b.self) - Number(a.self) || a.name.localeCompare(b.name)),
-      pending
+      provider, account: providers.gdrive?.signedIn() ? providers.gdrive.account() ?? '' : null, state: engine?.state() ?? { state: 'off' },
+      device: { id, name: deviceName() }, devices, pending, moving: movingOf(state)?.provider ?? null, moved
     }
   }
   const publish = (): void => {
@@ -177,7 +221,7 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     return typeof device_id === 'string' && madeOn === await machine() ? device_id : null
   }
   /** One line for a connect that failed or waits: what was looked at, for a person reading the log (spec v2.6). */
-  function log(step: 'prepare' | 'connect', kind: SyncProviderKind, outcome: string): void {
+  function log(step: 'prepare' | 'connect' | 'move', kind: SyncProviderKind, outcome: string): void {
     if (!deps.logFile) return
     try {
       mkdirSync(dirname(deps.logFile), { recursive: true })
@@ -194,26 +238,68 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
 
   function start(kind: SyncProviderKind): void {
     engine = createSyncEngine({
-      db, provider: providers[kind]!, pull, stateFile, machine, scan: deps.scan, changed: deps.changed,
-      device: () => ({ name: deviceName(), platform: process.platform === 'win32' ? 'windows' : 'macos', app_version: deps.appVersion }),
-      onState: publish,
+      db, provider: providers[kind]!, pull, stateFile, machine, scan: deps.scan, changed: deps.changed, device: deviceFile,
+      onState: state => {
+        publish()
+        // A pass in the new root went through: a move's last step can follow (spec v2.7).
+        if (state.state === 'synced' && movingOf(readState(stateFile)) !== null) void finishMove()
+      },
+      asOf: () => {
+        const clock = movingOf(readState(stateFile))?.clock
+        return typeof clock === 'number' ? clock + 1 : null
+      },
       ...(deps.platform ? { platform: deps.platform } : {})
     })
+    if (paused) void engine.pause()
     engine.start()
+  }
+
+  /**
+   * A move's last step (spec v2.7), once the new root holds everything: the
+   * old root is told where this device went, as `moved_to` in its own device
+   * file there, and let go. It only tells other devices: when the old
+   * storage cannot be reached at all, or its write has failed for a week, the
+   * move ends without it.
+   */
+  function finishMove(): Promise<void> {
+    finishing ??= (async () => {
+      const state = readState(stateFile), moving = movingOf(state), to = kindOf(state.provider)
+      if (moving === null || to === null || to === moving.provider) return
+      const old = providers[moving.provider], id = await ownDevice()
+      if (old && id !== null && await old.status() === 'ready') {
+        const now = Date.now()
+        try {
+          await old.write(`devices/${id}.json`, Buffer.from(JSON.stringify({ ...deviceFile(), last_seen: now, moved_to: { provider: SPEC_NAME[to], t: now } })))
+        } catch (error) {
+          if (Date.now() - moving.at < MOVE_TELL_MS) return
+          log('move', moving.provider, `gave up telling the old root: ${messageOf(error)}`)
+        }
+      }
+      // As a disconnect: the token goes, and is never revoked (spec v2.5). Before the move ends, so a failure is tried again.
+      if (moving.provider === 'gdrive') await providers.gdrive?.signOut()
+      patchState(stateFile, { moving: null })
+    })().catch(() => {
+      // Tried again after the next pass.
+    }).finally(() => {
+      finishing = null
+      publish()
+    })
+    return finishing
   }
   /**
    * Unbinds now and stops the engine; resolves once a running pass has
    * finished, so nothing is written after. Google Drive's token goes too.
    */
   async function disconnect(): Promise<void> {
-    const old = engine, kind = kindOf(readState(stateFile).provider)
+    const state = readState(stateFile), old = engine, kind = kindOf(state.provider), moving = movingOf(state), left = moving?.provider
     engine = null
-    patchState(stateFile, { provider: null })
+    // A move not finished yet ends here too: the old root is not told. Before its first pass the base still describes the root it left.
+    patchState(stateFile, { provider: null, moving: null, ...(moving?.rebase ? { root: moving.root } : {}) })
     const done = (async () => {
       await old?.stop()
       // Nothing exports while unbound: keep no outbox. A later connect compares everything with the base again.
       db.prepare('UPDATE sync_runtime SET enabled = 0').run()
-      if (kind === 'gdrive') await providers.gdrive?.signOut()
+      if (kind === 'gdrive' || left === 'gdrive') await providers.gdrive?.signOut()
     })()
     stopping = done
     try {
@@ -261,11 +347,8 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     return { status: 'merged' as const, key, root, merged: read.merged, clock: read.clock, started }
   }
 
-  async function prepare(kind: SyncProviderKind): Promise<ConnectPrepare> {
-    if (!providers[kind]) return { status: 'unavailable' }
-    // Never while a pass may still run: looking for a Drive folder must not move a provider in use.
-    await stopping
-    if (engine) return { status: 'error', message: '이미 동기화에 연결돼 있어요.' }
+  /** The root of `kind` as a connect or a move would find it, or why neither can go on now; logged when it fails or waits. */
+  async function look(kind: SyncProviderKind) {
     let read: Awaited<ReturnType<typeof readRoot>>
     try {
       read = await readRoot(kind, false)
@@ -273,21 +356,104 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       log('prepare', kind, `error: ${messageOf(error)}`)
       throw error
     }
+    if (read.status === 'merged') return read
     if (read.status === 'error') {
       log('prepare', kind, `error: ${read.message}`)
-      return { status: 'error', message: read.message }
+      return { status: 'error', message: read.message } as const
     }
     if (read.status === 'uploading') {
       log('prepare', kind, `uploading: ${read.device}`)
-      return { status: 'uploading', device: read.device }
+      return { status: 'uploading', device: read.device } as const
     }
-    if (read.status !== 'merged') {
-      log('prepare', kind, read.status)
-      return { status: read.status }
-    }
+    log('prepare', kind, read.status)
+    return { status: read.status }
+  }
+
+  async function prepare(kind: SyncProviderKind): Promise<ConnectPrepare> {
+    if (!providers[kind]) return { status: 'unavailable' }
+    // Never while a pass may still run: looking for a Drive folder must not move a provider in use.
+    await stopping
+    if (engine) return { status: 'error', message: '이미 동기화에 연결돼 있어요.' }
+    const read = await look(kind)
+    if (read.status !== 'merged') return read
     // A base from another root (the other provider, or a root made anew) says nothing about this one.
     const plan = await planConnect(db, read.merged, deps.scan, read.key === rootOf(readState(stateFile)))
     return { status: 'ready', plan: read.started ? { ...plan, interrupted: read.started.device } : plan }
+  }
+
+  /** Why this profile cannot move to `kind` now (spec v2.7): it moves from the storage it syncs with to the other one. */
+  function moveRefusal(kind: SyncProviderKind): string | null {
+    const from = kindOf(readState(stateFile).provider)
+    if (from === null || engine === null) return '먼저 동기화에 연결해 주세요.'
+    if (from === kind) return `이미 ${NAME[kind]}와 동기화하고 있어요.`
+    return providers[kind] ? null : `이 기기에서는 ${NAME[kind]} 동기화를 쓸 수 없어요.`
+  }
+
+  async function prepareMove(kind: SyncProviderKind): Promise<ConnectPrepare> {
+    await stopping
+    if (!providers[kind]) return { status: 'unavailable' }
+    const refusal = moveRefusal(kind)
+    if (refusal !== null) return { status: 'error', message: refusal }
+    // The storage looked at is never the one in use.
+    const read = await look(kind)
+    if (read.status !== 'merged') return read
+    const plan = movePlan(await planConnect(db, read.merged, deps.scan, false))
+    return { status: 'ready', plan: read.started ? { ...plan, interrupted: read.started.device } : plan }
+  }
+
+  /** What to tell a person when a root cannot be connected or moved to now. */
+  const unreachable = (kind: SyncProviderKind, read: Exclude<Awaited<ReturnType<typeof readRoot>>, { status: 'merged' }>): string =>
+    read.status === 'error' ? read.message
+      : read.status === 'uploading' ? `다른 기기(${read.device})가 아직 올리고 있어요. 다 올린 뒤 다시 연결해 주세요.`
+        : read.status === 'needs-auth' ? '먼저 Google 계정을 연결해 주세요.' : `지금은 ${NAME[kind]}에 연결할 수 없어요. 상태를 확인한 뒤 다시 시도해 주세요.`
+
+  /**
+   * Moves this profile to the other storage (spec v2.7): a last pass with the
+   * old root, which must go through, then the new root, uploaded whole when it
+   * is empty and merged by id when it holds data (its first pull rebases the
+   * base). The old root is told and let go once the new one holds everything
+   * (finishMove). Its files stay.
+   */
+  async function move(kind: SyncProviderKind, expect?: ConnectPlan['kind']): Promise<void> {
+    await stopping
+    if (busy) throw new Error('동기화 연결을 이미 진행하고 있어요.')
+    const refusal = moveRefusal(kind)
+    if (refusal !== null) throw new Error(refusal)
+    const state = readState(stateFile), from = kindOf(state.provider)!, old = engine!
+    busy = true
+    try {
+      // What this device changed goes to the old root, and what others left there comes here, before it is let go.
+      // A pass that did not go through leaves this device behind the old root: its older values would go up as new.
+      const asked = Date.now()
+      await old.syncNow()
+      const last = old.state()
+      if (last.state !== 'synced' || last.at < asked) {
+        throw new Error(`${NAME[from]}와 아직 다 맞추지 못했어요. 동기화가 끝난 뒤 다시 옮겨 주세요. ${NAME[from]}를 더 쓸 수 없으면 고급의 연결 해제 뒤 ${NAME[kind]}에 연결해 주세요.`)
+      }
+      const read = await readRoot(kind, true)
+      if (read.status !== 'merged' || read.key === null) throw new Error(read.status === 'merged' ? unreachable(kind, { status: 'unavailable' }) : unreachable(kind, read))
+      const other = deps.boundElsewhere(read.key)
+      if (other !== null) throw new Error(`이 저장소는 ${other}과 연결돼 있어요. 그 프로필에서 연결을 해제한 뒤 다시 시도해 주세요.`)
+      const plan = movePlan(await planConnect(db, read.merged, deps.scan, false))
+      if (expect !== undefined && plan.kind !== expect) throw new Error(`그사이 ${NAME[kind]}의 자료가 바뀌었어요. 다시 확인해 주세요.`)
+      // Disconnected meanwhile: the person asked to stop, so nothing is bound again.
+      if (engine !== old) throw new Error('동기화 연결이 해제돼 옮기지 않았어요.')
+      // Nothing more goes to the old root but the line saying where this device went.
+      engine = null
+      await old.stop()
+      if (kindOf(readState(stateFile).provider) !== from) throw new Error('동기화 연결이 해제돼 옮기지 않았어요.')
+      // The new root's first pull rebases the base onto what it reads, then applies. A first upload into an empty root is stamped from `clock`.
+      const moving: Moving = { provider: from, root: rootOf(state), at: Date.now(), clock: old.clock(), rebase: true }
+      patchState(stateFile, { provider: kind, root: read.key, moving })
+      start(kind)
+      if (kind === 'gdrive' && providers.gdrive?.lookup()?.made) log('move', kind, 'made a new root folder')
+    } catch (error) {
+      log('move', kind, `error: ${messageOf(error)}`)
+      throw error
+    } finally {
+      busy = false
+      publish()
+    }
   }
 
   /**
@@ -303,11 +469,7 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     busy = true
     try {
       const read = await readRoot(kind, true)
-      if (read.status !== 'merged' || read.key === null) {
-        throw new Error(read.status === 'error' ? read.message
-          : read.status === 'uploading' ? `다른 기기(${read.device})가 아직 올리고 있어요. 다 올린 뒤 다시 연결해 주세요.`
-            : read.status === 'needs-auth' ? '먼저 Google 계정을 연결해 주세요.' : `지금은 ${NAME[kind]}에 연결할 수 없어요. 상태를 확인한 뒤 다시 시도해 주세요.`)
-      }
+      if (read.status !== 'merged' || read.key === null) throw new Error(read.status === 'merged' ? unreachable(kind, { status: 'unavailable' }) : unreachable(kind, read))
       const other = deps.boundElsewhere(read.key)
       if (other !== null) throw new Error(`이 저장소는 ${other}과 연결돼 있어요. 그 프로필에서 연결을 해제한 뒤 다시 시도해 주세요.`)
       if (mode === 'import') {
@@ -360,6 +522,13 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     }
   }
 
+  /** "나중에" on another device's move: neither it nor an earlier one is offered again. */
+  function dismissMove(t: number): void {
+    const was = readState(stateFile).move_dismissed
+    patchState(stateFile, { move_dismissed: Math.max(t, typeof was === 'number' ? was : 0) })
+    publish()
+  }
+
   function rename(name: string): void {
     const trimmed = name.normalize('NFC').trim()
     if (trimmed === '' || trimmed.length > MAX_NAME || /[\u0000-\u001f\u007f-\u009f]/.test(trimmed)) throw new Error('기기 이름은 1~64자로, 제어 문자 없이 써 주세요.')
@@ -384,6 +553,9 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     view,
     prepare,
     connect,
+    prepareMove,
+    move,
+    dismissMove,
     disconnect,
     signIn,
     /** This profile stops being the active one (a new profile was made): unbind it, so the next one can connect. An unbound profile is left untouched. */
@@ -392,13 +564,21 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     },
     syncNow: async () => {
       await engine?.syncNow()
+      // A move's last step a pass started (spec v2.7).
+      await finishing
       publish()
     },
     rename,
     /** This profile syncs now: its synced PDFs only take end-page appends. */
     bound: () => engine !== null,
-    pause: async () => engine?.pause(),
-    resume: () => engine?.resume(),
+    pause: async () => {
+      paused = true
+      await engine?.pause()
+    },
+    resume: () => {
+      paused = false
+      engine?.resume()
+    },
     stop: () => engine?.stop()
   }
 }

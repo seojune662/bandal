@@ -12,7 +12,7 @@ import { hashFile, writeBase, type Stamped } from './apply'
 import { packLog, specNote } from './export'
 import { sha256, type MetaEvent } from './format'
 import { isSyncedFile, reconcileDocs, type Scan, type SyncDocRow } from './localDocs'
-import { isAlive, type MergedState } from './merge'
+import { isAlive, type MergedState, type Register } from './merge'
 
 const MANAGED = "source = 'managed' AND workspace_kind = 'course'"
 const pad = (seq: number): string => String(seq).padStart(8, '0')
@@ -55,6 +55,74 @@ export async function planConnect(db: Database, merged: MergedState, scan: (fold
     pairs.push({ local: course.id, remote: match[0], name: course.name })
   }
   return { kind: 'choose', local, remote, pairs }
+}
+
+/** A move (spec v2.7): the root to move to holds nothing yet (`upload`), or holds data to merge with by id (`join`). */
+export function movePlan(plan: ConnectPlan): ConnectPlan {
+  return { ...plan, kind: plan.kind === 'upload' ? 'upload' : 'join', pairs: [] }
+}
+
+interface Stamp { t: number | null; device: string | null }
+/** (t, device_id) order; a derived value, which has no t, is older than any. */
+const before = (a: Stamp, b: Stamp): boolean =>
+  a.t === null ? b.t !== null : b.t !== null && (a.t !== b.t ? a.t < b.t : (a.device ?? '') < (b.device ?? ''))
+
+/**
+ * A move (spec v2.7): the base, what this profile last synced with the old
+ * root, made to describe the new one. Where the new root holds a value at
+ * least as new, the base stays, so what both roots hold alike settles without
+ * a write and a change made there applies here. Where it holds an older value,
+ * the base becomes that one; where it holds none, the base goes. Either way
+ * this device's value then goes up: a change made after the other device left
+ * the old root, a deletion included, or whatever the new root lacks. Course
+ * aliases stay, as they name the ids every device shares. `merged` carries
+ * this profile's course ids (localize).
+ *
+ * A note's text goes by content, not stamps: a text the new root never had
+ * was written in the old root after the moving device left it, so it goes up
+ * whatever the new root's stamp says. When the new root's note changed after
+ * the move (it names more than one text), this text did not start from the
+ * one there: it goes up without md_base, so both stay heads and neither is
+ * lost (a conflict copy).
+ */
+export function rebase(db: Database, merged: MergedState): void {
+  const registerOf = (kind: string, id: string, field: string): Register | null => {
+    const entity = (kind === 'course' ? merged.courses : merged.docs).get(id)
+    if (entity === undefined) return null
+    if (field === 'deleted') return entity.deleted
+    if (field === 'hash') return entity.fields.get(entity.fields.get('type')?.value === 'pdf' ? 'pdf_sha256' : 'md_hash') ?? null
+    return entity.fields.get(field) ?? null
+  }
+  const meta = db.prepare('SELECT kind, entity_id, field, value_json, t, device_id FROM sync_meta').all() as
+    { kind: string; entity_id: string; field: string; value_json: string; t: number | null; device_id: string | null }[]
+  const ink = db.prepare('SELECT id, t, device_id FROM sync_ink').all() as { id: string; t: number; device_id: string }[]
+  const drop = db.prepare('DELETE FROM sync_meta WHERE entity_id = ? AND field = ?')
+  const take = db.prepare('UPDATE sync_meta SET value_json = ?, t = ?, device_id = ? WHERE entity_id = ? AND field = ?')
+  const resend = db.prepare('UPDATE sync_docs SET synced_hash = NULL WHERE document_id = ?')
+  const forget = db.prepare('DELETE FROM sync_ink WHERE id = ?')
+  const compare = db.prepare("UPDATE sync_ink SET updated_at = '' WHERE id = ?")
+  db.transaction(() => {
+    for (const row of meta) {
+      const next = registerOf(row.kind, row.entity_id, row.field)
+      const texts = row.field === 'hash' ? merged.noteHashes.get(row.entity_id) : undefined
+      const unknown = texts !== undefined && !texts.includes(JSON.parse(row.value_json) as string)
+      if (next !== null && !unknown && !before(next, { t: row.t, device: row.device_id })) continue
+      if (next === null) drop.run(row.entity_id, row.field)
+      else {
+        // The repository trims course names and colours: the base holds what it would store (apply courseRemote).
+        const value = unknown && texts.length > 1 ? null : row.kind === 'course' && typeof next.value === 'string' ? next.value.trim() : next.value
+        take.run(JSON.stringify(value), next.t, next.device, row.entity_id, row.field)
+      }
+      // The file reads as edited, so its bytes are compared with the new root's and go up where they differ.
+      if (row.field === 'hash') resend.run(row.entity_id)
+    }
+    for (const row of ink) {
+      const next = merged.ink.get(row.id)
+      if (next === undefined) forget.run(row.id)
+      // Kept older than this device's version, so the root's does not apply; an updated_at no row has makes the export compare and send it.
+      else if (before(next, { t: row.t, device: row.device_id })) compare.run(row.id)
+    }
+  })()
 }
 
 /** What this profile synced with another root: dropped, so the first pass compares everything as new. */
