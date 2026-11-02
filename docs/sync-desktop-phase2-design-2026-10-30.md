@@ -1400,7 +1400,7 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
   - 클라이언트 ID는 `MAIN_VITE_GMAIL_CLIENT_ID`, 시크릿은 `MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET`이다(릴리스 워크플로가 이미 둘 다 넣는다).
 - `sync/drive.ts`: DriveProvider. 스코프는 `drive.file` 하나다.
 - 런타임이 iCloud와 Drive를 함께 다룬다. 설정 화면에서 저장소를 고른다. Mac은 둘 다, Windows는 Drive만 보인다.
-- 진입점은 여전히 `BANDAL_SYNC_UI=1` 뒤에 있다(#15).
+- 진입점은 여전히 `BANDAL_SYNC_UI=1` 뒤에 있다(#15). PR8에서 이 플래그를 지웠다(27장).
 
 ### 24.2 DriveProvider
 
@@ -1494,7 +1494,7 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
 - Windows의 iCloud(실험적)는 PR8이다.
 - P6(`moved_to`, `bundle_id`)는 스펙 제안으로 남긴다.
 
-### 24.8 수동 시험 (Drive, mac과 Windows 각각, `BANDAL_SYNC_UI=1`로 실행)
+### 24.8 수동 시험 (Drive, mac과 Windows 각각. PR8 머지 전 빌드는 `BANDAL_SYNC_UI=1`로 실행)
 
 1. 설정 › 동기화 › Google Drive › [Google 계정 연결]. 동의 화면에 "이 앱으로 만든 Google Drive 파일" 권한 하나만 보이는지, 로그인 뒤 계정 주소가 보이는지.
 2. [Google Drive에 연결] → "과목 N개, 문서 M개를 Google Drive에 올립니다" → [시작]. drive.google.com에 Bandal 폴더와 `bandal.json`, `log/`, `pdf/`가 생기는지.
@@ -1629,4 +1629,23 @@ PR3는 상태 테이블(v39), device_id·seq·기기 지문, 문서 ID 고정, a
   - 표시에 `started`를 정수 ms로 쓴다. `Date().timeIntervalSince1970 * 1000`은 소수이므로 정수로 바꿔 쓴다. 정수가 아닌 값은 다른 기기가 없는 것으로 읽는다(예제 18).
   - 기기 파일이나 `last_seen`이 없을 때 부록 J는 진행 중으로 본다. 이것을 `started` 5분 규칙으로 바꾼다.
   - Drive 15초 창에서 `bandal.json`을 빼는 것은 부록 J에 이미 있다.
+
+## 27. 3단계 PR8: 동기화 플래그 제거 (2026-11-02)
+
+- **근거(사용자, 11-02)**: 실기기 Drive 시험 A-3~A-8을 모두 통과했다. 받기, 양방향 과목·이름 변경, 필기 왕복, 오프라인 충돌 머지, Gmail 해제 뒤 Drive 유지를 확인했다. 데스크톱 시험 빌드는 a7411306(스펙 v2.6, `started` 포함)이다.
+- **바뀐 것**
+  - 설정 › 동기화가 플래그 없이 보인다. preload의 `syncUi`와 `BANDAL_SYNC_UI`를 지웠다.
+  - 엔진은 지금처럼 연결된 프로필에서만 돈다. 연결하지 않은 사용자에게는 달라지는 것이 없다.
+  - Gmail 플래그 `BANDAL_GMAIL_UI`는 그대로다. 제한 스코프 인증이 아직 보류 중이다.
+- **머지 시점(사용자 결정, 11-01)**
+  - 11/10 릴리스에는 동기화를 넣지 않는다.
+  - 동기화는 iPad가 App Store 승인을 받은 뒤 양쪽이 함께 낸다.
+  - 그래서 이 PR은 draft로 두고 출시일에 머지한다. 머지 뒤 첫 릴리스가 동기화 출시다.
+- **이번 보고에 이름이 없는 것**
+  - 24.8 전체의 Windows 실행. 이 PR로 Windows에도 Drive가 보인다. iCloud는 mac에만 있다.
+  - 24.8의 6(Google 계정에서 접근을 지운 뒤 다시 연결)과 8(50 MB가 넘는 PDF).
+  - 24.8의 9(X6) 가운데 v2.6 항목: 첫 업로드 중 기다림, 중단 뒤 합치기·가져오기, 로그.
+- **테스트**
+  - 단위: 플래그 없이 동기화가 목록에 있다. 필터를 되돌리면 실패한다.
+  - E2E `settingsShell` 4개가 통과한다. "모든 범주를 사이드바에서 연다"가 이제 동기화도 연다.
 
