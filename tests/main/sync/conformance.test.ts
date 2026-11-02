@@ -26,8 +26,8 @@ function project(state: MergedState): Record<string, unknown> {
   for (const [id, { value: { doc, object } }] of state.ink) ((ink[doc] ??= {})[String(object.page)] ??= {})[id] = object
   return {
     blocked: state.blocked,
-    // What a device about to connect decides from (spec v2.6): whose first upload, and when that device was last seen.
-    initial_upload: state.initialUpload === null ? null : { device: state.initialUpload, last_seen: state.devices.get(state.initialUpload)?.last_seen ?? null },
+    // What a device about to connect decides from (spec v2.6): whose first upload, since when, and when that device was last seen.
+    initial_upload: state.initialUpload && { ...state.initialUpload, last_seen: state.devices.get(state.initialUpload.device)?.last_seen ?? null },
     courses: Object.fromEntries([...state.courses].map(([id, entity]) => [id, { ...pick(entity, COURSE_FIELDS), alive: isAlive(entity) }])),
     docs: Object.fromEntries([...state.docs].map(([id, entity]) => {
       const fields = pick(entity, DOC_FIELDS)
@@ -82,7 +82,7 @@ test('every fixture folder is checked', () => {
     '01-basic', '02-same-id-both-edited', '03-delete-then-edit', '04-note-both-edited', '05-note-attachments',
     '06-path-collision', '07-out-of-range-coordinates', '08-format-not-2', '09-invalid-input', '10-same-stamp', '11-note-revert',
     '12-pdf-append', '13-course-delete', '14-append-chain', '15-initial-upload', '16-initial-upload-no-device',
-    '17-initial-upload-not-a-mark'
+    '17-initial-upload-not-a-mark', '18-initial-upload-bad-started'
   ])
 })
 

@@ -323,7 +323,7 @@ test('a root another device is still filling is waited on, and connected to once
   expect(b.runtime.view().provider).toBe('icloud')
 })
 
-test('a first upload that stopped, by an hour unseen or with no device file, allows merge and import but not overwrite (v2.6)', async () => {
+test('a first upload that stopped, by an hour unseen or with neither a device file nor started, allows merge and import but not overwrite (v2.6)', async () => {
   root = fixture('01-basic')
   root.set('bandal.json', Buffer.from(`{"format":2,"initial_upload":"${IPAD}"}`))
   root.set(`devices/${IPAD}.json`, ipadFile(Date.now() - 61 * 60_000))
@@ -335,7 +335,7 @@ test('a first upload that stopped, by an hour unseen or with no device file, all
   // Importing into a new profile only receives: allowed.
   await a.runtime.connect('icloud', 'import', [], 'choose')
   expect(a.seeds).toEqual([{ provider: 'icloud', root: 'icloud' }])
-  // No device file at all: stopped as well, named by the start of its id.
+  // No device file, and no started to go by: stopped as well, named by the start of its id.
   root.delete(`devices/${IPAD}.json`)
   expect(await a.runtime.prepare('icloud')).toMatchObject({ status: 'ready', plan: { kind: 'choose', interrupted: 'bbbbbbbb' } })
   await a.runtime.connect('icloud', 'merge', [], 'choose')
@@ -441,6 +441,39 @@ test('a first upload runs while its device was seen within the hour either way, 
   }
 })
 
+test('until its device file has a last_seen, a first upload runs for five minutes from started either way (v2.6)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    const now = Date.UTC(2026, 10, 2, 3)
+    vi.setSystemTime(now)
+    root = fixture('01-basic')
+    const b = device('mac-b')
+    const marked = async (started: number | undefined, deviceFile?: Record<string, unknown>): Promise<string> => {
+      root.set('bandal.json', Buffer.from(JSON.stringify({ format: 2, initial_upload: IPAD, started })))
+      if (deviceFile) root.set(`devices/${IPAD}.json`, Buffer.from(JSON.stringify(deviceFile)))
+      else root.delete(`devices/${IPAD}.json`)
+      const prepared = await b.runtime.prepare('icloud')
+      return prepared.status === 'uploading' ? prepared.device : prepared.status === 'ready' ? `stopped: ${prepared.plan.interrupted}` : prepared.status
+    }
+    // Marked, and its device file not written yet.
+    expect(await marked(now - 5 * 60_000)).toBe('bbbbbbbb')
+    expect(await marked(now - 5 * 60_000 - 1)).toBe('stopped: bbbbbbbb')
+    expect(await marked(now + 5 * 60_000)).toBe('bbbbbbbb')
+    expect(await marked(now + 5 * 60_000 + 1)).toBe('stopped: bbbbbbbb')
+    // Nothing to go by: no started, or one that is not a whole ms.
+    expect(await marked(undefined)).toBe('stopped: bbbbbbbb')
+    expect(await marked(now - 0.5)).toBe('stopped: bbbbbbbb')
+    // A device file without last_seen: started still stands in.
+    expect(await marked(now, { name: 'iPad Pro' })).toBe('iPad Pro')
+    expect(await marked(now - 6 * 60_000, { name: 'iPad Pro' })).toBe('stopped: iPad Pro')
+    // Once there is a last_seen, started says nothing.
+    expect(await marked(now - 24 * 60 * 60_000, { name: 'iPad Pro', last_seen: now })).toBe('iPad Pro')
+    expect(await marked(now, { name: 'iPad Pro', last_seen: now - 61 * 60_000 })).toBe('stopped: iPad Pro')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 test('a profile copied from another computer does not take that computer\'s mark as its own (v2.6)', async () => {
   root = fixture('01-basic')
   const b = device('mac-b')
@@ -475,6 +508,7 @@ test('each Drive attempt logs its own lookup, and a connect that made a new fold
   expect(await a.runtime.prepare('gdrive')).toMatchObject({ status: 'ready', plan: { kind: 'upload' } })
   await a.runtime.connect('gdrive', 'merge', [])
   expect(a.log().at(-1)).toMatchObject({ step: 'connect', outcome: 'made a new root folder', candidates: { made: true } })
+  await a.runtime.syncNow()
   const b = device('mac-b', { drive })
   expect(await b.runtime.prepare('gdrive')).toMatchObject({ status: 'ready' })
   // The next lookup fails before it sees any folder: its line holds that, not the folders found before.
