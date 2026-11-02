@@ -207,8 +207,8 @@ test('the recheck goes on after a failed or a waiting check, and stops on cancel
 const MOVED_AT = Date.UTC(2026, 10, 2, 4)
 /** Bound to iCloud on a Mac that can use both; the iPad has moved to Google Drive. */
 const offered = {
-  ...bound, available: { icloud: true, gdrive: true }, moved: { device: 'iPad Pro', provider: 'gdrive', t: MOVED_AT },
-  devices: [bound.devices[0], { ...bound.devices[1], moved_to: { provider: 'gdrive', t: MOVED_AT } }]
+  ...bound, available: { icloud: true, gdrive: true }, moved: { device: 'iPad Pro', provider: 'gdrive', t: MOVED_AT, account_hint: 'student@example.com' },
+  devices: [bound.devices[0], { ...bound.devices[1], moved_to: { provider: 'gdrive', t: MOVED_AT, account_hint: 'student@example.com' } }]
 }
 const join = { kind: 'join', local: { courses: 1, docs: 2 }, remote: { courses: 1, docs: 2 }, pairs: [] }
 
@@ -218,10 +218,11 @@ test('another device\'s move is followed in one step: a Google sign-in when need
     'sync:prepareMove': () => ({ status: 'ready', plan: join }), 'sync:move': () => ({ ...bound, provider: 'gdrive', moving: 'icloud', moved: null })
   })
   try {
-    expect(element.querySelector('.sync-move-offer')!.textContent).toContain('iPad Pro에서 Google Drive로 옮겼어요')
+    expect(element.querySelector('.sync-move-offer')!.textContent).toContain('iPad Pro에서 Google Drive(student@example.com)로 옮겼어요')
     expect(element.textContent).toContain('iPad Pro · Google Drive로 옮김')
     await click(button(element, '옮기기'))
     expect(ipc.invoke.mock.calls.map(([channel]) => channel).filter(channel => channel !== 'sync:status')).toEqual(['sync:signIn', 'sync:prepareMove', 'sync:move'])
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:signIn', { follow: true })
     expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'join' })
     expect(element.textContent).toContain('Google Drive로 옮기는 중이에요. 다 올리면 iCloud에 알리고 연결을 끊어요.')
     expect(element.querySelector('.sync-move-offer')).toBeNull()
@@ -240,8 +241,8 @@ test('"나중에" puts the offer away, and a storage this computer cannot use is
     await unmount()
   }
   const windows = {
-    ...offered, provider: 'gdrive', available: { icloud: false, gdrive: true }, moved: { device: 'iPad Pro', provider: 'icloud', t: MOVED_AT },
-    devices: [bound.devices[0], { ...bound.devices[1], moved_to: { provider: 'icloud', t: MOVED_AT } }]
+    ...offered, provider: 'gdrive', available: { icloud: false, gdrive: true }, moved: { device: 'iPad Pro', provider: 'icloud', t: MOVED_AT, account_hint: null },
+    devices: [bound.devices[0], { ...bound.devices[1], moved_to: { provider: 'icloud', t: MOVED_AT, account_hint: null } }]
   }
   const other = await render({ 'sync:status': () => windows, 'sync:dismissMove': () => ({ ...windows, moved: null }) })
   try {
@@ -331,14 +332,19 @@ test('a one-step move into storage that looks empty stops and asks: another Goog
   const { element, unmount } = await render({
     'sync:status': () => ({ ...offered, account: 'other@example.com' }),
     'sync:prepareMove': () => ({ status: 'ready', plan: upload }),
+    'sync:signIn': () => ({ ...offered, account: 'other@example.com' }),
     'sync:move': () => ({ ...bound, provider: 'gdrive', moving: 'icloud' })
   })
   try {
     await click(button(element, '옮기기'))
     expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:move')
-    expect(element.textContent).toContain('iPad Pro에서 옮긴 자료가 Google Drive에 아직 보이지 않아요. 같은 Google 계정인지 확인해 주세요.')
+    expect(element.textContent).toContain('iPad Pro에서 옮긴 자료가 Google Drive에 아직 보이지 않아요. 같은 Google 계정(student@example.com)인지 확인해 주세요. 지금 로그인한 계정: other@example.com.')
     await click(button(element, '다시 확인'))
     expect(ipc.invoke.mock.calls.filter(([channel]) => channel === 'sync:prepareMove')).toHaveLength(2)
+    // Signing in again offers the account the iPad moved to, then looks again.
+    await click(button(element, 'Google 계정 다시 고르기'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:signIn', { follow: true })
+    expect(ipc.invoke.mock.calls.filter(([channel]) => channel === 'sync:prepareMove')).toHaveLength(3)
     await click(button(element, '옮기기'))
     expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'upload' })
   } finally {

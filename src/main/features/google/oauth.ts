@@ -30,10 +30,11 @@ export async function tokenRequest(body: URLSearchParams): Promise<{ ok: boolean
 /**
  * Asks for `scope` in the browser and waits for the redirect; resolves with the
  * authorization-code grant for `tokenRequest`. `label` names the connection on
- * the page the browser shows and in errors ("메일", "Google Drive").
+ * the page the browser shows and in errors ("메일", "Google Drive"). `loginHint`
+ * offers that account first; the person can still pick another.
  */
-export async function authorize(options: { scope: string; label: string; signal: AbortSignal }): Promise<URLSearchParams> {
-  const { scope, label, signal } = options
+export async function authorize(options: { scope: string; label: string; signal: AbortSignal; loginHint?: string }): Promise<URLSearchParams> {
+  const { scope, label, signal, loginHint } = options
   const verifier = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url')
   const server = createServer()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -68,7 +69,7 @@ export async function authorize(options: { scope: string; label: string; signal:
     // Attach a rejection handler before opening the browser (which can itself fail).
     void codePromise.catch(() => {})
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-    url.search = new URLSearchParams({ client_id: googleClient().clientId, redirect_uri: redirect, response_type: 'code', scope, state: nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', access_type: 'offline', prompt: 'consent select_account' }).toString()
+    url.search = new URLSearchParams({ client_id: googleClient().clientId, redirect_uri: redirect, response_type: 'code', scope, state: nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', access_type: 'offline', prompt: 'consent select_account', ...(loginHint ? { login_hint: loginHint } : {}) }).toString()
     if (signal.aborted) throw new Error(`${label} 연결을 취소했어요.`)
     await shell.openExternal(url.href)
     return new URLSearchParams({ code: await codePromise, code_verifier: verifier, redirect_uri: redirect, grant_type: 'authorization_code' })

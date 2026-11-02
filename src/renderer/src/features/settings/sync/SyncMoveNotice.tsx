@@ -20,7 +20,8 @@ export function SyncMoveNotice(): null {
       const moved = view.moved
       if (moved === null || !view.available[moved.provider] || told.has(moved.t)) return
       told.add(moved.t)
-      showToastWithAction(`${moved.device}에서 ${NAME[moved.provider]}로 옮겼어요. 이 기기도 옮길까요?`, { label: '동기화 설정', run: () => openSettings('sync') })
+      const storage = `${NAME[moved.provider]}${moved.account_hint ? `(${moved.account_hint})` : ''}`
+      showToastWithAction(`${moved.device}에서 ${storage}로 옮겼어요. 이 기기도 옮길까요?`, { label: '동기화 설정', run: () => openSettings('sync') })
     }
     void invoke('sync:status', {}).then(tell, () => {})
     const off = onPush('sync:changed', tell)

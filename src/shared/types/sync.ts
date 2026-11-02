@@ -15,8 +15,8 @@ export interface SyncDevice {
   name: string
   platform: string | null
   last_seen: number | null
-  /** The device left this root for the other storage (spec v2.7 `moved_to`), and when. */
-  moved_to: { provider: SyncProviderKind; t: number } | null
+  /** The device left this root for the other storage (spec v2.7 `moved_to`), when, and the Google account it went to if it said. */
+  moved_to: { provider: SyncProviderKind; t: number; account_hint: string | null } | null
 }
 
 export interface SyncView {
@@ -33,7 +33,7 @@ export interface SyncView {
   /** A move's last step is still to come (spec v2.7): the storage this profile left, which is told and let go once the new one holds everything. */
   moving: SyncProviderKind | null
   /** Another device of this root moved to the other storage and this one has not followed or said later (spec v2.7): the latest one. */
-  moved: { device: string; provider: SyncProviderKind; t: number } | null
+  moved: { device: string; provider: SyncProviderKind; t: number; account_hint: string | null } | null
 }
 
 export interface ConnectPlan {

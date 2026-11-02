@@ -165,10 +165,13 @@ test('an expired token is refreshed once for parallel calls; a revoked grant ask
   expect(await b.status()).toBe('needs-auth')
 })
 
+/** The page the last sign-in opened. */
+let opened: URL | null = null
 /** The browser: a garbled request to the loopback port first (anything local can send one), then Google's redirect. */
 function browser() {
   openExternal.mockImplementation(async (value: string) => {
     const auth = new URL(value)
+    opened = auth
     expect(auth.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/drive.file')
     const redirect = new URL(auth.searchParams.get('redirect_uri')!)
     const garbled = await new Promise<string>(resolve => {
@@ -199,6 +202,15 @@ test('signing in asks only for drive.file in the browser and keeps the account; 
   await a.signIn()
   expect(a.account()).toBe('me@example.com')
   expect(await a.status()).toBe('ready')
+})
+
+test('a sign-in following another device\'s move offers its account first, and the person can still pick another (v2.7)', async () => {
+  browser()
+  const a = device({ signedIn: false })
+  await a.signIn('student@example.com')
+  expect([opened!.searchParams.get('login_hint'), opened!.searchParams.get('prompt')]).toEqual(['student@example.com', 'consent select_account'])
+  await a.signIn()
+  expect(opened!.searchParams.has('login_hint')).toBe(false)
 })
 
 test('a refresh of the old sign-in that comes back refused does not undo a newer sign-in', async () => {
