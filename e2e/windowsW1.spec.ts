@@ -23,13 +23,17 @@ const COMMAND_KEY = 'HKCU\\Software\\Classes\\bandal\\shell\\open\\command'
 const run = promisify(execFile)
 
 // Finds the Bandal message box (class #32770) whose text includes E2E_TEXT,
-// invokes the E2E_BUTTON button and prints the box's texts as JSON. UI
-// Automation lists a modal box under the window that owns it.
+// clicks its E2E_BUTTON button and prints the box's texts as JSON once it has
+// closed. UI Automation lists a modal box under the window that owns it, and
+// Electron's custom buttons are command-link panes without Invoke, so the
+// script clicks the button's centre with the real mouse.
 const MESSAGE_BOX = String.raw`
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 trap { [Console]::Out.WriteLine("$_"); exit 1 }
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class E2EMouse { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra); }'
+[void][E2EMouse]::SetProcessDPIAware()
 $nl = [string][char]10
 $A = [Windows.Automation.AutomationElement]
 $scope = [Windows.Automation.TreeScope]
@@ -41,6 +45,15 @@ function Boxes {
     $window.FindAll($scope::Children, $isBox)
   }
 }
+function Showing {
+  foreach ($box in @(Boxes)) {
+    try {
+      $names = @($box.FindAll($scope::Descendants, [Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name })
+      if (($names -join $nl).Contains($env:E2E_TEXT)) { return $true }
+    } catch { }
+  }
+  return $false
+}
 $seen = @()
 $deadline = [DateTime]::UtcNow.AddMilliseconds([int]$env:E2E_TIMEOUT_MS)
 while ([DateTime]::UtcNow -lt $deadline) {
@@ -49,17 +62,26 @@ while ([DateTime]::UtcNow -lt $deadline) {
     $texts = @(@($box.Current.Name) + @($all | ForEach-Object { $_.Current.Name }) | Where-Object { $_ })
     $seen = $texts
     if (-not (($texts -join $nl).Contains($env:E2E_TEXT))) { continue }
-    # Electron shows custom buttons as command links, which are not of the Button type.
-    $button = $all | Where-Object {
-      ($_.Current.Name -split $nl)[0].Trim() -eq $env:E2E_BUTTON -and [bool]$_.GetCurrentPropertyValue($A::IsInvokePatternAvailableProperty)
-    } | Select-Object -First 1
+    $button = $all | Where-Object { ($_.Current.Name -split $nl)[0].Trim() -eq $env:E2E_BUTTON } | Select-Object -First 1
     if ($null -eq $button) {
       $kinds = @($all | ForEach-Object { "$($_.Current.ControlType.ProgrammaticName)=$($_.Current.Name)" }) -join ' | '
-      throw "no '$($env:E2E_BUTTON)' to invoke among: $kinds"
+      throw "no '$($env:E2E_BUTTON)' among: $kinds"
     }
-    $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
-    ConvertTo-Json -Compress -InputObject $texts
-    exit 0
+    if ([bool]$button.GetCurrentPropertyValue($A::IsInvokePatternAvailableProperty)) {
+      $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+    } else {
+      $rect = $button.Current.BoundingRectangle
+      [void][E2EMouse]::SetCursorPos([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+      Start-Sleep -Milliseconds 150
+      [E2EMouse]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+      [E2EMouse]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    }
+    $closeBy = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $closeBy) {
+      if (-not (Showing)) { ConvertTo-Json -Compress -InputObject $texts; exit 0 }
+      Start-Sleep -Milliseconds 200
+    }
+    throw "clicked '$($env:E2E_BUTTON)' at $($button.Current.BoundingRectangle) but the box is still open"
   }
   Start-Sleep -Milliseconds 200
 }
