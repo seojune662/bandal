@@ -12,12 +12,14 @@ import {
   prosePluginsCtx,
   rootAttrsCtx,
   rootCtx,
-  serializerCtx
+  serializerCtx,
+  editorViewOptionsCtx
 } from '@milkdown/core'
 import type { MilkdownPlugin } from '@milkdown/ctx'
 import { DOMSerializer as ProseDOMSerializer } from '@milkdown/prose/model'
 import { Plugin, TextSelection } from '@milkdown/prose/state'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
+import { isReadOnlyWorkspace } from '../../lib/readOnlyWorkspace'
 import type { IDockviewPanelProps } from 'dockview'
 import {
   useCallback,
@@ -404,6 +406,7 @@ export function MilkdownNoteEditor({
             'aria-label': '마크다운 필기 편집기',
             'aria-multiline': 'true'
           })
+          if (isReadOnlyWorkspace()) context.update(editorViewOptionsCtx, (options) => ({ ...options, editable: () => false }))
           context.set(wikilinkContextCtx.key, {
             courseId,
             getSelfRelPath: () => relPathRef.current
@@ -1120,6 +1123,11 @@ function NoteSession({
       }
 
       if (mtimeRef.current === null) return { status: 'unavailable' }
+      // A read-only host (web app phase 1): the editor cannot change the note, and its own normalization is never saved.
+      if (isReadOnlyWorkspace()) {
+        setStatusIfMounted('saved')
+        return { status: 'saved' }
+      }
 
       // Single-writer rule: only the panel that last received a local edit
       // persists the file. Mirroring panels report saved — their content is

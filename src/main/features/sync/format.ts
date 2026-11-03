@@ -114,7 +114,7 @@ function sound(value: unknown, depth: number): boolean {
   return Object.entries(value).every(([key, item]) => !LONE_SURROGATE.test(key) && sound(item, depth + 1))
 }
 
-const text = (bytes: Uint8Array): string => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8')
+const text = (bytes: Uint8Array): string => new TextDecoder('utf-8').decode(bytes)
 
 function json(bytes: Uint8Array, limit: number): unknown {
   if (bytes.byteLength > limit) fail('file is over its size limit')

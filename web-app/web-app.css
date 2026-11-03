@@ -1,0 +1,39 @@
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg-app); color: var(--text-primary); font-family: var(--font-sans); }
+
+/* Sign-in and loading: a single card on the app background, in the app's own tokens. */
+.web-gate { min-height: 100%; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+.web-gate-card { width: min(440px, 100%); padding: 32px; border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--bg-surface); box-shadow: var(--shadow-lg); }
+.web-gate-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 700; text-decoration: none; margin-bottom: 28px; }
+.web-gate-moon { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: inset -6px 0 0 0 var(--bg-surface); flex: none; }
+.web-gate h1 { font-size: 22px; line-height: 1.35; margin: 0 0 10px; letter-spacing: -0.01em; }
+.web-gate p { margin: 0 0 20px; color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
+.web-gate-muted { font-size: 12px !important; color: var(--text-muted) !important; margin-top: 10px !important; }
+.web-gate-alert { padding: 10px 12px; border-radius: 8px; background: var(--status-danger-muted, var(--bg-raised)); color: var(--status-danger, var(--text-primary)) !important; }
+.web-gate-primary, .web-gate-secondary { display: flex; width: 100%; box-sizing: border-box; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 0 16px; border-radius: 10px; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; }
+.web-gate-primary { background: var(--accent); color: var(--on-accent); border: 0; }
+.web-gate-primary:disabled { opacity: .6; cursor: progress; }
+.web-gate-secondary { margin-top: 8px; background: transparent; color: var(--text-primary); border: 1px solid var(--border-subtle); }
+.web-gate-secondary:hover { background: var(--bg-raised); }
+.web-gate-g { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #fff; color: #1a73e8; font-weight: 800; font-size: 12px; }
+.web-gate-notes { margin: 22px 0 0; padding: 18px 0 0 18px; border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+.web-gate-progress { height: 6px; border-radius: 3px; background: var(--bg-raised); overflow: hidden; margin-top: 18px; }
+.web-gate-progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s ease; }
+.web-gate-progress span[data-indeterminate] { width: 35%; animation: web-gate-slide 1.2s ease-in-out infinite; }
+@keyframes web-gate-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .web-gate-progress span[data-indeterminate] { animation: none; width: 100%; opacity: .4; } }
+
+/* Signed in: the production AppShell below a 36px web bar. */
+.web-app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.web-bar { display: flex; align-items: center; gap: 10px; flex: none; height: 36px; padding: 0 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-secondary); }
+.web-bar-brand { display: inline-flex; align-items: center; gap: 6px; color: var(--text-primary); font-weight: 700; text-decoration: none; }
+.web-bar-brand .web-gate-moon { width: 14px; height: 14px; box-shadow: inset -4px 0 0 0 var(--bg-surface); }
+.web-bar-badge { padding: 2px 8px; border-radius: 999px; background: var(--accent-muted); color: var(--accent); font-weight: 600; font-size: 11px; }
+.web-bar-source { color: var(--text-muted); }
+.web-bar-spacer { flex: 1; }
+.web-bar-account { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.web-bar button { padding: 4px 10px; border-radius: 6px; font-size: 12px; color: var(--text-secondary); }
+.web-bar button:hover { background: var(--bg-raised); color: var(--text-primary); }
+.web-app-body { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.web-notice { position: fixed; z-index: 100000; bottom: 18px; left: 14px; right: 14px; margin: auto; max-width: 560px; padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow-lg); background: var(--bg-surface); color: var(--text-primary); font-size: 13px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+@media (max-width: 640px) { .web-bar-source, .web-bar-account { display: none; } }
