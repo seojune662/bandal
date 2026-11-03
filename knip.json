@@ -3,6 +3,9 @@
   "entry": [
     "web-demo/bootstrap.ts",
     "web-demo/mediaUrl.ts",
+    "web-app/bootstrap.ts",
+    "web-app/mediaUrl.ts",
+    "web-app/*.test.ts",
     "server/marketplace/index.ts",
     "sdk/cli/index.ts",
     "src/renderer/src/{main,overlay-main,pip-main,settings-main}.tsx",
@@ -14,6 +17,7 @@
   "project": [
     "src/**/*.{ts,tsx,mts,mjs}",
     "web-demo/*.{ts,tsx}",
+    "web-app/**/*.{ts,tsx}",
     "scripts/**/*.mjs",
     "e2e/**/*.ts",
     "tests/**/*.{ts,tsx}",

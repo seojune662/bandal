@@ -20,7 +20,7 @@
     "plugin:test": "pnpm plugin:build && node scripts/test-plugin-sdk.mjs",
     "plugin": "pnpm plugin:build && node out/plugin-cli/plugin.cjs",
     "build": "electron-vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p web-demo/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p web-demo/tsconfig.json && tsc --noEmit -p web-app/tsconfig.json",
     "deadcode": "knip --treat-config-hints-as-errors",
     "start": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
@@ -34,7 +34,8 @@
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:unsigned": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg:arm64 -c.mac.notarize=false -c.mac.identity=null",
     "native:calendar": "node scripts/build-calendar.mjs",
-    "build:web-demo": "node scripts/build-web-demo.mjs"
+    "build:web-demo": "node scripts/build-web-demo.mjs",
+    "build:web-app": "node scripts/build-web-app.mjs"
   },
   "dependencies": {
     "@fugood/whisper.node": "1.1.3",
