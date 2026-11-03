@@ -149,3 +149,12 @@
     transform: translateY(0);
   }
 }
+
+/* Settings results follow the file hits under their own small heading. */
+.quick-search__section {
+  display: block;
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}

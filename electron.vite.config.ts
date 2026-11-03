@@ -1,5 +1,6 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
@@ -74,7 +75,8 @@ export default defineConfig({
     plugins: [
       rendererConnectSrcPlugin('build', PRODUCTION_RENDERER_CONNECT_SOURCES),
       rendererConnectSrcPlugin('serve', DEVELOPMENT_RENDERER_CONNECT_SOURCES),
-      react()
+      react(),
+      tailwindcss()
     ],
     resolve: {
       // Milkdown Slice/Timer identity is a per-module-instance Symbol — TWO
@@ -94,7 +96,6 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
-          settings: resolve(__dirname, 'src/renderer/settings.html'),
           overlay: resolve(__dirname, 'src/renderer/overlay.html'),
           pip: resolve(__dirname, 'src/renderer/pip.html')
         }

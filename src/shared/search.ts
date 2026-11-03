@@ -23,10 +23,3 @@ export function isSearchEngineId(value: unknown): value is SearchEngineId {
   )
 }
 
-/** Korean display names for the settings picker. */
-export const SEARCH_ENGINE_NAMES: Record<SearchEngineId, string> = {
-  google: '구글',
-  naver: '네이버',
-  daum: '다음',
-  duckduckgo: '덕덕고'
-}

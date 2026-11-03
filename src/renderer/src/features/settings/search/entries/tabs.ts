@@ -1,0 +1,25 @@
+import type { SettingsCatalogEntry } from '../catalogTypes'
+
+export const TABS_ENTRIES = [
+  { id: 'tabs.browser', category: 'tabs', subTab: 'browser', title: 'settings.tabs.browser.title', description: 'settings.tabs.browser.description' },
+  { id: 'tabs.browser.shortcut', category: 'tabs', subTab: 'browser', group: 'tabs.browser', title: 'settings.tabs.browser.shortcut', description: 'settings.tabs.shortcut.description', keywords: ['shortcut', 'keybinding', 'hotkey', '단축키'] },
+  { id: 'tabs.browser.settings', category: 'tabs', subTab: 'browser', group: 'tabs.browser', title: 'settings.tabs.browser.settings', description: 'settings.tabs.browser.settingsDescription', keywords: ['browser settings', 'home page', 'search engine', '홈페이지', '검색 엔진'] },
+  { id: 'tabs.markdown', category: 'tabs', subTab: 'markdown', title: 'settings.tabs.markdown.title', description: 'settings.tabs.markdown.description', keywords: ['markdown', 'md'] },
+  { id: 'tabs.markdown.shortcut', category: 'tabs', subTab: 'markdown', group: 'tabs.markdown', title: 'settings.tabs.markdown.shortcut', description: 'settings.tabs.shortcut.description', keywords: ['shortcut', 'keybinding', 'hotkey', '단축키'] },
+  { id: 'tabs.markdown.titlePrefix', category: 'tabs', subTab: 'markdown', group: 'tabs.markdown', title: 'settings.tabs.markdown.titlePrefix', description: 'settings.tabs.markdown.titlePrefixDescription', keywords: ['title', 'file name', 'prefix', '제목', '파일 이름'] },
+  { id: 'tabs.note', category: 'tabs', subTab: 'note', title: 'settings.tabs.note.title', description: 'settings.tabs.note.description', keywords: ['note', 'PDF note', 'whiteboard', 'handwriting', '필기'] },
+  { id: 'tabs.note.shortcut', category: 'tabs', subTab: 'note', group: 'tabs.note', title: 'settings.tabs.note.shortcut', description: 'settings.tabs.shortcut.description', keywords: ['shortcut', 'keybinding', 'hotkey', '단축키'] },
+  { id: 'tabs.note.paper', category: 'tabs', subTab: 'note', group: 'tabs.note', title: 'settings.tabs.note.paper', description: 'settings.tabs.note.paperDescription', keywords: ['paper', 'grid', 'dots', 'lines', 'template', '모눈', '줄', '점'] },
+  { id: 'tabs.note.orientation', category: 'tabs', subTab: 'note', group: 'tabs.note', title: 'settings.tabs.note.orientation', description: 'settings.tabs.note.orientationDescription', keywords: ['orientation', 'portrait', 'landscape', '세로', '가로'] },
+  { id: 'tabs.ai', category: 'tabs', subTab: 'ai', title: 'settings.tabs.ai.title', description: 'settings.tabs.ai.description', keywords: ['AI', 'chat', '채팅'] },
+  { id: 'tabs.ai.shortcut', category: 'tabs', subTab: 'ai', group: 'tabs.ai', title: 'settings.tabs.ai.shortcut', description: 'settings.tabs.shortcut.description', keywords: ['shortcut', 'keybinding', 'hotkey', '단축키'] },
+  { id: 'tabs.ai.settings', category: 'tabs', subTab: 'ai', group: 'tabs.ai', title: 'settings.tabs.ai.settings', description: 'settings.tabs.ai.settingsDescription', keywords: ['AI settings', 'Claude', 'Codex', 'provider', '모델'] },
+  { id: 'tabs.recording', category: 'tabs', subTab: 'recording', title: 'settings.tabs.recording.title', description: 'settings.tabs.recording.description', keywords: ['recording', 'captions', 'transcript', 'lecture', '강의', '자막'] },
+  { id: 'tabs.recording.shortcut', category: 'tabs', subTab: 'recording', group: 'tabs.recording', title: 'settings.tabs.recording.shortcut', description: 'settings.tabs.shortcut.description', keywords: ['shortcut', 'keybinding', 'hotkey', '단축키'] },
+  { id: 'tabs.recording.mic', category: 'tabs', subTab: 'recording', group: 'tabs.recording', title: 'settings.tabs.recording.mic', description: 'settings.tabs.recording.micDescription', keywords: ['microphone', 'mic', 'input device', '마이크', '입력 장치'] },
+  { id: 'tabs.recording.playbackRate', category: 'tabs', subTab: 'recording', group: 'tabs.recording', title: 'settings.tabs.recording.playbackRate', description: 'settings.tabs.recording.playbackRateDescription', keywords: ['playback speed', 'speed', 'rate', '배속', '속도'] },
+  { id: 'tabs.recording.sidebar', category: 'tabs', subTab: 'recording', group: 'tabs.recording', title: 'settings.tabs.recording.sidebar', description: 'settings.tabs.recording.sidebarDescription', keywords: ['sidebar', 'panel', '사이드바'] },
+  { id: 'tabs.recording.follow', category: 'tabs', subTab: 'recording', group: 'tabs.recording', title: 'settings.tabs.recording.follow', description: 'settings.tabs.recording.followDescription', keywords: ['auto scroll', 'follow', 'live captions', '자동 스크롤'] },
+  { id: 'tabs.recordingModel', category: 'tabs', subTab: 'recording', title: 'settings.tabs.recordingModel.title', description: 'settings.tabs.recordingModel.description', keywords: ['speech model', 'Whisper', 'SenseVoice', 'Zipformer', 'download', 'STT', '음성 인식'] },
+  { id: 'tabs.recordingModel.model', category: 'tabs', subTab: 'recording', group: 'tabs.recordingModel', title: 'settings.tabs.recordingModel.model', description: 'settings.tabs.recordingModel.modelDescription', keywords: ['Whisper', 'model', '모델'] }
+] as const satisfies readonly SettingsCatalogEntry[]

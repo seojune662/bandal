@@ -11,6 +11,7 @@ import {
 import { AdvancedPanel } from '../../../src/renderer/src/features/settings/advanced/AdvancedPanel'
 import { ExperimentalPanel } from '../../../src/renderer/src/features/settings/advanced/ExperimentalPanel'
 import { PluginsCategoryPanel } from '../../../src/renderer/src/features/settings/PluginsCategoryPanel'
+import { ConfirmDialogContext, type ConfirmFn } from '../../../src/renderer/src/components/ui/confirm-dialog-context'
 import {
   setIpcAdapter,
   type IpcAdapter
@@ -45,29 +46,46 @@ afterEach(() => {
 })
 
 describe('advanced and experimental settings', () => {
-  test('requires inline confirmation before resetting settings', async () => {
+  test('asks for a destructive confirmation before resetting settings', async () => {
     const invoke = vi.fn(async () => disabledSettings)
     setIpcAdapter({
       invoke,
       on: vi.fn(() => () => undefined)
     } as unknown as IpcAdapter)
+    let answer = false
+    const confirm = vi.fn<ConfirmFn>(async () => answer)
 
     const container = document.createElement('div')
     mountedRoot = createRoot(container)
-    act(() => mountedRoot?.render(<AdvancedPanel settings={disabledSettings} />))
+    act(() =>
+      mountedRoot?.render(
+        <ConfirmDialogContext.Provider value={confirm}>
+          <AdvancedPanel settings={disabledSettings} />
+        </ConfirmDialogContext.Provider>
+      )
+    )
 
-    const resetRow = container.querySelector('.settings-danger-row')
-    const initialReset = resetRow?.querySelector<HTMLButtonElement>('button')
-    act(() => initialReset?.click())
+    const resetButton = (): HTMLButtonElement | undefined =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent === 'settings.advanced.reset.action'
+      )
 
-    expect(resetRow?.textContent).toContain('settings.advanced.reset.confirm')
+    await act(async () => {
+      resetButton()?.click()
+      await Promise.resolve()
+    })
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'settings.advanced.reset.confirmTitle',
+        description: 'settings.advanced.reset.confirmDescription',
+        confirmVariant: 'destructive'
+      })
+    )
     expect(invoke).not.toHaveBeenCalledWith('settings:reset', {})
 
-    const confirmReset = Array.from(
-      resetRow?.querySelectorAll<HTMLButtonElement>('button') ?? []
-    ).find((button) => button.textContent === 'settings.advanced.reset.action')
+    answer = true
     await act(async () => {
-      confirmReset?.click()
+      resetButton()?.click()
       await Promise.resolve()
     })
     expect(invoke).toHaveBeenCalledWith('settings:reset', {})
@@ -86,8 +104,10 @@ describe('advanced and experimental settings', () => {
 
     const switches = container.querySelectorAll<HTMLButtonElement>('[role="switch"]')
     expect(switches).toHaveLength(1)
-    expect(switches[0]?.getAttribute('aria-label')).toBe(
-      'settings.experimental.extensionRuntime.label'
+    const labelId = switches[0]?.getAttribute('aria-labelledby') ?? ''
+    expect(labelId).not.toBe('')
+    expect(switches[0]?.closest('[data-settings-target]')?.getAttribute('data-settings-target')).toBe(
+      'experimental.flags.extensionRuntime'
     )
 
     act(() => switches[0]?.click())
@@ -109,7 +129,7 @@ describe('advanced and experimental settings', () => {
     setIpcAdapter({ invoke, on: vi.fn(() => () => undefined) } as unknown as IpcAdapter)
     const container = document.createElement('div')
     mountedRoot = createRoot(container)
-    await act(async () => { mountedRoot?.render(<PluginsCategoryPanel />) })
+    await act(async () => { mountedRoot?.render(<ConfirmDialogContext.Provider value={vi.fn<ConfirmFn>(async () => false)}><PluginsCategoryPanel /></ConfirmDialogContext.Provider>) })
     expect(container.querySelectorAll('.plugin-center-list')).toHaveLength(1)
     expect(container.querySelectorAll('.plugin-center-row')).toHaveLength(6)
     expect(container.querySelector('[role="switch"]')).toBeNull()

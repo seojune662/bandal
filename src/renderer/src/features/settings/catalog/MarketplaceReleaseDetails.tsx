@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { MarketplaceRelease } from '../../../../../shared/types/marketplace'
 import { describePermission } from '../../../../../shared/plugins/permissions'
-import { useLocale } from '../../../i18n'
+import { Button } from '../../../components/ui/button'
+import { Textarea } from '../../../components/ui/input'
+import { useLocale, useT } from '../../../i18n'
 import { invoke } from '../../../lib/ipc'
 
 export function MarketplaceReleaseDetails({ id }: { id: string }): JSX.Element {
   const locale = useLocale()
-  const ko = locale === 'ko-KR'
+  const t = useT()
   const [release, setRelease] = useState<MarketplaceRelease | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -33,58 +35,53 @@ export function MarketplaceReleaseDetails({ id }: { id: string }): JSX.Element {
       {error && (
         <p role="alert">
           {error}{' '}
-          <button
+          <Button
             type="button"
-            className="settings-extension-button"
+            variant="secondary"
+            size="xs"
             onClick={() => setAttempt((n) => n + 1)}
           >
-            {ko ? '다시 시도' : 'Retry'}
-          </button>
+            {t('settings.catalog.release.retry')}
+          </Button>
         </p>
       )}
       {!release && !error && (
         <p role="status">
-          {ko ? '버전 정보 불러오는 중…' : 'Loading release…'}
+          {t('settings.catalog.release.loading')}
         </p>
       )}
       {release && (
         <>
           {release.status === 'withdrawn' && (
             <p role="alert">
-              {ko
-                ? '게시가 중단된 버전입니다. 설치된 경우 비활성화하세요.'
-                : 'This version has been withdrawn. Disable it if installed.'}{' '}
+              {t('settings.catalog.release.withdrawn')}{' '}
               {release.review_reason}
             </p>
           )}
           <h4>
-            {ko ? '변경 내역' : 'Release notes'} · {release.version}
+            {t('settings.catalog.release.notes')} · {release.version}
           </h4>
           <pre className="marketplace-release-notes">
             {release.changelog ||
-              (ko
-                ? '등록된 변경 내역이 없습니다.'
-                : 'No release notes provided.')}
+              t('settings.catalog.release.noNotes')}
           </pre>
-          <h4>{ko ? '요청하는 권한' : 'Requested permissions'}</h4>
+          <h4>{t('settings.catalog.release.permissions')}</h4>
           <ul>
             {release.manifest.permissions.map((permission) => (
               <li key={permission}>{describePermission(permission, locale)}</li>
             ))}
           </ul>
           <p>
-            {ko
-              ? '심사는 안전을 보장하지 않습니다. 신뢰하는 개발자의 플러그인만 실행하세요.'
-              : 'Review does not guarantee safety. Only run plugins from developers you trust.'}
+            {t('settings.catalog.release.trust')}
           </p>
           {reported ? (
             <p role="status">
-              {ko ? '신고가 접수되었습니다.' : 'Report submitted.'}
+              {t('settings.catalog.release.reported')}
             </p>
           ) : (
             release.status === 'approved' && (
               <details>
-                <summary>{ko ? '문제 신고' : 'Report a problem'}</summary>
+                <summary>{t('settings.catalog.release.report')}</summary>
                 <form
                   className="marketplace-form"
                   onSubmit={(event) => {
@@ -109,23 +106,23 @@ export function MarketplaceReleaseDetails({ id }: { id: string }): JSX.Element {
                   }}
                 >
                   <label>
-                    {ko
-                      ? '신고 사유 (로그인 필요)'
-                      : 'Reason (sign-in required)'}
-                    <textarea
+                    {t('settings.catalog.release.reason')}
+                    <Textarea
                       name="reason"
                       required
                       maxLength={2000}
                       disabled={busy}
                     />
                   </label>
-                  <button
+                  <Button
                     type="submit"
-                    className="settings-extension-button"
+                    variant="secondary"
+                    size="sm"
+                    className="w-fit"
                     disabled={busy}
                   >
-                    {ko ? '신고 제출' : 'Submit report'}
-                  </button>
+                    {t('settings.catalog.release.submitReport')}
+                  </Button>
                 </form>
               </details>
             )

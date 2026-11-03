@@ -23,7 +23,24 @@ parameters** — each was re-implemented from scratch in this repository;
 | `src/renderer/src/features/onboarding/**` (wizard versioning, live preflight probes, dismissible preflight cards) | `use-onboarding-flow.ts`, `setup-guide/use-setup-guide-progress.ts`, `Landing.tsx` + `landing-preflight-issues.ts` |
 | `docs/STYLEGUIDE.md` | `docs/STYLEGUIDE.md` document structure (role/anti-role token tables) |
 
-Because these are independent re-implementations of ideas and
+### Adapted from Orca source (MIT notice below applies)
+
+The UI primitives and the settings kit below were **adapted from Orca source**
+(itself built on shadcn/ui and Radix): component structure, variant names and
+the settings search ranking follow Orca's files, while colors, sizes and
+surfaces were rewritten onto Bandal tokens and the code was moved to React 18
+`forwardRef`.
+
+| Bandal file | Orca source |
+|---|---|
+| `src/renderer/src/components/ui/*.tsx` | `src/renderer/src/components/ui/*.tsx` (button, input, switch, checkbox, select, dropdown-menu, popover, tooltip, dialog, toggle-group, label, separator, badge) |
+| `src/renderer/src/components/ui/confirm-dialog*.ts(x)` | `src/renderer/src/components/confirmation-dialog*.ts(x)` |
+| `src/renderer/src/lib/utils.ts` | `src/renderer/src/lib/utils.ts` (`cn`) |
+| `src/renderer/src/features/settings/kit/SettingsKit.tsx` | `src/renderer/src/components/settings/SettingsFormControls.tsx`, `SettingsSection.tsx`, `SearchableSetting.tsx`, `DebouncedSettingsTextInput.tsx` |
+| `src/renderer/src/features/settings/search/settingsSearch.ts` | `src/renderer/src/components/settings/settings-search.ts` (tiered ranking) |
+| `src/renderer/src/features/settings/kit/settingsDeepLink.ts` | `src/renderer/src/components/settings/settings-deep-link-target-watcher.ts` |
+
+For the table above: because these are independent re-implementations of ideas and
 parameters, the MIT notice below is included for transparency and as a
 good-faith attribution rather than as a strict license obligation. If
 any Orca code is ever ported verbatim in the future, this notice (or a

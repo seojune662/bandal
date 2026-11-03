@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
-const HTML_ENTRIES = ['index.html', 'settings.html', 'overlay.html', 'pip.html']
+const HTML_ENTRIES = ['index.html', 'overlay.html', 'pip.html']
 
 describe('renderer entry CSP', () => {
   test.each(HTML_ENTRIES)('%s keeps plugin pages out of the app renderer', (file) => {

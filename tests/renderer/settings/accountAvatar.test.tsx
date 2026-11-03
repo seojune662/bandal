@@ -6,6 +6,10 @@ const ipc = vi.hoisted(() => ({ invoke: vi.fn(), onPush: vi.fn(() => () => {}) }
 vi.mock('../../../src/renderer/src/lib/ipc', () => ipc)
 import { AccountPanel } from '../../../src/renderer/src/features/settings/AccountPanel'
 import { AccountAvatar } from '../../../src/renderer/src/features/account/AccountAvatar'
+import { ConfirmDialogProvider } from '../../../src/renderer/src/components/ui/confirm-dialog'
+
+const nicknameInput = (element: HTMLElement) =>
+  element.querySelector<HTMLInputElement>('[data-settings-target="account.profile.nickname"] input')
 
 const billing = { provider: 'paddle', subscription: { active: false, sources: [] }, sync: {} }
 const sync = { phase: 'idle', enabled: false, pending: 0, conflicts: 0 }
@@ -49,8 +53,8 @@ test('account settings retain nickname editing without custom avatar controls', 
   document.body.append(element)
   const root = createRoot(element)
   try {
-    await act(async () => root.render(<AccountPanel />))
-    expect(element.querySelector<HTMLInputElement>('.account-nickname-form input')?.value).toBe('learner')
+    await act(async () => root.render(<ConfirmDialogProvider><AccountPanel /></ConfirmDialogProvider>))
+    expect(nicknameInput(element)?.value).toBe('learner')
     expect(element.querySelector('.account-avatar img')?.getAttribute('src')).toContain('/photo')
     expect(element.querySelector('.account-avatar-picker')).toBeNull()
     expect(element.textContent).not.toContain('⭐')
@@ -66,9 +70,9 @@ test('account settings keep a completed login when an earlier state request reso
   const element = document.createElement('div')
   const root = createRoot(element)
   try {
-    await act(async () => root.render(<AccountPanel />))
+    await act(async () => root.render(<ConfirmDialogProvider><AccountPanel /></ConfirmDialogProvider>))
     await act(() => changed({ phase: 'signed-in', profile: { id: 'one', nickname: 'new-login' }, email: null, avatarUrl: null }))
     await act(async () => resolve({ phase: 'signed-out', profile: null, email: null, avatarUrl: null }))
-    expect(element.querySelector<HTMLInputElement>('.account-nickname-form input')?.value).toBe('new-login')
+    expect(nicknameInput(element)?.value).toBe('new-login')
   } finally { await act(() => root.unmount()); element.remove() }
 })

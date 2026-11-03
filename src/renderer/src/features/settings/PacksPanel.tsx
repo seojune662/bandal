@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react'
 import type { WorkflowPack, WorkflowPackSummary } from '../../../../shared/types/workflowPack'
+import { Button } from '../../components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog'
+import { Textarea } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
 import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { parsePackImportText } from './packImport'
@@ -169,18 +173,11 @@ function PackSection({
 
 export function ImportDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const t = useT()
+  const fieldId = useId()
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const parsed = useMemo(() => parsePackImportText(text), [text])
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !saving) onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose, saving])
 
   const importPack = (): void => {
     if (saving || parsed.pack === undefined) return
@@ -194,24 +191,19 @@ export function ImportDialog({ onClose }: { onClose: () => void }): JSX.Element 
   }
 
   return (
-    <div className="settings-pack-modal" role="presentation" onPointerDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose()
-    }}>
-      <section className="settings-pack-dialog" role="dialog" aria-modal="true" aria-labelledby="pack-import-title">
-        <header>
-          <div>
-            <h2 id="pack-import-title">{t('settings.packs.import.title')}</h2>
-            <p>{t('settings.packs.import.description')}</p>
-          </div>
-          <button type="button" className="settings-pack-button" disabled={saving} onClick={onClose}>
-            {t('settings.packs.cancel')}
-          </button>
-        </header>
-        <label className="settings-pack-import-field">
-          <span>{t('settings.packs.import.label')}</span>
-          <textarea
+    <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose() }}>
+      <DialogContent size="wide" closeLabel={t('settings.packs.cancel')}>
+        <DialogHeader>
+          <DialogTitle>{t('settings.packs.import.title')}</DialogTitle>
+          <DialogDescription>{t('settings.packs.import.description')}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor={fieldId}>{t('settings.packs.import.label')}</Label>
+          <Textarea
+            id={fieldId}
             rows={10}
             spellCheck={false}
+            className="font-mono text-xs"
             value={text}
             placeholder={'{\n  "schemaVersion": 1,\n  ...\n}'}
             onChange={(event) => {
@@ -219,31 +211,29 @@ export function ImportDialog({ onClose }: { onClose: () => void }): JSX.Element 
               setFeedback(null)
             }}
           />
-        </label>
+        </div>
         {parsed.pack !== undefined && (
-          <div className="settings-pack-import-preview">
-            <strong>{parsed.pack.name}</strong>
+          <div className="space-y-2 rounded-md border border-border bg-secondary/60 px-3 py-2.5">
+            <strong className="text-sm font-medium text-foreground">{parsed.pack.name}</strong>
             <PackBadges pack={parsed.pack} />
           </div>
         )}
         {parsed.errors.length > 0 && (
-          <ul className="settings-pack-errors" role="alert">
+          <ul className="list-disc space-y-0.5 ps-5 text-xs text-destructive" role="alert">
             {parsed.errors.map((error) => <li key={error}>{error}</li>)}
           </ul>
         )}
-        {feedback !== null && <p className="settings-pack-feedback" role="alert">{feedback}</p>}
-        <footer>
-          <button
-            type="button"
-            className="settings-pack-button settings-pack-button--primary"
-            disabled={saving || parsed.pack === undefined}
-            onClick={importPack}
-          >
+        {feedback !== null && <p className="text-xs text-destructive" role="alert">{feedback}</p>}
+        <DialogFooter>
+          <Button variant="ghost" size="sm" disabled={saving} onClick={onClose}>
+            {t('settings.packs.cancel')}
+          </Button>
+          <Button size="sm" disabled={saving || parsed.pack === undefined} onClick={importPack}>
             {t(saving ? 'settings.packs.import.importing' : 'settings.packs.import.confirm')}
-          </button>
-        </footer>
-      </section>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

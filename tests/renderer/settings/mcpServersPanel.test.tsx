@@ -185,7 +185,7 @@ describe('McpServersPanel', () => {
     const html = renderToStaticMarkup(
       <McpServersPanel initialEditingServerId="stdio-server" />
     )
-    const editorHtml = html.slice(html.indexOf('<form class="settings-mcp-card'))
+    const editorHtml = html.slice(html.indexOf('<form data-mcp-editor'))
 
     expect(editorHtml).toContain('NOTION_TOKEN')
     expect(editorHtml).toContain('••••')

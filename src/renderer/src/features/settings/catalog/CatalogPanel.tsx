@@ -5,6 +5,7 @@ import {
   useRef,
   useState
 } from 'react'
+import { Button } from '../../../components/ui/button'
 import type { PluginSummary } from '../../../../../shared/types/plugin'
 import type {
   CatalogEntry,
@@ -394,18 +395,21 @@ export function CatalogPanel({
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
         </label>
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
+          size="sm"
           aria-expanded={sourcesOpen}
           aria-controls="settings-catalog-sources"
           onClick={() => setSourcesOpen((current) => !current)}
         >
           {t('settings.catalog.sources.manage')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="secondary-button settings-catalog-refresh"
+          variant="secondary"
+          size="sm"
+          className="settings-catalog-refresh"
           disabled={refreshing}
           onClick={() => void loadCatalog(true)}
         >
@@ -416,7 +420,7 @@ export function CatalogPanel({
             ↻
           </span>
           {t('settings.catalog.refresh')}
-        </button>
+        </Button>
         <InstallMenu
           busy={manualBusy}
           onFolder={() => void installFolder()}

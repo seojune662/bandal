@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, MouseEvent, RefObject } from 'react'
+import type { KeyboardEvent, RefObject } from 'react'
+import { Ellipsis, Search } from 'lucide-react'
 import {
   SHORTCUT_SPECS,
   chordFromKeyboardEvent,
@@ -15,10 +16,27 @@ import type {
   ShortcutPriority
 } from '../../../../../shared/types/settings'
 import { showToast } from '../../../app/toast'
+import { Badge } from '../../../components/ui/badge'
+import { Button } from '../../../components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../../../components/ui/dropdown-menu'
+import { Input } from '../../../components/ui/input'
 import { useLocale, useT } from '../../../i18n'
 import { invoke } from '../../../lib/ipc'
-import { SettingsCard } from '../primitives'
-import { Icon } from '../SettingsIcon'
+import { cn } from '../../../lib/utils'
+import {
+  SettingsEmptyState,
+  SettingsGroup,
+  SettingsNotice,
+  SettingsRow,
+  SettingsSegmented,
+  SettingsSelectRow,
+  SettingsStack
+} from '../kit/SettingsKit'
 import {
   assignChord,
   conflictingAction,
@@ -28,7 +46,6 @@ import {
   restoreDefault,
   type KeybindingOverrides
 } from './shortcutModel'
-import './shortcuts-panel.css'
 
 type Scope = ShortcutSpec['scope']
 type StatusFilter = 'all' | 'changed' | 'unassigned' | 'conflict'
@@ -63,6 +80,13 @@ function chordText(chord: string | undefined, platform: string): string {
   if (chord === undefined) return '—'
   const parsed = parseChord(chord)
   return parsed === null ? '—' : formatChord(parsed, platform)
+}
+
+interface FilterCounts {
+  all: number
+  changed: number
+  unassigned: number
+  conflict: number
 }
 
 interface ShortcutGroupView {
@@ -114,264 +138,6 @@ function useShortcutView(
   return { effective, counts, groups }
 }
 
-function ShortcutKeycaps({
-  chord,
-  platform
-}: {
-  chord: string | undefined
-  platform: string
-}): JSX.Element {
-  return (
-    <span className="settings-shortcuts-keycaps">
-      {formattedChordParts(chord, platform).map((part, index) => (
-        <kbd key={`${part}-${index}`}>{part}</kbd>
-      ))}
-    </span>
-  )
-}
-
-function ShortcutOverflow({
-  disabled,
-  onDefault,
-  onUnassign
-}: {
-  disabled: boolean
-  onDefault: () => void
-  onUnassign: () => void
-}): JSX.Element {
-  const t = useT()
-  const closeAndRun = (
-    event: MouseEvent<HTMLButtonElement>,
-    action: () => void
-  ): void => {
-    event.currentTarget.closest('details')?.removeAttribute('open')
-    action()
-  }
-  return (
-    <details className="settings-shortcuts-overflow">
-      <summary aria-label={t('settings.shortcuts.actions')}>•••</summary>
-      <div className="settings-shortcuts-overflow__menu">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={(event) => closeAndRun(event, onDefault)}
-        >
-          {t('settings.shortcuts.default')}
-        </button>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={(event) => closeAndRun(event, onUnassign)}
-        >
-          {t('settings.shortcuts.unassign')}
-        </button>
-      </div>
-    </details>
-  )
-}
-
-function ConflictNotice({
-  conflict,
-  locale,
-  onReplace,
-  onCancel
-}: {
-  conflict: PendingConflict
-  locale: string
-  onReplace: () => void
-  onCancel: () => void
-}): JSX.Element {
-  const t = useT()
-  return (
-    <div className="settings-shortcuts-conflict" role="alert">
-      <span>
-        {t('help.shortcuts.conflict', {
-          label: labelFor(specFor(conflict.displaced), locale)
-        })}
-      </span>
-      <button type="button" className="secondary-button" onClick={onReplace}>
-        {t('help.shortcuts.replace')}
-      </button>
-      <button type="button" className="secondary-button" onClick={onCancel}>
-        {t('help.cancel')}
-      </button>
-    </div>
-  )
-}
-
-interface ShortcutRowProps {
-  spec: ShortcutSpec
-  chord: string | undefined
-  platform: string
-  locale: string
-  recording: boolean
-  saving: boolean
-  conflict: PendingConflict | null
-  recorderRef: RefObject<HTMLButtonElement>
-  onRecord: () => void
-  onCapture: (event: KeyboardEvent<HTMLButtonElement>) => void
-  onDefault: () => void
-  onUnassign: () => void
-  onReplace: () => void
-  onCancelConflict: () => void
-}
-
-function ShortcutRow(props: ShortcutRowProps): JSX.Element {
-  const t = useT()
-  const { spec } = props
-  const label = labelFor(spec, props.locale)
-  return (
-    <div className="settings-shortcuts-row-wrap">
-      <div className="settings-shortcuts-row">
-        <button
-          ref={props.recording ? props.recorderRef : undefined}
-          type="button"
-          className="settings-shortcuts-row__main"
-          disabled={!spec.customizable || props.saving}
-          aria-label={`${label}: ${props.recording ? t('settings.shortcuts.recording') : chordText(props.chord, props.platform)}`}
-          aria-pressed={props.recording}
-          data-recording={props.recording || undefined}
-          onClick={props.onRecord}
-          onKeyDown={props.recording ? props.onCapture : undefined}
-        >
-          <span className="settings-shortcuts-row__copy">
-            <span className="settings-shortcuts-row__label">{label}</span>
-            <span className="settings-shortcuts-row__badges">
-              {spec.guestAllowed && (
-                <span className="status-pill">{t('settings.shortcuts.guestBadge')}</span>
-              )}
-              {!spec.customizable && (
-                <span className="status-pill">{t('settings.shortcuts.fixedBadge')}</span>
-              )}
-            </span>
-          </span>
-          {props.recording ? (
-            <span className="settings-shortcuts-recording">
-              {t('settings.shortcuts.recording')}
-            </span>
-          ) : (
-            <ShortcutKeycaps chord={props.chord} platform={props.platform} />
-          )}
-        </button>
-        {spec.customizable && (
-          <ShortcutOverflow
-            disabled={props.saving}
-            onDefault={props.onDefault}
-            onUnassign={props.onUnassign}
-          />
-        )}
-      </div>
-      {props.conflict !== null && (
-        <ConflictNotice
-          conflict={props.conflict}
-          locale={props.locale}
-          onReplace={props.onReplace}
-          onCancel={props.onCancelConflict}
-        />
-      )}
-    </div>
-  )
-}
-
-function PriorityCard({
-  priority,
-  disabled,
-  onChange
-}: {
-  priority: ShortcutPriority
-  disabled: boolean
-  onChange: (priority: ShortcutPriority) => void
-}): JSX.Element {
-  const t = useT()
-  return (
-    <SettingsCard title={t('settings.shortcuts.priority.title')}>
-      <div className="setting-row">
-        <div className="setting-row__copy">
-          <span className="setting-row__label">
-            {t(`settings.shortcuts.priority.${priority}`)}
-          </span>
-          <span className="setting-row__description">
-            {t(`settings.shortcuts.priority.${priority}Description`)}
-          </span>
-        </div>
-        <select
-          className="language-select"
-          aria-label={t('settings.shortcuts.priority.selectLabel')}
-          value={priority}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.value as ShortcutPriority)}
-        >
-          <option value="bandal">{t('settings.shortcuts.priority.bandal')}</option>
-          <option value="site">{t('settings.shortcuts.priority.site')}</option>
-        </select>
-      </div>
-    </SettingsCard>
-  )
-}
-
-interface FilterCounts {
-  all: number
-  changed: number
-  unassigned: number
-  conflict: number
-}
-
-function FilterSidebar({
-  query,
-  filter,
-  counts,
-  onQuery,
-  onFilter
-}: {
-  query: string
-  filter: StatusFilter
-  counts: FilterCounts
-  onQuery: (query: string) => void
-  onFilter: (filter: StatusFilter) => void
-}): JSX.Element {
-  const t = useT()
-  const filters: readonly StatusFilter[] = [
-    'all',
-    'changed',
-    'unassigned',
-    'conflict'
-  ]
-  return (
-    <aside className="settings-shortcuts-sidebar">
-      <label className="settings-shortcuts-search">
-        <Icon name="search" />
-        <span className="sr-only">{t('settings.shortcuts.searchLabel')}</span>
-        <input
-          type="search"
-          value={query}
-          placeholder={t('settings.shortcuts.search')}
-          onChange={(event) => onQuery(event.target.value)}
-        />
-      </label>
-      <div
-        className="settings-shortcuts-filters"
-        role="radiogroup"
-        aria-label={t('settings.shortcuts.filterLabel')}
-      >
-        {filters.map((value) => (
-          <button
-            type="button"
-            role="radio"
-            aria-checked={filter === value}
-            className="settings-shortcuts-filter"
-            data-selected={filter === value || undefined}
-            key={value}
-            onClick={() => onFilter(value)}
-          >
-            <span>{t(`settings.shortcuts.filter.${value}`)}</span>
-            <span>{counts[value]}</span>
-          </button>
-        ))}
-      </div>
-    </aside>
-  )
-}
-
 function useShortcutSave(): {
   saving: boolean
   error: string | null
@@ -387,7 +153,7 @@ function useShortcutSave(): {
       await invoke('settings:set', patch)
       return true
     } catch (saveError) {
-      console.error('[Bandal] 단축키 설정을 저장하지 못했습니다.', saveError)
+      console.error('[Bandal] Could not save shortcut settings.', saveError)
       setError(t('help.shortcuts.saveFailed'))
       return false
     } finally {
@@ -477,6 +243,218 @@ function replacementFor(
       )
 }
 
+
+const FILTERS: readonly StatusFilter[] = ['all', 'changed', 'unassigned', 'conflict']
+
+function ShortcutKeycaps({
+  chord,
+  platform
+}: {
+  chord: string | undefined
+  platform: string
+}): JSX.Element {
+  return (
+    <span className="inline-flex flex-none items-center gap-1">
+      {formattedChordParts(chord, platform).map((part, index) => (
+        <kbd
+          key={`${part}-${index}`}
+          className="inline-flex h-6 min-w-6 items-center justify-center rounded-sm border border-border-strong bg-background px-1.5 font-mono text-2xs text-secondary-foreground shadow-sm"
+        >
+          {part}
+        </kbd>
+      ))}
+    </span>
+  )
+}
+
+function ShortcutOverflow({
+  disabled,
+  onDefault,
+  onUnassign
+}: {
+  disabled: boolean
+  onDefault: () => void
+  onUnassign: () => void
+}): JSX.Element {
+  const t = useT()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="mr-2 self-center text-muted-foreground"
+          aria-label={t('settings.shortcuts.actions')}
+        >
+          <Ellipsis />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem disabled={disabled} onSelect={onDefault}>
+          {t('settings.shortcuts.default')}
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={disabled} onSelect={onUnassign}>
+          {t('settings.shortcuts.unassign')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function ConflictNotice({
+  conflict,
+  locale,
+  onReplace,
+  onCancel
+}: {
+  conflict: PendingConflict
+  locale: string
+  onReplace: () => void
+  onCancel: () => void
+}): JSX.Element {
+  const t = useT()
+  return (
+    <div
+      className="flex items-center gap-2 border-t border-border bg-destructive-muted px-4 py-2.5 text-xs text-secondary-foreground"
+      role="alert"
+    >
+      <span className="min-w-0 flex-1">
+        {t('help.shortcuts.conflict', {
+          label: labelFor(specFor(conflict.displaced), locale)
+        })}
+      </span>
+      <Button variant="secondary" size="xs" onClick={onReplace}>
+        {t('help.shortcuts.replace')}
+      </Button>
+      <Button variant="ghost" size="xs" onClick={onCancel}>
+        {t('help.cancel')}
+      </Button>
+    </div>
+  )
+}
+
+interface ShortcutRowProps {
+  spec: ShortcutSpec
+  chord: string | undefined
+  platform: string
+  locale: string
+  recording: boolean
+  saving: boolean
+  conflict: PendingConflict | null
+  recorderRef: RefObject<HTMLButtonElement>
+  onRecord: () => void
+  onCapture: (event: KeyboardEvent<HTMLButtonElement>) => void
+  onDefault: () => void
+  onUnassign: () => void
+  onReplace: () => void
+  onCancelConflict: () => void
+}
+
+function ShortcutRow(props: ShortcutRowProps): JSX.Element {
+  const t = useT()
+  const { spec } = props
+  const label = labelFor(spec, props.locale)
+  return (
+    <div>
+      <div className="flex min-w-0 items-stretch">
+        <button
+          ref={props.recording ? props.recorderRef : undefined}
+          type="button"
+          className={cn(
+            'flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 px-4 py-2.5 text-left text-foreground transition-colors duration-(--dur-fast) disabled:cursor-default',
+            'enabled:hover:bg-accent data-[recording=true]:bg-selected'
+          )}
+          disabled={!spec.customizable || props.saving}
+          aria-label={`${label}: ${props.recording ? t('settings.shortcuts.recording') : chordText(props.chord, props.platform)}`}
+          aria-pressed={props.recording}
+          data-recording={props.recording || undefined}
+          onClick={props.onRecord}
+          onKeyDown={props.recording ? props.onCapture : undefined}
+        >
+          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+            {spec.guestAllowed && <Badge>{t('settings.shortcuts.guestBadge')}</Badge>}
+            {!spec.customizable && <Badge variant="outline">{t('settings.shortcuts.fixedBadge')}</Badge>}
+          </span>
+          {props.recording ? (
+            <span className="inline-flex h-6 items-center rounded-sm border border-primary bg-background px-2 font-mono text-2xs text-foreground shadow-sm">
+              {t('settings.shortcuts.recording')}
+            </span>
+          ) : (
+            <ShortcutKeycaps chord={props.chord} platform={props.platform} />
+          )}
+        </button>
+        {spec.customizable ? (
+          <ShortcutOverflow
+            disabled={props.saving}
+            onDefault={props.onDefault}
+            onUnassign={props.onUnassign}
+          />
+        ) : (
+          // Keeps fixed rows' keycaps aligned with the customizable ones.
+          <span className="mr-2 w-7 flex-none" aria-hidden="true" />
+        )}
+      </div>
+      {props.conflict !== null && (
+        <ConflictNotice
+          conflict={props.conflict}
+          locale={props.locale}
+          onReplace={props.onReplace}
+          onCancel={props.onCancelConflict}
+        />
+      )}
+    </div>
+  )
+}
+
+function ShortcutToolbar({
+  query,
+  filter,
+  counts,
+  onQuery,
+  onFilter
+}: {
+  query: string
+  filter: StatusFilter
+  counts: FilterCounts
+  onQuery: (query: string) => void
+  onFilter: (filter: StatusFilter) => void
+}): JSX.Element {
+  const t = useT()
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="relative min-w-48 flex-1">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          type="search"
+          value={query}
+          aria-label={t('settings.shortcuts.searchLabel')}
+          placeholder={t('settings.shortcuts.search')}
+          className="pl-8"
+          onChange={event => onQuery(event.target.value)}
+        />
+      </div>
+      <SettingsSegmented
+        value={filter}
+        ariaLabel={t('settings.shortcuts.filterLabel')}
+        options={FILTERS.map(value => ({
+          value,
+          label: (
+            <>
+              <span>{t(`settings.shortcuts.filter.${value}`)}</span>
+              <span className="text-2xs tabular-nums text-muted-foreground">{counts[value]}</span>
+            </>
+          )
+        }))}
+        onChange={onFilter}
+      />
+    </div>
+  )
+}
+
 function ShortcutScopeGroup({
   group,
   effective,
@@ -496,13 +474,13 @@ function ShortcutScopeGroup({
 }): JSX.Element {
   const t = useT()
   return (
-    <section className="settings-shortcuts-group">
-      <h3>{t(`settings.shortcuts.scope.${group.scope}`)}</h3>
-      <div className="settings-shortcuts-list">
-        {group.specs.map((spec) => {
-          const rowConflict = editor.conflict?.actionId === spec.id
-            ? editor.conflict
-            : null
+    <section className="space-y-2">
+      <h3 className="px-1 text-xs font-medium text-muted-foreground">
+        {t(`settings.shortcuts.scope.${group.scope}`)}
+      </h3>
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card/60">
+        {group.specs.map(spec => {
+          const rowConflict = editor.conflict?.actionId === spec.id ? editor.conflict : null
           return (
             <ShortcutRow
               key={spec.id}
@@ -515,18 +493,15 @@ function ShortcutScopeGroup({
               conflict={rowConflict}
               recorderRef={editor.recorderRef}
               onRecord={() => editor.record(spec.id)}
-              onCapture={(event) => editor.capture(event, spec.id)}
+              onCapture={event => editor.capture(event, spec.id)}
               onDefault={() =>
                 spec.defaultChord === null
                   ? void editor.persist({ ...overrides, [spec.id]: null })
                   : editor.request(spec.id, spec.defaultChord, true)
               }
-              onUnassign={() =>
-                void editor.persist({ ...overrides, [spec.id]: null })
-              }
+              onUnassign={() => void editor.persist({ ...overrides, [spec.id]: null })}
               onReplace={() =>
-                rowConflict !== null &&
-                void editor.persist(replacementFor(overrides, rowConflict))
+                rowConflict !== null && void editor.persist(replacementFor(overrides, rowConflict))
               }
               onCancelConflict={editor.cancelConflict}
             />
@@ -555,15 +530,16 @@ function ShortcutWorkspace({
   const t = useT()
   if (view.groups.length === 0) {
     return (
-      <div className="settings-shortcuts-empty">
-        <Icon name="search" />
-        <span>{t('settings.shortcuts.empty')}</span>
-      </div>
+      <SettingsEmptyState
+        icon={<Search />}
+        title={t('settings.shortcuts.empty')}
+        description={t('settings.shortcuts.emptyDescription')}
+      />
     )
   }
   return (
     <>
-      {view.groups.map((group) => (
+      {view.groups.map(group => (
         <ShortcutScopeGroup
           key={group.scope}
           group={group}
@@ -615,68 +591,61 @@ function JsonActions({
     }
   }
   return (
-    <div className="settings-shortcuts-json">
-      <button
-        type="button"
-        className="secondary-button"
-        disabled={disabled}
-        onClick={() => void copy()}
-      >
-        {t('settings.shortcuts.json.copy')}
-      </button>
-      <button
-        type="button"
-        className="secondary-button"
-        disabled={disabled}
-        onClick={() => void paste()}
-      >
-        {t('settings.shortcuts.json.paste')}
-      </button>
-    </div>
+    <SettingsRow
+      searchId="shortcuts.transfer.json"
+      control={
+        <>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={() => void copy()}>
+            {t('settings.shortcuts.json.copy')}
+          </Button>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={() => void paste()}>
+            {t('settings.shortcuts.json.paste')}
+          </Button>
+        </>
+      }
+    />
   )
 }
 
-export function ShortcutsPanel({
-  settings
-}: {
-  settings: Settings | null
-}): JSX.Element {
+export function ShortcutsPanel({ settings }: { settings: Settings | null }): JSX.Element {
+  const t = useT()
   const locale = useLocale()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<StatusFilter>('all')
   const overrides = settings?.keybindings ?? EMPTY_OVERRIDES
-  const platform =
-    typeof window === 'undefined'
-      ? 'darwin'
-      : (window.bandal?.platform ?? 'darwin')
+  const platform = typeof window === 'undefined' ? 'darwin' : (window.bandal?.platform ?? 'darwin')
   const view = useShortcutView(overrides, query, filter, locale, platform)
   const { saving, error, save } = useShortcutSave()
   const editor = useShortcutEditor(overrides, save)
   const priority = settings?.shortcutPriority ?? 'bandal'
   const disabled = settings === null || saving
   return (
-    <div className="settings-stack">
-      <PriorityCard
-        priority={priority}
-        disabled={disabled}
-        onChange={(shortcutPriority) => void save({ shortcutPriority })}
-      />
-
-      {error !== null && (
-        <p className="settings-shortcuts-error" role="alert">
-          {error}
-        </p>
-      )}
-
-      <div className="settings-shortcuts-layout">
-        <FilterSidebar
-          query={query}
-          filter={filter}
-          counts={view.counts}
-          onQuery={setQuery}
-          onFilter={setFilter}
+    <SettingsStack>
+      <SettingsGroup searchId="shortcuts.priority">
+        <SettingsSelectRow<ShortcutPriority>
+          searchId="shortcuts.priority.mode"
+          description={t(`settings.shortcuts.priority.${priority}Description`)}
+          value={priority}
+          disabled={disabled}
+          options={[
+            { value: 'bandal', label: t('settings.shortcuts.priority.bandal') },
+            { value: 'site', label: t('settings.shortcuts.priority.site') }
+          ]}
+          onChange={shortcutPriority => void save({ shortcutPriority })}
         />
-        <div className="settings-shortcuts-groups">
+      </SettingsGroup>
+
+      {error !== null && <SettingsNotice tone="danger">{error}</SettingsNotice>}
+
+      <SettingsGroup searchId="shortcuts.keys" bare>
+        <div className="space-y-5">
+          <ShortcutToolbar
+            query={query}
+            filter={filter}
+            counts={view.counts}
+            onQuery={setQuery}
+            onFilter={setFilter}
+          />
           <ShortcutWorkspace
             view={view}
             overrides={overrides}
@@ -686,12 +655,11 @@ export function ShortcutsPanel({
             disabled={disabled}
           />
         </div>
-      </div>
-      <JsonActions
-        overrides={overrides}
-        disabled={disabled}
-        persist={editor.persist}
-      />
-    </div>
+      </SettingsGroup>
+
+      <SettingsGroup searchId="shortcuts.transfer">
+        <JsonActions overrides={overrides} disabled={disabled} persist={editor.persist} />
+      </SettingsGroup>
+    </SettingsStack>
   )
 }

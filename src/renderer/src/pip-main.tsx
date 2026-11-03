@@ -4,6 +4,8 @@ import { bootstrapAppearance } from './app/bootstrapAppearance'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
+// tailwind.css first: it declares the cascade layer order (theme, base, …).
+import './styles/tailwind.css'
 import './styles/tokens.css'
 import './styles/base.css'
 import './features/pip/pip.css'

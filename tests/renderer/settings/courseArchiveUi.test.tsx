@@ -7,13 +7,19 @@ vi.mock('../../../src/renderer/src/i18n', () => ({
   LOCALES: ['ko-KR', 'en-US'],
   setLocale: vi.fn(),
   useLocale: () => 'ko-KR',
-  useT: () => (key: string) => {
+  useT: () => (key: string, vars?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
+      'settings.courses.restore': '복원',
+      'settings.courses.restoring': '복원 중…',
+      'settings.courses.restoreNamed': '{name} 복원',
       'settings.courses.archived': '보관됨',
       'settings.courses.showArchived': '보관된 과목 표시',
       'settings.courses.showArchivedHelp': '보관 처리한 과목도 표시합니다.'
     }
-    return messages[key] ?? key
+    return Object.entries(vars ?? {}).reduce(
+      (message, [name, value]) => message.replaceAll(`{${name}}`, String(value)),
+      messages[key] ?? key
+    )
   }
 }))
 

@@ -58,9 +58,8 @@ test('imports Safari export through the real dialog with scoped bookmarks and id
     await page.keyboard.press('ControlOrMeta+,')
     await page.locator('.settings-nav [data-category="browser"]').click()
     await page
-      .locator('.settings-card')
-      .filter({ hasText: 'Chrome · Edge · Firefox · Safari' })
-      .getByRole('button')
+      .locator('[data-settings-target="browser.import.open"]')
+      .getByRole('button', { name: '가져오기…' })
       .click()
     const dialog = page.getByRole('dialog', {
       name: '브라우저 데이터 가져오기',

@@ -164,12 +164,6 @@
   box-shadow: var(--shadow-sm);
 }
 
-.settings-catalog-card__runtime-badge.secondary-button {
-  align-self: flex-end;
-  min-height: var(--control-height);
-  color: var(--status-progress);
-}
-
 .settings-catalog-card__heading,
 .settings-catalog-card__title,
 .settings-catalog-card__footer,
@@ -270,10 +264,6 @@
   background: var(--bg-raised);
   border: thin solid var(--border-subtle);
   border-radius: var(--radius-pill);
-}
-
-.settings-catalog-card__action.secondary-button {
-  flex: 0 0 auto;
 }
 
 .settings-catalog-card__installed {

@@ -4,10 +4,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const invokeMock = vi.hoisted(() => vi.fn())
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: invokeMock, onPush: () => () => {} }))
-vi.mock('../../../src/renderer/src/i18n', () => ({ useLocale: () => 'ko-KR' }))
-vi.mock('../../../src/renderer/src/features/browser/BrowserProfileSelect', () => ({ BrowserProfileSelect: () => null }))
+vi.mock('../../../src/renderer/src/features/settings/browser/BrowserProfileRow', () => ({ BrowserProfileRow: () => null }))
 import { BrowsingDataPanel } from '../../../src/renderer/src/features/settings/BrowsingDataPanel'
 import { SavedLoginsSettings } from '../../../src/renderer/src/features/settings/SavedLoginsSettings'
+import { ConfirmDialogProvider } from '../../../src/renderer/src/components/ui/confirm-dialog'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 let root: Root, host: HTMLDivElement
 beforeEach(() => {
@@ -32,7 +32,7 @@ test('browsing data errors are visible and each list can be reloaded', async () 
 })
 test('saved login load failures offer a retry instead of claiming the list is empty', async () => {
   invokeMock.mockRejectedValue(new Error('offline'))
-  await act(async () => root.render(<SavedLoginsSettings />))
+  await act(async () => root.render(<ConfirmDialogProvider><SavedLoginsSettings /></ConfirmDialogProvider>))
   expect(host.querySelector('[role=alert]')).not.toBeNull()
   expect(host.textContent).not.toContain('저장된 로그인이 없습니다.')
   invokeMock.mockImplementation(async channel => channel === 'credentials:availability' ? { state: 'ready' } : [])

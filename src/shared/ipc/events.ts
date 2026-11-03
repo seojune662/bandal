@@ -6,7 +6,7 @@ import type { PDFMarkupChanged } from '../types/pdfPreview'
  * subscribed through `window.bandal.on(channel, cb)`.
  */
 
-import type { SettingsCategoryId } from '../settingsCategories'
+import type { SettingsCategoryId, SettingsNavigationTarget } from '../settingsCategories'
 import type { RecordingEvent, SpeechModelState } from '../recording'
 import type { AgentEvent, AgentLoginProgress, AgentProvider } from '../types/agent-events'
 import type { AgentConfirmRequest } from '../types/agentTools'
@@ -287,7 +287,7 @@ export interface PushEvents {
   'settings:changed': SettingsChanged
   'window:stateChanged': { fullscreen: boolean }
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */
-  'ui:openSettings': { category?: SettingsCategoryId }
+  'ui:openSettings': { category?: SettingsCategoryId; target?: SettingsNavigationTarget }
   'browser:download': BrowserDownloadUpdate
   'browserAgent:run-state': BrowserAgentRunState
   'shortcut:passthrough': ShortcutPassthrough

@@ -738,7 +738,7 @@ function RecordingWorkspace({
         >
           <button
             className="recording__text-button recording__preferences-link"
-            onClick={() => useUiStore.getState().openSettings('tabs')}
+            onClick={() => useUiStore.getState().openSettings({ category: 'tabs', subTab: 'recording' })}
           >
             탭 기본 설정 ↗
           </button>

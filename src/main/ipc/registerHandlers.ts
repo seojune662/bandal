@@ -3741,6 +3741,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     ])
     return OK
   })
+  handle('app:relaunch', () => {
+    // app.quit() runs the normal before-quit drain, so pending saves land first.
+    app.relaunch()
+    app.quit()
+    return OK
+  })
   handle('usage:summary', (req) => {
     if (!isUsageWindowDays(req.windowDays)) {
       throw new ValidationError('사용량 조회 기간이 올바르지 않습니다.')

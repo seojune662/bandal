@@ -1,0 +1,32 @@
+/*
+ * Legacy shared controls still used outside settings (rail update card, link
+ * picker, new-note sheet). They used to live in the lazily loaded settings
+ * CSS, so they rendered unstyled until settings had been opened once. New UI
+ * uses components/ui/button.tsx (`variant="secondary"` matches this look).
+ */
+.secondary-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.secondary-button:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}

@@ -210,8 +210,9 @@ test('an open old PDF revision retains late ink and recovers it without sync con
     await page.locator('.settings-nav [data-category="account"]').click()
     await expect(page.getByText('페이지 변경 전 필기 보관됨', { exact: true })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('offline-recovery.png') })
-    page.once('dialog', dialog => void dialog.accept())
-    await page.getByRole('button', { name: '이전 필기로 복구 노트 만들기', exact: true }).click()
+    await page.locator('.settings-panel').getByRole('button', { name: '이전 필기로 복구 노트 만들기', exact: true }).click()
+    // The in-app confirm dialog (useConfirm) replaced window.confirm.
+    await page.getByRole('dialog').getByRole('button', { name: '이전 필기로 복구 노트 만들기', exact: true }).click()
     await expect(page.getByText('페이지 변경 전 필기 보관됨', { exact: true })).toHaveCount(0)
     const result = await page.evaluate(async original => {
       const current = await window.bandal.invoke('drawings:listForFile', { courseId: original.courseId, relPath: original.relPath })

@@ -5,7 +5,7 @@
     "web-demo/mediaUrl.ts",
     "server/marketplace/index.ts",
     "sdk/cli/index.ts",
-    "src/renderer/src/{main,overlay-main,pip-main,settings-main}.tsx",
+    "src/renderer/src/{main,overlay-main,pip-main}.tsx",
     "scripts/**/*.mjs",
     "e2e/**/*.ts",
     "tests/**/*.{ts,tsx}",
@@ -25,7 +25,9 @@
     "resources/ipad-bridge/backend.js"
   ],
   "ignoreDependencies": [
-    "@milkdown/exception"
+    "@milkdown/exception",
+    "tailwindcss",
+    "tw-animate-css"
   ],
   "ignoreBinaries": [
     "swift",
@@ -38,11 +40,23 @@
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
-    "src/main/features/browser/index.ts": ["exports"],
-    "src/renderer/src/features/ink/ImageShape.tsx": ["exports"],
-    "src/renderer/src/features/ink/index.ts": ["exports"],
-    "src/shared/account/nickname.ts": ["exports"],
-    "src/shared/types/browserProfile.ts": ["exports"],
-    "src/shared/types/whiteboard.ts": ["types"]
+    "src/main/features/browser/index.ts": [
+      "exports"
+    ],
+    "src/renderer/src/features/ink/ImageShape.tsx": [
+      "exports"
+    ],
+    "src/renderer/src/features/ink/index.ts": [
+      "exports"
+    ],
+    "src/shared/account/nickname.ts": [
+      "exports"
+    ],
+    "src/shared/types/browserProfile.ts": [
+      "exports"
+    ],
+    "src/shared/types/whiteboard.ts": [
+      "types"
+    ]
   }
 }

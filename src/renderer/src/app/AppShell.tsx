@@ -236,7 +236,7 @@ export function AppShell(): JSX.Element {
   }, [loadCourses])
 
   useEffect(() => {
-    return onPush('ui:openSettings', ({ category }) => openSettings(category))
+    return onPush('ui:openSettings', ({ category, target }) => openSettings(target ?? category))
   }, [openSettings])
 
   useEffect(() => {
@@ -509,7 +509,6 @@ export function AppShell(): JSX.Element {
             }
           >
             <SettingsApp
-              embedded
               onClose={closeSettings}
               initialCategory={settingsCategory}
             />

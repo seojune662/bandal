@@ -5,15 +5,14 @@
  * `browser:sessionSites` / `browser:clearSession` were fully implemented in
  * main but had ZERO renderer callers — a working feature nobody could reach.
  * This is where they surface.
- *
- * Every class here is `settings-` prefixed on purpose: the settings surface
- * loads into the main window, and an unprefixed class has leaked into the
- * sidebar before (`.course-list`).
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Button } from '../../components/ui/button'
+import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import type { Settings } from '../../../../shared/types/settings'
+import { SettingsGroup, SettingsRow } from './kit/SettingsKit'
 
 interface SignedInSite {
   origin: string
@@ -29,17 +28,62 @@ interface SitePermission {
 }
 
 /** Same copy the prompt used, so the list reads back as what was asked. */
-const PERMISSION_LABELS: Record<string, string> = {
-  notifications: '알림 보내기',
-  geolocation: '현재 위치 확인',
-  media: '카메라와 마이크 사용',
-  mediaKeySystem: '보호된 영상 재생',
-  'clipboard-read': '클립보드 읽기',
-  'display-capture': '화면 공유',
-  midi: 'MIDI 기기 사용',
-  midiSysex: 'MIDI 기기 사용',
-  'window-management': '창 위치 관리',
-  popups: '팝업 열기'
+const PERMISSION_KEYS: Record<string, string> = {
+  notifications: 'notifications',
+  geolocation: 'geolocation',
+  media: 'media',
+  mediaKeySystem: 'mediaKeySystem',
+  'clipboard-read': 'clipboardRead',
+  'display-capture': 'displayCapture',
+  midi: 'midi',
+  midiSysex: 'midi',
+  'window-management': 'windowManagement',
+  popups: 'popups'
+}
+
+/** Loading / error / empty / list states shared by both lists. */
+function SiteList<T>({
+  items,
+  error,
+  errorText,
+  emptyText,
+  onRetry,
+  renderItem
+}: {
+  items: T[] | null
+  error: boolean
+  errorText: string
+  emptyText: string
+  onRetry: () => void
+  renderItem: (item: T) => ReactNode
+}): JSX.Element {
+  const t = useT()
+  if (error) {
+    return (
+      <div role="alert" className="flex items-center justify-between gap-3 px-4 py-3 text-xs text-destructive">
+        <span>{errorText}</span>
+        <Button variant="secondary" size="xs" onClick={onRetry}>
+          {t('settings.browser.retry')}
+        </Button>
+      </div>
+    )
+  }
+  if (items === null) {
+    return <p className="px-4 py-3 text-xs text-muted-foreground">{t('settings.browser.loading')}</p>
+  }
+  if (items.length === 0) {
+    return <p className="px-4 py-3 text-xs text-muted-foreground">{emptyText}</p>
+  }
+  return <ul className="divide-y divide-border">{items.map(renderItem)}</ul>
+}
+
+function SiteListItem({ children, action }: { children: ReactNode; action: ReactNode }): JSX.Element {
+  return (
+    <li className="flex items-center gap-3 px-4 py-2.5">
+      <span className="min-w-0 flex-1 truncate text-sm text-foreground select-text">{children}</span>
+      {action}
+    </li>
+  )
 }
 
 export function BrowsingDataPanel({
@@ -49,6 +93,7 @@ export function BrowsingDataPanel({
   profileId?: string
   settings: Settings | null
 }): JSX.Element {
+  const t = useT()
   const [sites, setSites] = useState<SignedInSite[] | null>(null)
   const [permissions, setPermissions] = useState<SitePermission[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -81,12 +126,12 @@ export function BrowsingDataPanel({
       .then(() => {
         setFeedback(
           id === null
-            ? '사이트 권한을 모두 지웠습니다.'
-            : '이 권한을 지웠습니다. 사이트가 다시 요청하면 새로 묻습니다.'
+            ? t('settings.browser.permissions.clearedAll')
+            : t('settings.browser.permissions.cleared')
         )
         loadPermissions()
       })
-      .catch(() => setFeedback('권한을 지우지 못했습니다.'))
+      .catch(() => setFeedback(t('settings.browser.permissions.clearFailed')))
       .finally(() => setBusy(null))
   }
 
@@ -96,12 +141,12 @@ export function BrowsingDataPanel({
       .then(() => {
         setFeedback(
           origin === null
-            ? '모든 사이트에서 로그아웃했습니다.'
-            : `${origin}에서 로그아웃했습니다.`
+            ? t('settings.browser.sites.signedOutAll')
+            : t('settings.browser.sites.signedOut', { origin })
         )
         loadSites()
       })
-      .catch(() => setFeedback('로그아웃하지 못했습니다.'))
+      .catch(() => setFeedback(t('settings.browser.sites.signOutFailed')))
       .finally(() => setBusy(null))
   }
 
@@ -115,136 +160,131 @@ export function BrowsingDataPanel({
     setBusy('storage')
     void invoke('browser:clearStorage', { profileId, origin: null, cache: true })
       .then(() => {
-        setFeedback('저장된 사이트 데이터와 캐시를 지웠습니다.')
+        setFeedback(t('settings.browser.sites.storageCleared'))
         loadSites()
       })
-      .catch(() => setFeedback('사이트 데이터를 지우지 못했습니다.'))
+      .catch(() => setFeedback(t('settings.browser.sites.storageFailed')))
       .finally(() => setBusy(null))
   }
 
   const clearHistory = (): void => {
     setBusy('history')
     void invoke('browser:clearHistory', { profileId, courseId: null })
-      .then(() => setFeedback('방문 기록을 지웠습니다.'))
-      .catch(() => setFeedback('방문 기록을 지우지 못했습니다.'))
+      .then(() => setFeedback(t('settings.browser.sites.historyCleared')))
+      .catch(() => setFeedback(t('settings.browser.sites.historyFailed')))
       .finally(() => setBusy(null))
   }
 
+  const permissionLabel = (permission: string): string => {
+    const key = PERMISSION_KEYS[permission]
+    return key === undefined ? permission : t(`settings.browser.permissions.kind.${key}`)
+  }
+  const noSites = (sites?.length ?? 0) === 0
+  const noPermissions = (permissions?.length ?? 0) === 0
+
   return (
-    <div className="settings-stack">
-      <section className="settings-card">
-        <div className="settings-card__header">
-          <h2>로그인된 사이트</h2>
-          <p>반달 브라우저가 기억하고 있는 학교 사이트 로그인입니다.</p>
-        </div>
-        {sitesError ? (
-          <div className="settings-feedback settings-feedback--error" role="alert">
-            로그인된 사이트를 불러오지 못했습니다.
-            <button type="button" className="settings-site-row__action" onClick={loadSites}>다시 불러오기</button>
-          </div>
-        ) : sites === null ? (
-          <p className="settings-feedback">불러오는 중…</p>
-        ) : sites.length === 0 ? (
-          <p className="settings-feedback">아직 없습니다.</p>
-        ) : (
-          <ul className="settings-site-list">
-            {sites.map((site) => (
-              <li key={site.origin} className="settings-site-row">
-                <span className="settings-site-row__origin">{site.origin}</span>
-                <button
-                  type="button"
-                  className="settings-site-row__action"
-                  disabled={busy !== null}
-                  onClick={() => forget(site.origin)}
-                >
-                  로그아웃
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="settings-danger-row">
-          <button
-            type="button"
-            className="settings-site-row__action"
-            disabled={busy !== null || (sites?.length ?? 0) === 0}
-            onClick={() => forget(null)}
-          >
-            전체 로그아웃
-          </button>
-          <button
-            type="button"
-            className="settings-site-row__action"
-            disabled={busy !== null}
-            onClick={clearHistory}
-          >
-            방문 기록 지우기
-          </button>
-          <button
-            type="button"
-            className="settings-site-row__action"
-            disabled={busy !== null}
-            onClick={clearStorage}
-          >
-            사이트 데이터·캐시 지우기
-          </button>
-        </div>
-        <p className="settings-feedback" aria-live="polite">
+    <>
+      <SettingsGroup searchId="browser.sites">
+        <SiteList
+          items={sites}
+          error={sitesError}
+          errorText={t('settings.browser.sites.loadFailed')}
+          emptyText={t('settings.browser.sites.empty')}
+          onRetry={loadSites}
+          renderItem={(site) => (
+            <SiteListItem
+              key={site.origin}
+              action={
+                <Button variant="secondary" size="xs" disabled={busy !== null} onClick={() => forget(site.origin)}>
+                  {t('settings.browser.sites.signOut')}
+                </Button>
+              }
+            >
+              {site.origin}
+            </SiteListItem>
+          )}
+        />
+        <SettingsRow
+          searchId="browser.sites.signOutAll"
+          disabled={noSites}
+          disabledReason={t('settings.browser.sites.signOutAllDisabled')}
+          control={
+            <Button
+              variant="destructive-outline"
+              size="sm"
+              disabled={busy !== null || noSites}
+              onClick={() => forget(null)}
+            >
+              {t('settings.browser.sites.signOutAllAction')}
+            </Button>
+          }
+        />
+        <SettingsRow
+          searchId="browser.sites.clearHistory"
+          control={
+            <Button variant="destructive-outline" size="sm" disabled={busy !== null} onClick={clearHistory}>
+              {t('settings.browser.sites.clearHistoryAction')}
+            </Button>
+          }
+        />
+        <SettingsRow
+          searchId="browser.sites.clearStorage"
+          control={
+            <Button variant="destructive-outline" size="sm" disabled={busy !== null} onClick={clearStorage}>
+              {t('settings.browser.sites.clearStorageAction')}
+            </Button>
+          }
+        />
+        <p className="px-4 py-2 text-xs text-muted-foreground empty:hidden" aria-live="polite">
           {feedback ?? ''}
         </p>
-      </section>
+      </SettingsGroup>
 
-      <section className="settings-card">
-        <div className="settings-card__header">
-          <h2>사이트 권한</h2>
-          <p>
-            알림·위치·카메라처럼 사이트가 물어봤던 것들입니다. 지우면 다음에 다시
-            묻습니다.
-          </p>
-        </div>
-        {permissionsError ? (
-          <div className="settings-feedback settings-feedback--error" role="alert">
-            사이트 권한을 불러오지 못했습니다.
-            <button type="button" className="settings-site-row__action" onClick={loadPermissions}>다시 불러오기</button>
-          </div>
-        ) : permissions === null ? (
-          <p className="settings-feedback">불러오는 중…</p>
-        ) : permissions.length === 0 ? (
-          <p className="settings-feedback">아직 아무 사이트도 요청하지 않았습니다.</p>
-        ) : (
-          <ul className="settings-site-list">
-            {permissions.map((entry) => (
-              <li key={entry.id} className="settings-site-row">
-                <span className="settings-site-row__origin">
-                  {entry.origin} · {PERMISSION_LABELS[entry.permission] ?? entry.permission}
-                  {' · '}
-                  {entry.decision === 'granted' ? '허용함' : '차단함'}
-                </span>
-                <button
-                  type="button"
-                  className="settings-site-row__action"
+      <SettingsGroup searchId="browser.permissions">
+        <SiteList
+          items={permissions}
+          error={permissionsError}
+          errorText={t('settings.browser.permissions.loadFailed')}
+          emptyText={t('settings.browser.permissions.empty')}
+          onRetry={loadPermissions}
+          renderItem={(entry) => (
+            <SiteListItem
+              key={entry.id}
+              action={
+                <Button
+                  variant="secondary"
+                  size="xs"
                   disabled={busy !== null}
                   onClick={() => forgetPermission(entry.id)}
                 >
-                  지우기
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {(permissions?.length ?? 0) > 0 && (
-          <div className="settings-danger-row">
-            <button
-              type="button"
-              className="settings-site-row__action"
-              disabled={busy !== null}
+                  {t('settings.browser.permissions.clear')}
+                </Button>
+              }
+            >
+              {entry.origin} · {permissionLabel(entry.permission)}
+              {' · '}
+              {entry.decision === 'granted'
+                ? t('settings.browser.permissions.granted')
+                : t('settings.browser.permissions.denied')}
+            </SiteListItem>
+          )}
+        />
+        <SettingsRow
+          searchId="browser.permissions.clearAll"
+          disabled={noPermissions}
+          disabledReason={t('settings.browser.permissions.clearAllDisabled')}
+          control={
+            <Button
+              variant="destructive-outline"
+              size="sm"
+              disabled={busy !== null || noPermissions}
               onClick={() => forgetPermission(null)}
             >
-              전체 지우기
-            </button>
-          </div>
-        )}
-      </section>
-    </div>
+              {t('settings.browser.permissions.clearAllAction')}
+            </Button>
+          }
+        />
+      </SettingsGroup>
+    </>
   )
 }

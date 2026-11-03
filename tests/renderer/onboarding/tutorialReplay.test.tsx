@@ -16,7 +16,7 @@ test('the replay button reads the current recovery marker instead of replacing i
   fixture.invoke.mockImplementation(async (channel: string) => channel === 'settings:get' ? current : current)
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   act(() => root?.render(<GeneralPanel settings={DEFAULT_SETTINGS} />))
-  const replay = [...container.querySelectorAll('button')].find(button => button.textContent === 'settings.general.tutorial.reopen')!
+  const replay = [...container.querySelectorAll('button')].find(button => button.textContent === 'settings.general.tutorial.reopenAction')!
   await act(async () => { replay.click(); await Promise.resolve(); await Promise.resolve() })
   expect(fixture.invoke.mock.calls).toEqual([
     ['settings:get', {}],

@@ -42,7 +42,7 @@ PDF와 프레젠테이션 종이는 흰색이다. PDF 주석 도구의 팝오버
 
 PDF 기본 행에는 페이지, 배율, 주석 진입을 둔다. 주석 작업을 켰을 때 선택·펜·형광펜·지우개·실행 취소를 표시한다. 도형·텍스트·내보내기는 더 보기, 색·굵기·투명도는 스타일 팝오버로 모은다. 좁은 작업 공간에서는 라벨을 줄이고 도구 행을 배치하되 기능 접근을 없애지 않는다.
 
-설정은 왼쪽 카테고리와 오른쪽 설정 행으로 구성한다. 라이트·다크 미리보기 외에 불필요한 카드 테두리를 중첩하지 않는다. 글자 크기, 필기 글꼴, 밀도와 어시스턴트 기능을 유지한다.
+설정은 왼쪽 카테고리와 오른쪽 설정 그룹으로 구성한다. 그룹은 제목·설명 아래 한 겹의 카드에 행을 나눠 담고, 카드 안에 카드를 중첩하지 않는다. 글자 크기, 필기 글꼴, 밀도와 어시스턴트 기능을 유지한다.
 
 ## 글꼴·간격·경계
 
@@ -50,7 +50,7 @@ OS 시스템 글꼴을 우선하고 한국어 대체 글꼴을 지정한다. 기
 
 선을 추가하기 전에 여백이나 배경으로 구분할 수 있는지 확인한다. 테두리와 그림자로 같은 경계를 두 번 강조하지 않는다. 그림자는 실제로 떠 있는 팝오버·대화상자에 한정한다. 검색창과 보조 버튼은 낮은 대비의 배경을 사용하며, 위험 동작·포커스의 대비를 약하게 만들지 않는다.
 
-새 버튼·메뉴·설정 행은 기존 공통 요소를 사용한다. 화면의 책임이 커지면 역할별로 분리한다. 과목 목록의 행은 `CourseListItem`, 드래그 수명은 `useCourseDrag`, 메뉴의 닫힘·포커스 복귀는 `useDismissableMenu`, 설정 행은 `features/settings/primitives`를 기준으로 한다.
+새 버튼·메뉴·설정 행은 기존 공통 요소를 사용한다. 화면의 책임이 커지면 역할별로 분리한다. 과목 목록의 행은 `CourseListItem`, 드래그 수명은 `useCourseDrag`, 메뉴의 닫힘·포커스 복귀는 `useDismissableMenu`, 설정 행은 `features/settings/kit`을 기준으로 한다(아래 "공통 컴포넌트와 설정 키트").
 
 ## 접근성과 상호작용
 
@@ -60,6 +60,17 @@ OS 시스템 글꼴을 우선하고 한국어 대체 글꼴을 지정한다. 기
 - 테마 선택은 방향키·Home·End를 지원하는 라디오 그룹이다.
 - `prefers-contrast: more`, `forced-colors: active`, `prefers-reduced-motion`을 존중한다.
 - 본문/표면 대비 4.5:1, 의미 있는 상태·과목 색 3:1을 검증한다. PDF 하이라이트는 흰 종이와 검은 본문 기준으로 검사한다.
+
+## 공통 컴포넌트와 설정 키트
+
+Orca(MIT)의 shadcn/Radix 구조를 가져오되 색·크기는 반달 토큰을 쓴다. 출처는 `THIRD_PARTY_LICENSES.md`에 적는다.
+
+- **스타일 기반**: `styles/tailwind.css`가 Tailwind v4 유틸리티를 `utilities` 레이어로 들인다. preflight는 쓰지 않고 `base.css`의 요소 리셋이 `base` 레이어를 맡는다. 레이어 밖의 기존 CSS가 충돌 시 이기므로 새 컴포넌트에 기존 클래스명(`.toggle`, `.setting-row` 등)을 섞지 않는다. 유틸리티는 `@source`로 지정한 폴더에서만 생성된다. 화면을 옮길 때 그 폴더를 추가한다.
+- **색 이름**: `primary`=반달 `--accent`(진한 잉크), `accent`=hover 틴트, `selected`=`--accent-muted`, `border-strong`, `destructive-muted`. 원시 색 값은 쓰지 않는다.
+- **프리미티브**: `components/ui/*` (Button·Input·Switch·Checkbox·Select·DropdownMenu·Popover·Tooltip·Dialog·ToggleGroup·Badge). 확인·경고는 `window.confirm/alert` 대신 `useConfirm()`. 떠 있는 표면은 단색 `bg-popover`+`shadow-md`(유리 효과 없음), 쌓임 순서는 `components/ui/surface.ts`.
+- **설정 키트**: `features/settings/kit/SettingsKit.tsx` — `SettingsStack` › `SettingsGroup` › `SettingsRow`/`SettingsSwitchRow`/`SettingsSegmentedRow`/`SettingsSelectRow`/`SettingsTextRow`. 불리언은 스위치, 선택지 4개 이하는 세그먼트, 그보다 많으면 셀렉트, 텍스트는 자동 저장(blur/Enter, Esc로 되돌림, 오류는 행 아래). 모든 행에 설명을 둔다. 비활성 컨트롤은 이유를 보여준다.
+- **검색 카탈로그**: 행과 그룹은 `searchId`를 받는다. 문구·검색어·딥링크 id는 `features/settings/search/entries/<카테고리>.ts` 한 곳에서 온다. 다른 언어의 제목도 검색어로 색인한다. 카탈로그와 패널이 어긋나면 `tests/renderer/settings/settingsCatalog.test.ts`가 실패한다. 순위는 Orca와 같다(카테고리 이름 > 항목 제목 > 설명 > 키워드, 각 단계 exact > prefix > substring). 같은 색인을 ⌘P 빠른 검색의 "설정" 결과도 쓴다.
+- **딥링크**: `useUiStore.getState().openSettings({ category, subTab?, sectionId? })`. 대상 행으로 스크롤하고 3초간 강조한다. 늦게 그려지는 행은 최대 5초 기다린다.
 
 ## 성능·검증
 

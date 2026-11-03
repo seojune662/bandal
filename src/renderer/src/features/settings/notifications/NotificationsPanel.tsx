@@ -1,5 +1,9 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import { BellOff, Check } from 'lucide-react'
+
 import { showToast } from '../../../app/toast'
+import { Button } from '../../../components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '../../../components/ui/toggle-group'
 import { useT } from '../../../i18n'
 import { invoke } from '../../../lib/ipc'
 import {
@@ -8,13 +12,10 @@ import {
   type NotificationSettings,
   type Settings
 } from '../../../../../shared/types/settings'
-import { Icon } from '../SettingsIcon'
-import { SettingsCard, ToggleRow } from '../primitives'
-import './notifications-panel.css'
+import { SettingsGroup, SettingsNotice, SettingsRow, SettingsStack, SettingsSwitchRow } from '../kit/SettingsKit'
+import { useIsSettingsSearching } from '../kit/SettingsSearchContext'
 
-const LEAD_DAY_OPTIONS: readonly DeadlineLeadDays[] = [
-  ...DEADLINE_LEAD_DAYS
-].reverse()
+const LEAD_DAY_OPTIONS: readonly DeadlineLeadDays[] = [...DEADLINE_LEAD_DAYS].reverse()
 
 type SaveNotifications = (patch: Partial<NotificationSettings>) => void
 
@@ -25,21 +26,16 @@ export function toggleLeadDay(
   const selected = new Set(current)
   if (selected.has(day)) selected.delete(day)
   else selected.add(day)
-  return LEAD_DAY_OPTIONS.filter((option) => selected.has(option))
+  return LEAD_DAY_OPTIONS.filter(option => selected.has(option))
 }
 
 function NotificationsLoading(): JSX.Element {
   const t = useT()
   return (
-    <div className="settings-stack">
-      <div
-        className="availability-skeleton"
-        aria-label={t('settings.notifications.loading')}
-      >
-        <span />
-        <span />
-        <span />
-      </div>
+    <div className="flex flex-col gap-3" role="status" aria-label={t('settings.notifications.loading')}>
+      {[0, 1, 2].map(index => (
+        <span key={index} className="h-14 animate-pulse rounded-lg bg-secondary" />
+      ))}
     </div>
   )
 }
@@ -47,30 +43,17 @@ function NotificationsLoading(): JSX.Element {
 function NotificationStatus({ enabled }: { enabled: boolean }): JSX.Element {
   const t = useT()
   return (
-    <div
-      className={`inline-notice settings-notifications-notice${
-        enabled ? ' settings-notifications-notice--success' : ''
-      }`}
-      role="status"
-    >
-      {enabled && <Icon name="check" />}
-      <div>
-        <strong>
-          {t(
-            enabled
-              ? 'settings.notifications.status.enabled'
-              : 'settings.notifications.status.disabled'
-          )}
-        </strong>
-        {enabled && (
-          <span>{t('settings.notifications.status.enabledDescription')}</span>
-        )}
-      </div>
-    </div>
+    <SettingsNotice icon={enabled ? <Check /> : <BellOff />}>
+      <strong className="font-medium text-foreground">
+        {t(enabled ? 'settings.notifications.status.enabled' : 'settings.notifications.status.disabled')}
+      </strong>
+      {enabled && <span className="ml-2">{t('settings.notifications.status.enabledDescription')}</span>}
+    </SettingsNotice>
   )
 }
 
-function DeadlineSettings({
+/** Compact multi-toggle for 7/3/1 days before; order follows LEAD_DAY_OPTIONS. */
+function LeadDaysRow({
   notifications,
   onSave
 }: {
@@ -78,46 +61,42 @@ function DeadlineSettings({
   onSave: SaveNotifications
 }): JSX.Element {
   const t = useT()
+  const labelId = useId()
+  const disabled = !notifications.enabled || !notifications.deadlines
+  const current = notifications.deadlineLeadDays
   return (
-    <>
-      <ToggleRow
-        label={t('settings.notifications.deadlines.label')}
-        description={t('settings.notifications.deadlines.description')}
-        checked={notifications.deadlines}
-        disabled={!notifications.enabled}
-        onChange={(deadlines) => onSave({ deadlines })}
-      />
-      {notifications.enabled && notifications.deadlines && (
-        <div
-          className="settings-notifications-lead-days"
-          role="group"
-          aria-label={t('settings.notifications.deadlines.leadDaysLabel')}
-        >
-          {LEAD_DAY_OPTIONS.map((day) => (
-            <button
-              key={day}
-              type="button"
-              className="settings-notifications-lead-day"
-              aria-pressed={notifications.deadlineLeadDays.includes(day)}
-              onClick={() =>
-                onSave({
-                  deadlineLeadDays: toggleLeadDay(
-                    notifications.deadlineLeadDays,
-                    day
-                  )
-                })
-              }
-            >
-              {t(`settings.notifications.deadlines.leadDay.${day}`)}
-            </button>
-          ))}
-        </div>
+    <SettingsRow
+      searchId="notifications.alerts.leadDays"
+      labelId={labelId}
+      disabled={disabled}
+      disabledReason={t(
+        notifications.enabled
+          ? 'settings.notifications.deadlines.leadDaysDisabled'
+          : 'settings.notifications.disabledReason'
       )}
-    </>
+      control={
+        <ToggleGroup
+          type="multiple"
+          aria-labelledby={labelId}
+          disabled={disabled}
+          value={current.map(String)}
+          onValueChange={values => {
+            const changed = LEAD_DAY_OPTIONS.find(day => values.includes(String(day)) !== current.includes(day))
+            if (changed !== undefined) onSave({ deadlineLeadDays: toggleLeadDay(current, changed) })
+          }}
+        >
+          {LEAD_DAY_OPTIONS.map(day => (
+            <ToggleGroupItem key={day} value={String(day)}>
+              {t(`settings.notifications.deadlines.leadDay.${day}`)}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      }
+    />
   )
 }
 
-function AlertsCard({
+function AlertsGroup({
   notifications,
   onSave
 }: {
@@ -125,43 +104,45 @@ function AlertsCard({
   onSave: SaveNotifications
 }): JSX.Element {
   const t = useT()
+  const off = !notifications.enabled
+  const child = { disabled: off, disabledReason: t('settings.notifications.disabledReason') }
   return (
-    <SettingsCard title={t('settings.notifications.alerts.title')}>
-      <div className="settings-card__rows">
-        <ToggleRow
-          label={t('settings.notifications.enabled.label')}
-          description={t('settings.notifications.enabled.description')}
-          checked={notifications.enabled}
-          onChange={(enabled) => onSave({ enabled })}
-        />
-        <DeadlineSettings notifications={notifications} onSave={onSave} />
-        <ToggleRow
-          label={t('settings.notifications.agentComplete.label')}
-          description={t('settings.notifications.agentComplete.description')}
-          checked={notifications.agentComplete}
-          disabled={!notifications.enabled}
-          onChange={(agentComplete) => onSave({ agentComplete })}
-        />
-        <ToggleRow
-          label={t('settings.notifications.downloads.label')}
-          description={t('settings.notifications.downloads.description')}
-          checked={notifications.downloads}
-          disabled={!notifications.enabled}
-          onChange={(downloads) => onSave({ downloads })}
-        />
-        <ToggleRow
-          label={t('settings.notifications.pluginNotices.label')}
-          description={t('settings.notifications.pluginNotices.description')}
-          checked={notifications.pluginNotices}
-          disabled={!notifications.enabled}
-          onChange={(pluginNotices) => onSave({ pluginNotices })}
-        />
-      </div>
-    </SettingsCard>
+    <SettingsGroup searchId="notifications.alerts">
+      <SettingsSwitchRow
+        searchId="notifications.alerts.enabled"
+        checked={notifications.enabled}
+        onChange={enabled => onSave({ enabled })}
+      />
+      <SettingsSwitchRow
+        searchId="notifications.alerts.deadlines"
+        {...child}
+        checked={notifications.deadlines}
+        onChange={deadlines => onSave({ deadlines })}
+      />
+      <LeadDaysRow notifications={notifications} onSave={onSave} />
+      <SettingsSwitchRow
+        searchId="notifications.alerts.agentComplete"
+        {...child}
+        checked={notifications.agentComplete}
+        onChange={agentComplete => onSave({ agentComplete })}
+      />
+      <SettingsSwitchRow
+        searchId="notifications.alerts.downloads"
+        {...child}
+        checked={notifications.downloads}
+        onChange={downloads => onSave({ downloads })}
+      />
+      <SettingsSwitchRow
+        searchId="notifications.alerts.pluginNotices"
+        {...child}
+        checked={notifications.pluginNotices}
+        onChange={pluginNotices => onSave({ pluginNotices })}
+      />
+    </SettingsGroup>
   )
 }
 
-function BehaviorCard({
+function BehaviorGroup({
   notifications,
   testing,
   onSave,
@@ -174,51 +155,36 @@ function BehaviorCard({
 }): JSX.Element {
   const t = useT()
   return (
-    <SettingsCard title={t('settings.notifications.behavior.title')}>
-      <div className="settings-card__rows">
-        <ToggleRow
-          label={t('settings.notifications.sound.label')}
-          description={t('settings.notifications.sound.description')}
-          checked={notifications.sound}
-          onChange={(sound) => onSave({ sound })}
-        />
-        <ToggleRow
-          label={t('settings.notifications.suppressWhileFocused.label')}
-          description={t(
-            'settings.notifications.suppressWhileFocused.description'
-          )}
-          checked={notifications.suppressWhileFocused}
-          onChange={(suppressWhileFocused) => onSave({ suppressWhileFocused })}
-        />
-      </div>
-      <div className="settings-notifications-actions">
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={testing}
-          onClick={onTest}
-        >
-          {t(
-            testing
-              ? 'settings.notifications.test.sending'
-              : 'settings.notifications.test.send'
-          )}
-        </button>
-      </div>
-    </SettingsCard>
+    <SettingsGroup searchId="notifications.behavior">
+      <SettingsSwitchRow
+        searchId="notifications.behavior.sound"
+        checked={notifications.sound}
+        onChange={sound => onSave({ sound })}
+      />
+      <SettingsSwitchRow
+        searchId="notifications.behavior.suppressWhileFocused"
+        checked={notifications.suppressWhileFocused}
+        onChange={suppressWhileFocused => onSave({ suppressWhileFocused })}
+      />
+      <SettingsRow
+        searchId="notifications.behavior.test"
+        control={
+          <Button variant="secondary" size="sm" disabled={testing} onClick={onTest}>
+            {t(testing ? 'settings.notifications.test.sending' : 'settings.notifications.test.send')}
+          </Button>
+        }
+      />
+    </SettingsGroup>
   )
 }
 
-export function NotificationsPanel({
-  settings
-}: {
-  settings: Settings | null
-}): JSX.Element {
+export function NotificationsPanel({ settings }: { settings: Settings | null }): JSX.Element {
   const t = useT()
   const [testing, setTesting] = useState(false)
+  const searching = useIsSettingsSearching()
   if (settings === null) return <NotificationsLoading />
 
-  const save: SaveNotifications = (patch) => {
+  const save: SaveNotifications = patch => {
     void invoke('settings:set', {
       notifications: patch
     }).catch(() => showToast(t('settings.notifications.saveFailed'), 'danger'))
@@ -227,7 +193,7 @@ export function NotificationsPanel({
     if (testing) return
     setTesting(true)
     void invoke('notifications:test', {})
-      .then((result) => {
+      .then(result => {
         if (result.ok) showToast(t('settings.notifications.test.sent'))
         else if (result.reason === 'unsupported') {
           showToast(t('settings.notifications.test.unsupported'), 'danger')
@@ -238,15 +204,15 @@ export function NotificationsPanel({
   }
 
   return (
-    <div className="settings-stack">
-      <NotificationStatus enabled={settings.notifications.enabled} />
-      <AlertsCard notifications={settings.notifications} onSave={save} />
-      <BehaviorCard
+    <SettingsStack>
+      {!searching && <NotificationStatus enabled={settings.notifications.enabled} />}
+      <AlertsGroup notifications={settings.notifications} onSave={save} />
+      <BehaviorGroup
         notifications={settings.notifications}
         testing={testing}
         onSave={save}
         onTest={sendTestNotification}
       />
-    </div>
+    </SettingsStack>
   )
 }

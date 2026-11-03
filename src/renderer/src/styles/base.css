@@ -1,65 +1,74 @@
 /* Base styles: reset + app-level defaults. Tokens only — no raw colors. */
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* Element-level reset and defaults live in the `base` cascade layer so the
+ * Tailwind utilities (styles/tailwind.css, layer `utilities`) can override
+ * them. Unlayered rules always beat layered ones, so leaving `* { padding: 0 }`
+ * or `button { background: none }` unlayered would silently disable `p-2` or
+ * `bg-primary` on every new component. Class-level rules stay unlayered. */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  /* 글자 크기: the only place the root font-size is set. Every rem token in
+   * tokens.css follows the multiplier, so this behaves like browser zoom. */
+  html {
+    font-size: calc(100% * var(--font-scale));
+    /* The app viewport stays fixed; only its document and sidebar panes scroll.
+       Unlike hidden, clip also blocks focus/scrollIntoView from moving the root. */
+    overflow: clip;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-app);
+    -webkit-font-smoothing: antialiased;
+    overflow: clip;
+    user-select: none;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    font: inherit;
+    color: inherit;
+    user-select: text;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-muted);
+  }
+
+  ::selection {
+    background: var(--accent-muted);
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
-
-/* 글자 크기: the only place the root font-size is set. Every rem token in
- * tokens.css follows the multiplier, so this behaves like browser zoom. */
-html {
-  font-size: calc(100% * var(--font-scale));
-  /* The app viewport stays fixed; only its document and sidebar panes scroll.
-     Unlike hidden, clip also blocks focus/scrollIntoView from moving the root. */
-  overflow: clip;
-}
-
-body {
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-  line-height: 1.5;
-  color: var(--text-primary);
-  background: var(--bg-app);
-  -webkit-font-smoothing: antialiased;
-  overflow: clip;
-  user-select: none;
-}
-
-input,
-select,
-textarea {
-  min-width: 0;
-  font: inherit;
-  color: inherit;
-  user-select: text;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--text-muted);
-}
-
-::selection {
-  background: var(--accent-muted);
-}
-
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
+/* Pseudo-class defaults stay unlayered: their (0,1,1) specificity used to beat
+ * single-class component rules, and layering them would flip that. */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -69,6 +78,14 @@ summary:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* 필기 글꼴: swaps the note editor's body family only (the chrome keeps
@@ -81,14 +98,6 @@ summary:focus-visible {
 
 :root[data-editor-font='mono'] .note-tab .milkdown .editor {
   font-family: var(--font-mono);
-}
-
-button:disabled,
-input:disabled,
-select:disabled,
-textarea:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 ::-webkit-scrollbar {

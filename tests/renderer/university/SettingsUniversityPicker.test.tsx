@@ -16,7 +16,7 @@ test('a failed custom-school save preserves the open form and name for retry', a
   try {
     await act(async () => root.render(<SettingsUniversityPicker selectedId={null} onAddCustom={onAddCustom} onSelectPreset={() => {}} />))
     await act(() => setInput(host.querySelector('input[type=search]')!, 'My school'))
-    await act(() => (host.querySelector('.university-picker__custom-cta') as HTMLButtonElement).click())
+    await act(() => [...host.querySelectorAll('button')].find(button => button.textContent?.includes('직접 추가'))!.click())
     await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
     expect(onAddCustom).toHaveBeenCalledWith({ nameKo: 'My school' })
     expect(host.querySelector('form')).not.toBeNull()

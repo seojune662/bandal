@@ -1,6 +1,7 @@
 import type { CatalogEntry } from '../../../../../shared/types/pluginCatalog'
+import { Button } from '../../../components/ui/button'
 import { useState } from 'react'
-import { useLocale, useT } from '../../../i18n'
+import { useT } from '../../../i18n'
 import { Icon } from '../SettingsIcon'
 import { installState } from './catalogModel'
 import { MarketplaceReleaseDetails } from './MarketplaceReleaseDetails'
@@ -29,7 +30,6 @@ export function CatalogCard({
   onOpenExperimental: () => void
 }): JSX.Element {
   const t = useT()
-  const ko = useLocale() === 'ko-KR'
   const [detailsOpen, setDetailsOpen] = useState(false)
   const state = installState(entry, installedVersion)
   const runtimeBlocked = entry.kind === 'extension' && !runtimeEnabled
@@ -37,13 +37,15 @@ export function CatalogCard({
   return (
     <article className="settings-catalog-card">
       {runtimeBlocked && (
-        <button
+        <Button
           type="button"
-          className="secondary-button settings-catalog-card__runtime-badge"
+          variant="secondary"
+          size="sm"
+          className="settings-catalog-card__runtime-badge self-end"
           onClick={onOpenExperimental}
         >
           {t('settings.catalog.card.enableInExperimental')}
-        </button>
+        </Button>
       )}
       <div className="settings-catalog-card__heading">
         <span className="settings-catalog-card__avatar" aria-hidden="true">
@@ -67,7 +69,7 @@ export function CatalogCard({
 
       <p className="settings-catalog-card__description">{entry.description}</p>
       {entry.marketplaceReleaseId && <details onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>
-        <summary>{ko ? '심사 완료 · 버전 정보' : 'Reviewed · Release details'}</summary>
+        <summary>{t('settings.catalog.card.releaseDetails')}</summary>
         {detailsOpen && <MarketplaceReleaseDetails id={entry.marketplaceReleaseId} />}
       </details>}
 
@@ -83,9 +85,11 @@ export function CatalogCard({
             {t('settings.catalog.card.installed')}
           </span>
         ) : (
-          <button
+          <Button
             type="button"
-            className="secondary-button settings-catalog-card__action"
+            variant="secondary"
+            size="sm"
+            className="settings-catalog-card__action"
             disabled={installing || runtimeBlocked}
             onClick={onInstall}
           >
@@ -97,7 +101,7 @@ export function CatalogCard({
                   ? 'settings.catalog.card.update'
                   : 'settings.catalog.card.install'
             )}
-          </button>
+          </Button>
         )}
       </div>
       {error !== null && (

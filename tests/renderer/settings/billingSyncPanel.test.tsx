@@ -5,6 +5,7 @@ import { expect, test, vi } from 'vitest'
 const ipc = vi.hoisted(() => ({ invoke: vi.fn() }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ipc)
 import { BillingSyncPanel } from '../../../src/renderer/src/features/settings/BillingSyncPanel'
+import { ConfirmDialogProvider } from '../../../src/renderer/src/components/ui/confirm-dialog'
 
 const conflicts = [
   { id: 'conflict', label: '물리학 · 수업.md', reason: '두 기기에서 수정했습니다.', local: false, remote: true,
@@ -21,7 +22,7 @@ async function render(sync: Record<string, unknown>, items: unknown[] = conflict
     throw new Error('unexpected channel')
   })
   const element = document.createElement('div'), root = createRoot(element)
-  await act(async () => root.render(<BillingSyncPanel />))
+  await act(async () => root.render(<ConfirmDialogProvider><BillingSyncPanel /></ConfirmDialogProvider>))
   return { element, unmount: () => act(() => root.unmount()) }
 }
 const button = (element: HTMLElement, text: string) => [...element.querySelectorAll('button')].find(item => item.textContent === text)

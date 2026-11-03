@@ -46,7 +46,7 @@ test('app IPC rejects guest views, subframes and foreign documents before side e
         await foreign.loadURL('data:text/html,<title>Foreign document</title>')
         const foreignResult = await foreign.webContents.executeJavaScript(`Promise.resolve().then(() => window.bandal.invoke('settings:set', { theme: 'light' })).then(() => 'allowed', error => String(error))`)
         const localPages: string[] = []
-        for (const page of ['settings.html', 'overlay.html', 'pip.html?view=toolbar']) {
+        for (const page of ['overlay.html', 'pip.html?view=toolbar']) {
           await foreign.loadURL(new URL(page, main.webContents.getURL()).href)
           const theme = await foreign.webContents.executeJavaScript(`Promise.resolve().then(() => window.bandal.invoke('settings:get', {})).then(settings => settings.theme, error => String(error))`)
           localPages.push(theme)
@@ -61,7 +61,7 @@ test('app IPC rejects guest views, subframes and foreign documents before side e
     for (const result of report.denied) expect(result).toContain('IPC sender is not an app renderer')
     expect(report.inspectedRequests).toBe(0)
     expect(report.foreignResult).toContain('IPC sender is not an app renderer')
-    expect(report.localPages).toEqual(['dark', 'dark', 'dark'])
+    expect(report.localPages).toEqual(['dark', 'dark'])
     expect(await app.page.evaluate(() => window.bandal.invoke('settings:get', {}).then(settings => settings.theme))).toBe('dark')
   } finally { await app.close() }
 })
