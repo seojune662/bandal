@@ -23,21 +23,28 @@ const COMMAND_KEY = 'HKCU\\Software\\Classes\\bandal\\shell\\open\\command'
 const run = promisify(execFile)
 
 // Finds the Bandal message box (class #32770) whose text includes E2E_TEXT,
-// invokes the E2E_BUTTON button and prints the box's texts as JSON.
+// invokes the E2E_BUTTON button and prints the box's texts as JSON. UI
+// Automation lists a modal box under the window that owns it.
 const MESSAGE_BOX = String.raw`
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
+trap { [Console]::Out.WriteLine("$_"); exit 1 }
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $nl = [string][char]10
 $A = [Windows.Automation.AutomationElement]
 $scope = [Windows.Automation.TreeScope]
-$boxes = New-Object Windows.Automation.AndCondition(
-  (New-Object Windows.Automation.PropertyCondition($A::ClassNameProperty, '#32770')),
-  (New-Object Windows.Automation.PropertyCondition($A::ProcessIdProperty, [int]$env:E2E_PID)))
+$ofProcess = New-Object Windows.Automation.PropertyCondition($A::ProcessIdProperty, [int]$env:E2E_PID)
+$isBox = New-Object Windows.Automation.PropertyCondition($A::ClassNameProperty, '#32770')
+function Boxes {
+  foreach ($window in $A::RootElement.FindAll($scope::Children, $ofProcess)) {
+    if ($window.Current.ClassName -eq '#32770') { $window }
+    $window.FindAll($scope::Children, $isBox)
+  }
+}
 $seen = @()
 $deadline = [DateTime]::UtcNow.AddMilliseconds([int]$env:E2E_TIMEOUT_MS)
 while ([DateTime]::UtcNow -lt $deadline) {
-  foreach ($box in $A::RootElement.FindAll($scope::Children, $boxes)) {
+  foreach ($box in @(Boxes)) {
     $all = $box.FindAll($scope::Descendants, [Windows.Automation.Condition]::TrueCondition)
     $texts = @(@($box.Current.Name) + @($all | ForEach-Object { $_.Current.Name }) | Where-Object { $_ })
     $seen = $texts
@@ -52,18 +59,24 @@ while ([DateTime]::UtcNow -lt $deadline) {
   }
   Start-Sleep -Milliseconds 200
 }
-$windows = $A::RootElement.FindAll($scope::Children, (New-Object Windows.Automation.PropertyCondition($A::ProcessIdProperty, [int]$env:E2E_PID)))
-$list = @($windows | ForEach-Object { "$($_.Current.ClassName): $($_.Current.Name)" }) -join ' | '
+$list = @($A::RootElement.FindAll($scope::Children, $ofProcess) | ForEach-Object {
+  $children = @($_.FindAll($scope::Children, [Windows.Automation.Condition]::TrueCondition) | ForEach-Object { "$($_.Current.ClassName): $($_.Current.Name)" }) -join ', '
+  "$($_.Current.ClassName): $($_.Current.Name) [$children]"
+}) -join ' | '
 throw "no message box showing '$($env:E2E_TEXT)'; last box: $($seen -join ' | '); windows of the process: $list"
 `
 
 /** Clicks `button` in the message box of process `pid` that shows `text`, and returns the box's texts. */
 async function messageBox(pid: number, text: string, button: string, timeoutMs = 60_000): Promise<string[]> {
-  const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(MESSAGE_BOX, 'utf16le').toString('base64')], {
-    env: { ...process.env, E2E_PID: String(pid), E2E_TEXT: text, E2E_BUTTON: button, E2E_TIMEOUT_MS: String(timeoutMs) },
-    encoding: 'utf8', timeout: timeoutMs + 30_000, windowsHide: true
-  })
-  return JSON.parse(stdout.trim()) as string[]
+  try {
+    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(MESSAGE_BOX, 'utf16le').toString('base64')], {
+      env: { ...process.env, E2E_PID: String(pid), E2E_TEXT: text, E2E_BUTTON: button, E2E_TIMEOUT_MS: String(timeoutMs) },
+      encoding: 'utf8', timeout: timeoutMs + 30_000, windowsHide: true
+    })
+    return JSON.parse(stdout.trim()) as string[]
+  } catch (error) {
+    throw new Error(`message box '${text}' › ${button}: ${(error as { stdout?: string }).stdout?.trim() || String(error)}`)
+  }
 }
 
 /** A registry value through reg.exe (`null` = the key's default value); rejects when it is missing. */
