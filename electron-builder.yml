@@ -75,11 +75,12 @@ asarUnpack:
 # compatible prebuilds for every release platform.
 npmRebuild: false
 
-# OAuth callback registration. macOS reads this into CFBundleURLTypes, Windows
-# into the installer's registry keys, so `bandal://auth/callback` reaches the
-# packaged app on both. Top-level (not under `mac:`) so Windows gets it too.
-# In `electron-vite dev` there is no bundle/installer — the runtime call to
-# `app.setAsDefaultProtocolClient` covers that case (see src/main/index.ts).
+# OAuth callback registration. macOS reads this into CFBundleURLTypes, so
+# `bandal://auth/callback` reaches the packaged app. The NSIS installer does not
+# register URL schemes (electron-builder 26 does so only for AppX and Linux):
+# on Windows, and in `electron-vite dev`, the runtime
+# `app.setAsDefaultProtocolClient` call registers it on every launch (see
+# src/main/index.ts).
 protocols:
   - name: Bandal
     schemes:
