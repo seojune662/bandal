@@ -134,6 +134,4 @@ const controller = createWindowPreviewController({
 })
 export const captureWindowPreview = controller.capture
 export const loadWindowPreview = (workspaceKey: string, windowId: string): Promise<string | null> => controller.load({ workspaceKey, windowId })
-export const getWindowPreview = (workspaceKey: string, windowId: string): string | null => controller.get({ workspaceKey, windowId })
 export const deleteWindowPreview = (workspaceKey: string, windowId: string): Promise<void> => controller.remove({ workspaceKey, windowId })
-export const subscribeWindowPreviews = controller.subscribe

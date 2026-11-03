@@ -592,7 +592,6 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
   }
 }
 
-export type SyncRuntime = ReturnType<typeof createSyncRuntime>
 
 /** Another profile on this computer bound to `root`, named for the user, or null (design 6.4). Profiles have no names of their own. */
 export function profileBoundElsewhere(baseRoot: string, current: string, root: string): string | null {

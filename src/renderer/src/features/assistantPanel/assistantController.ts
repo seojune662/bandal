@@ -6,8 +6,6 @@ import { workspaceKey, type WorkspaceRef } from '../../../../shared/types/worksp
 import { useWorkspaceAssistantStore } from './workspaceAssistantStore'
 import { updateComposerDraft } from '../chat/composerDraftStore'
 
-// Retained as a compatibility registration API for restored tabs.
-export function registerAssistantController(_panelId: string, _controller: { courseId: string | null; open: boolean; show(): void; focus(): void }, _workspaceCourseId?: string | null): () => void { return () => {} }
 export function activeAssistantWorkspace(): WorkspaceRef | null {
   const state = useWorkspaceStore.getState()
   return state.activeWorkspace ?? (state.activeCourseId ? { kind: 'course', courseId: state.activeCourseId } : null)
@@ -40,4 +38,3 @@ export async function openChosenAssistant(choice: { courseId: string; binding?: 
   useWorkspaceStore.getState().showWorkspace(workspace)
   openWorkspaceAssistant(workspace)
 }
-export function resetAssistantControllersForTests(): void {}

@@ -15,14 +15,6 @@ export function openLearningHome(): void {
   useWorkspaceStore.getState().showWorkspace(null)
 }
 
-export function returnToCourseWorkspace(courseId?: string): void {
-  const courses = useCoursesStore.getState()
-  const target = courseId ?? courses.selectedCourseId
-  if (target && !courses.courses.some(course => course.id === target)) return
-  courses.selectCourse(target)
-  useUiStore.getState().showCourses()
-}
-
 export const RECENT_ENGLISH_KEY = 'bandal:lastEnglishBinding'
 export function rememberEnglishBinding(binding: LearningBinding): void { try { localStorage.setItem(RECENT_ENGLISH_KEY, JSON.stringify(binding)) } catch { /* The explicit picker remains available. */ } }
 
