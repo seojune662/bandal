@@ -1,7 +1,8 @@
 name: Verify targeted Windows package
 
 # Run focused release regressions before repeating macOS signing/notarization.
-# This builds a local unpacked app and never creates or publishes a release.
+# This builds a local unpacked app (manual-test: also the installer, without the
+# E2E) and never creates or publishes a release.
 on:
   workflow_dispatch:
     inputs:
@@ -9,11 +10,12 @@ on:
         description: 'Exact 40-character desktop commit already on main'
         required: true
       suite:
-        description: 'Packaged regressions to verify'
+        description: 'Packaged regressions to verify, or manual-test for an installer to try by hand (docs/windows-manual-test.md)'
         type: choice
         options:
           - release-regressions
           - tab-cycle
+          - manual-test
         default: release-regressions
 
 permissions:
@@ -49,7 +51,7 @@ jobs:
           const sha = process.env.QA_SOURCE_SHA;
           const suite = process.env.QA_SUITE;
           if (!/^[0-9a-f]{40}$/.test(sha ?? '') || process.env.GITHUB_REF !== 'refs/heads/main' || process.env.GITHUB_REPOSITORY !== 'seojune662/bandal') throw new Error('Invalid source scope');
-          if (!['release-regressions', 'tab-cycle'].includes(suite)) throw new Error('Invalid verification suite');
+          if (!['release-regressions', 'tab-cycle', 'manual-test'].includes(suite)) throw new Error('Invalid verification suite');
           const git = args => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
           if (git(['rev-parse', 'HEAD']) !== sha) throw new Error('Source SHA mismatch');
           try { git(['merge-base', '--is-ancestor', sha, 'refs/remotes/origin/main']); }
@@ -73,12 +75,17 @@ jobs:
           # No account session, administrator key, signing key or refresh token.
           MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
           MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # The Google desktop client (Drive sync, Gmail) only for the hand-tested installer.
+          MAIN_VITE_GMAIL_CLIENT_ID: ${{ inputs.suite == 'manual-test' && secrets.MAIN_VITE_GMAIL_CLIENT_ID || '' }}
+          MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ inputs.suite == 'manual-test' && secrets.MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET || '' }}
       - name: Package Windows without publishing
-        run: pnpm exec electron-builder --win --x64 --dir --publish never
+        # manual-test also builds the NSIS installer: the checklist installs it over a release.
+        run: pnpm exec electron-builder --win --x64 ${{ inputs.suite != 'manual-test' && '--dir' || '' }} --publish never
       - name: Verify the bundled browser helper without changing its timeout
         run: node scripts/verify-browser-import.mjs release/win-unpacked
       - name: Verify the selected regressions in the Windows package
         id: targeted_tests
+        if: inputs.suite != 'manual-test'
         shell: pwsh
         run: |
           $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'
@@ -93,6 +100,17 @@ jobs:
         run: |
           $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'
           pnpm exec playwright test -c e2e e2e/accountNotes.spec.ts --grep 'offline verified profile creates a ruled PDF note and edits its pages$' --repeat-each 10 --workers 1 --output e2e/test-results/page-edit-repeat
+      - name: Keep the installer for the manual checklist
+        if: inputs.suite == 'manual-test'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-manual-test-${{ inputs.source_sha }}
+          path: |
+            release/Bandal-Setup.exe
+            windows-package-source.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
       - name: Retain exact package and source identity even when E2E fails
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
