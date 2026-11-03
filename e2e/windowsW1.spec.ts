@@ -52,7 +52,9 @@ while ([DateTime]::UtcNow -lt $deadline) {
   }
   Start-Sleep -Milliseconds 200
 }
-throw "no message box showing '$($env:E2E_TEXT)'; last box: $($seen -join ' | ')"
+$windows = $A::RootElement.FindAll($scope::Children, (New-Object Windows.Automation.PropertyCondition($A::ProcessIdProperty, [int]$env:E2E_PID)))
+$list = @($windows | ForEach-Object { "$($_.Current.ClassName): $($_.Current.Name)" }) -join ' | '
+throw "no message box showing '$($env:E2E_TEXT)'; last box: $($seen -join ' | '); windows of the process: $list"
 `
 
 /** Clicks `button` in the message box of process `pid` that shows `text`, and returns the box's texts. */
@@ -122,13 +124,22 @@ async function oldUser(fillerMiB = 0): Promise<OldUser> {
   return { legacy, profileDir: bandal.profileDir, userDataDir: bandal.userDataDir, files }
 }
 
+interface Running { app: ElectronApplication; pid: number; output: string[] }
+const running: Running[] = []
+
 /** Launches the old user's profile the way an update does: no BANDAL_DATA_ROOT, so the startup move runs. */
-async function relaunch(user: OldUser): Promise<{ app: ElectronApplication; pid: number }> {
+async function relaunch(user: OldUser): Promise<Running> {
   const app = await _electron.launch({
     executablePath: EXE,
     env: launchEnv(user.profileDir, user.userDataDir, null)
   })
-  return { app, pid: await app.evaluate(() => process.pid) }
+  const output: string[] = []
+  for (const stream of [app.process().stdout, app.process().stderr]) {
+    stream?.on('data', chunk => { if (output.length < 2000) output.push(String(chunk)) })
+  }
+  const launched = { app, pid: await app.evaluate(() => process.pid), output }
+  running.push(launched)
+  return launched
 }
 
 function expectFiles(root: string, files: Record<string, string>): void {
@@ -153,8 +164,19 @@ async function closeKilled(app: ElectronApplication): Promise<void> {
   await Promise.race([app.close().catch(() => undefined), new Promise(resolve => setTimeout(resolve, 10_000))])
 }
 
-function cleanUp(user: OldUser): void {
-  for (const dir of [user.legacy, user.profileDir]) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+/** Closes what a failed step left open (it holds the profile), keeps its output and removes the folders. */
+async function cleanUp(user: OldUser): Promise<void> {
+  for (const { app, output } of running.splice(0)) {
+    await closeKilled(app)
+    await test.info().attach('main process output', { body: output.join(''), contentType: 'text/plain' })
+  }
+  for (const dir of [user.legacy, user.profileDir]) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    } catch (error) {
+      test.info().annotations.push({ type: 'cleanup', description: String(error) })
+    }
+  }
 }
 
 test('W1-3 asks before moving Documents\\Bandal, keeps it on 나중에 and copies it on 옮기기', async () => {
@@ -187,7 +209,7 @@ test('W1-3 asks before moving Documents\\Bandal, keeps it on 나중에 and copie
     await expect.poll(async () => (await courses(page)).length, { timeout: 30_000 }).toBe(2)
     await bandal.app.close()
   } finally {
-    cleanUp(user)
+    await cleanUp(user)
   }
 })
 
@@ -223,7 +245,7 @@ test('W1-3 a move killed mid-copy keeps both folders intact, asks again and comp
     await expect.poll(async () => (await courses(page)).length).toBe(2)
     await bandal.app.close()
   } finally {
-    cleanUp(user)
+    await cleanUp(user)
   }
 })
 
