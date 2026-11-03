@@ -270,6 +270,7 @@ test('W1-3 a move killed mid-copy keeps both folders intact, asks again and comp
     await messageBox(bandal.pid, '자료 폴더를 옮길게요', '옮기기')
     await expect.poll(copying, { intervals: [50], timeout: 60_000 }).toBe(true)
     await run('taskkill', ['/PID', String(bandal.pid), '/T', '/F'])
+    console.log(`killed with ${readdirSync(staging, { recursive: true }).length} entries in Courses.partial of ${Object.keys(user.files).length + 2}`)
     await closeKilled(bandal.app)
     // Killed while copying: the setting and the old folder are untouched.
     expect((JSON.parse(readFileSync(join(user.userDataDir, 'settings.json'), 'utf8')) as { dataRoot: string }).dataRoot).toBe(user.legacy)
@@ -381,6 +382,7 @@ test('W1-7 uninstalling keeps %APPDATA%\\bandal and a reinstall opens it without
     // The app registers bandal:// itself on launch, so the uninstaller does not know the key.
     const left = await regValue(COMMAND_KEY).catch(() => null)
     test.info().annotations.push({ type: 'bandal:// after uninstall', description: left ?? 'removed' })
+    console.log(`bandal:// after uninstall: ${left ?? 'removed'}`)
 
     await install()
     bandal = await open()
