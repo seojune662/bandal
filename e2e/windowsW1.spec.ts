@@ -49,10 +49,14 @@ while ([DateTime]::UtcNow -lt $deadline) {
     $texts = @(@($box.Current.Name) + @($all | ForEach-Object { $_.Current.Name }) | Where-Object { $_ })
     $seen = $texts
     if (-not (($texts -join $nl).Contains($env:E2E_TEXT))) { continue }
+    # Electron shows custom buttons as command links, which are not of the Button type.
     $button = $all | Where-Object {
-      $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and ($_.Current.Name -split $nl)[0].Trim() -eq $env:E2E_BUTTON
+      ($_.Current.Name -split $nl)[0].Trim() -eq $env:E2E_BUTTON -and [bool]$_.GetCurrentPropertyValue($A::IsInvokePatternAvailableProperty)
     } | Select-Object -First 1
-    if ($null -eq $button) { throw "no '$($env:E2E_BUTTON)' button among: $($texts -join ' | ')" }
+    if ($null -eq $button) {
+      $kinds = @($all | ForEach-Object { "$($_.Current.ControlType.ProgrammaticName)=$($_.Current.Name)" }) -join ' | '
+      throw "no '$($env:E2E_BUTTON)' to invoke among: $kinds"
+    }
     $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
     ConvertTo-Json -Compress -InputObject $texts
     exit 0
