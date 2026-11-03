@@ -459,3 +459,8 @@ import_map = "./functions/deno.json"
 [functions.account-delete]
 verify_jwt = false
 import_map = "./functions/deno.json"
+
+# The operator dashboard verifies the Supabase user and admin_operators in the handler.
+[functions.admin]
+verify_jwt = false
+import_map = "./functions/deno.json"
