@@ -29,6 +29,7 @@
     "tailwindcss",
     "tw-animate-css"
   ],
+  "tailwind": false,
   "ignoreBinaries": [
     "swift",
     "lipo",
@@ -40,23 +41,11 @@
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
-    "src/main/features/browser/index.ts": [
-      "exports"
-    ],
-    "src/renderer/src/features/ink/ImageShape.tsx": [
-      "exports"
-    ],
-    "src/renderer/src/features/ink/index.ts": [
-      "exports"
-    ],
-    "src/shared/account/nickname.ts": [
-      "exports"
-    ],
-    "src/shared/types/browserProfile.ts": [
-      "exports"
-    ],
-    "src/shared/types/whiteboard.ts": [
-      "types"
-    ]
+    "src/main/features/browser/index.ts": ["exports"],
+    "src/renderer/src/features/ink/ImageShape.tsx": ["exports"],
+    "src/renderer/src/features/ink/index.ts": ["exports"],
+    "src/shared/account/nickname.ts": ["exports"],
+    "src/shared/types/browserProfile.ts": ["exports"],
+    "src/shared/types/whiteboard.ts": ["types"]
   }
 }
