@@ -7,7 +7,7 @@ const rendererDirectory = join(process.cwd(), 'out', 'renderer')
 const policy = { rendererDirectory }
 const file = (page: string) => pathToFileURL(join(rendererDirectory, page)).href
 
-test.each(['index.html', 'settings.html', 'overlay.html', 'pip.html'])('permits the exact %s app file with view query and hash', page => {
+test.each(['index.html', 'overlay.html', 'pip.html'])('permits the exact %s app file with view query and hash', page => {
   expect(isAppRendererUrl(`${file(page)}?view=toolbar#selection`, policy)).toBe(true)
 })
 test.each(['about:blank', 'data:text/html,index.html', 'bandal-plugin://example/index.html', 'https://example.test/index.html', `${file('../index.html')}`, `${file('assets/index.html')}`, `${file('index.html.bak')}`, `${file('..')}/other/index.html`])('rejects a non-app document %s', url => {

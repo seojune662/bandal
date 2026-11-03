@@ -7,6 +7,7 @@ import { BUILTIN_PACKS } from '../../../src/shared/workflowPacks/builtins'
 import type { McpServerSummary } from '../../../src/shared/types/mcp'
 import type { PluginSummary } from '../../../src/shared/types/plugin'
 import { PluginsCategoryPanel } from '../../../src/renderer/src/features/settings/PluginsCategoryPanel'
+import { ConfirmDialogProvider } from '../../../src/renderer/src/components/ui/confirm-dialog'
 import { resetMcpServersPanelForTests } from '../../../src/renderer/src/features/settings/McpServersPanel'
 import { resetPluginsStoreForTests } from '../../../src/renderer/src/stores/pluginsStore'
 import { resetWorkflowPacksStoreForTests } from '../../../src/renderer/src/stores/workflowPacksStore'
@@ -48,13 +49,14 @@ function fake(initialPlugins: PluginSummary[] = []) {
 async function mount(initialFilter: 'all' | 'external' = 'all'): Promise<void> {
   container = document.createElement('div'); container.className = 'settings-content'; document.body.append(container)
   root = createRoot(container)
-  await act(async () => { root!.render(<PluginsCategoryPanel initialFilter={initialFilter} />) })
+  await act(async () => { root!.render(<ConfirmDialogProvider><PluginsCategoryPanel initialFilter={initialFilter} /></ConfirmDialogProvider>) })
 }
 async function click(element: Element | null): Promise<void> { expect(element).not.toBeNull(); await act(async () => { (element as HTMLElement).click() }) }
 async function input(element: HTMLInputElement, value: string): Promise<void> {
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })) })
 }
-function button(text: string): HTMLButtonElement | null { return [...container.querySelectorAll('button')].find(item => item.textContent?.trim() === text) ?? null }
+// Radix dialogs portal to document.body, outside the container.
+function button(text: string): HTMLButtonElement | null { return [...document.body.querySelectorAll('button')].find(item => item.textContent?.trim() === text) ?? null }
 afterEach(() => { if (root) act(() => root!.unmount()); root = null; container?.remove(); setIpcAdapter(null); resetMcpServersPanelForTests(); resetPluginsStoreForTests(); resetWorkflowPacksStoreForTests() })
 
 test('default list hides credentials/metadata and detail back preserves search, scroll and focus', async () => {

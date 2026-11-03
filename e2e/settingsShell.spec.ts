@@ -55,7 +55,7 @@ test.describe('settings shell', () => {
       await expect(item).toHaveAttribute('aria-current', 'page')
       await expect(page.locator('.settings-panel')).toBeVisible()
 
-      const clippedCards = await page.locator('.settings-card').evaluateAll(
+      const clippedCards = await page.locator('.settings-panel [data-settings-group] > div.rounded-lg').evaluateAll(
         (cards) =>
           cards
             .map((card, index) => ({
@@ -82,11 +82,18 @@ test.describe('settings shell', () => {
     const nav = page.locator('.settings-nav')
     await expect(nav.locator('[data-category="browser"]')).toBeVisible()
     await expect(nav.locator('[data-category="about"]')).toHaveCount(0)
-    await expect(nav.locator('.settings-nav__hits')).toContainText('기본 줌')
+    // Matching rows are listed under their category; unrelated rows are filtered out.
+    await expect(nav.locator('.settings-search-hit', { hasText: '기본 줌' })).toBeVisible()
+    const panel = page.locator('.settings-panel')
+    await expect(panel.locator('[data-settings-target="browser.general.zoom"]')).toBeVisible()
+    await expect(panel.locator('[data-settings-target="browser.general.homePage"]')).toHaveCount(0)
     await nav.locator('.settings-search-hit', { hasText: '기본 줌' }).click()
-    await expect(page.locator('.settings-panel [data-search-match="true"]')).toContainText('기본 줌')
+    // A hit deep-links: the row is scrolled to and highlighted for a moment.
+    await expect(panel.locator('[data-highlighted="true"]')).toContainText('기본 줌')
     await shot(bandal, 'settings-search')
     await search.fill('')
+    // Clearing the query brings every row back.
+    await expect(panel.locator('[data-settings-target="browser.general.homePage"]')).toHaveCount(1)
   })
 
   test('⌘/ opens the shortcuts panel directly', async () => {
@@ -105,14 +112,15 @@ test.describe('settings shell', () => {
 
     await nav.locator('[data-category="university"]').click()
     await page.getByRole('option', { name: /^서울대학교/ }).click()
-    const universityCard = page.locator('.settings-card').first()
+    const universityCard = page.locator('[data-settings-group="university.school"]')
     const clearUniversity = universityCard.getByRole('button', {
       name: '학교 선택 해제'
     })
     await expect(clearUniversity).toBeVisible()
-    const universityInset = await universityCard.evaluate((card) => {
-      const action = card.querySelector('.settings-card__footer-row button')
-      if (!(action instanceof HTMLElement)) return null
+    const universityInset = await clearUniversity.evaluate((action) => {
+      // The kit card is the banded box holding the rows.
+      const card = action.closest('[data-settings-target]')?.parentElement
+      if (!(card instanceof HTMLElement)) return null
       const outer = card.getBoundingClientRect()
       const inner = action.getBoundingClientRect()
       return {
@@ -125,24 +133,13 @@ test.describe('settings shell', () => {
     await shot(bandal, 'settings-university-selected')
 
     await nav.locator('[data-category="appearance"]').click()
-    const densityCard = page.locator('.settings-card', {
-      has: page.getByRole('heading', { name: '밀도' })
-    })
-    const densityGap = await densityCard.evaluate((card) => {
-      const choices = card.querySelectorAll('.theme-grid--density .theme-choice')
+    const densityGroup = page.locator('[data-settings-group="appearance.density"]')
+    const densityGap = await densityGroup.evaluate((group) => {
+      const choices = group.querySelectorAll('[role="radiogroup"] [role="radio"]')
       const lastChoice = choices.item(choices.length - 1)
       if (!(lastChoice instanceof HTMLElement)) return null
-      return card.getBoundingClientRect().bottom - lastChoice.getBoundingClientRect().bottom
+      return group.getBoundingClientRect().bottom - lastChoice.getBoundingClientRect().bottom
     })
     expect(densityGap).toBeGreaterThanOrEqual(16)
-
-    await nav.locator('[data-category="advanced"]').click()
-    const maintenanceCard = page.locator('.settings-card').last()
-    const dangerGap = await maintenanceCard.evaluate((card) => {
-      const row = card.querySelector('.settings-advanced-danger-row')
-      if (!(row instanceof HTMLElement)) return null
-      return card.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom
-    })
-    expect(dangerGap).toBeGreaterThanOrEqual(0)
   })
 })

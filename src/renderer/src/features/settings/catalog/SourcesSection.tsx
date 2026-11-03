@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Button } from '../../../components/ui/button'
 import {
   OFFICIAL_CATALOG_URL,
   type CatalogSource
@@ -97,14 +98,15 @@ export function SourcesSection({
               <span className="settings-catalog-source__count">
                 {t('settings.catalog.sources.count', { count: source?.entryCount ?? 0 })}
               </span>
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="destructive-outline"
+                size="sm"
                 disabled={saving}
                 onClick={() => remove(url)}
               >
                 {t('settings.catalog.sources.remove')}
-              </button>
+              </Button>
             </div>
           )
         })}
@@ -125,13 +127,14 @@ export function SourcesSection({
             setFeedback(null)
           }}
         />
-        <button
+        <Button
           type="submit"
-          className="secondary-button"
+          variant="secondary"
+          size="sm"
           disabled={disabled || saving || value.trim().length === 0}
         >
           {t('settings.catalog.sources.add')}
-        </button>
+        </Button>
       </form>
       {feedback !== null && (
         <p className="settings-catalog-sources__feedback" role="alert">{feedback}</p>

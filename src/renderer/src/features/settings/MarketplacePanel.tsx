@@ -1,16 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import type {
   MarketplaceDashboard,
   MarketplaceRelease,
 } from '../../../../shared/types/marketplace'
-import { useLocale } from '../../i18n'
+import { Button } from '../../components/ui/button'
+import { useConfirm } from '../../components/ui/confirm-dialog-context'
+import { Input, Textarea } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
+import { useLocale, useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
+import { cn } from '../../lib/utils'
 import { useUiStore } from '../../stores/uiStore'
 import { describePermission } from '../../../../shared/plugins/permissions'
+import { SettingsEmptyState, SettingsGroup, SettingsNotice } from './kit/SettingsKit'
+
+const CARD = 'space-y-3 rounded-lg border border-border bg-card/60 px-4 py-4'
+
+function Field({ label, children }: { label: string; children: (id: string) => ReactNode }): JSX.Element {
+  const id = useId()
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children(id)}
+    </div>
+  )
+}
 
 export function MarketplacePanel(): JSX.Element {
   const locale = useLocale()
-  const ko = locale === 'ko-KR'
+  const t = useT()
+  const confirm = useConfirm()
   const [dashboard, setDashboard] = useState<MarketplaceDashboard | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -56,329 +75,236 @@ export function MarketplacePanel(): JSX.Element {
       setBusy(false)
     }
   }
-  const statuses = ko
-    ? {
-        pending: '심사 대기',
-        approved: '공개',
-        rejected: '반려',
-        withdrawn: '게시 중단',
-      }
-    : {
-        pending: 'In review',
-        approved: 'Published',
-        rejected: 'Rejected',
-        withdrawn: 'Withdrawn',
-      }
+  const status = (value: MarketplaceRelease['status']): string => t(`settings.marketplace.status.${value}`)
+
   return (
-    <div className="settings-stack marketplace-panel" aria-busy={busy}>
-      <div className="settings-extensions__toolbar">
-        <div>
-          <h2>{ko ? '개발자 센터' : 'Developer center'}</h2>
-          <p>
-            {ko
-              ? '학습을 돕는 도구를 만들고 반달 사용자와 나누세요.'
-              : 'Build study tools and share them with Bandal users.'}
-          </p>
-        </div>
-        <button
-          type="button"
-          className="settings-extension-button"
-          disabled={busy}
-          onClick={() => setAttempt((n) => n + 1)}
-        >
-          {ko ? '새로고침' : 'Refresh'}
-        </button>
-      </div>
-      {error && (
-        <p role="alert" className="settings-extension-feedback">
-          {error}
-        </p>
-      )}
-      {!dashboard && !error && (
-        <p role="status">{ko ? '불러오는 중…' : 'Loading…'}</p>
-      )}
-      {dashboard && !dashboard.configured && (
-        <p className="settings-extension-feedback">
-          {ko
-            ? '이 빌드에는 마켓플레이스 서비스가 연결되어 있지 않습니다. 폴더 설치로 로컬 플러그인을 사용할 수 있습니다.'
-            : 'The marketplace service is not connected in this build. You can install local plugins from a folder.'}
-        </p>
-      )}
-      {dashboard?.configured && !dashboard.signedIn && (
-        <div className="settings-extension-feedback">
-          <p>
-            {ko
-              ? '플러그인을 게시하려면 반달 계정으로 로그인하세요.'
-              : 'Sign in with your Bandal account to publish plugins.'}
-          </p>
-          <button
-            type="button"
-            className="settings-extension-button"
-            onClick={() => useUiStore.getState().openSettings('account')}
+    <SettingsGroup
+      bare
+      title={t('settings.marketplace.title')}
+      description={t('settings.marketplace.description')}
+      action={
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => setAttempt((n) => n + 1)}>
+          {t('settings.catalog.refresh')}
+        </Button>
+      }
+    >
+      <div className="marketplace-panel space-y-4" aria-busy={busy}>
+        {error && <SettingsNotice tone="danger">{error}</SettingsNotice>}
+        {!dashboard && !error && <p role="status" className="text-xs text-muted-foreground">{t('settings.marketplace.loading')}</p>}
+        {dashboard && !dashboard.configured && <SettingsNotice>{t('settings.marketplace.notConfigured')}</SettingsNotice>}
+        {dashboard?.configured && !dashboard.signedIn && (
+          <SettingsNotice
+            action={
+              <Button variant="secondary" size="xs" onClick={() => useUiStore.getState().openSettings('account')}>
+                {t('settings.marketplace.openAccount')}
+              </Button>
+            }
           >
-            {ko ? '계정으로 이동' : 'Open account settings'}
-          </button>
-        </div>
-      )}
-      {dashboard?.signedIn && (
-        <>
-          {!dashboard.publisher ? (
-            <form
-              className="marketplace-form"
-              onSubmit={(event) => {
-                event.preventDefault()
-                const data = new FormData(event.currentTarget)
-                void perform(() =>
-                  invoke('marketplace:register', {
-                    id: String(data.get('id')),
-                    displayName: String(data.get('name')),
-                  }),
-                )
-              }}
-            >
-              <h3>{ko ? '개발자 등록' : 'Register as a developer'}</h3>
-              <label>
-                {ko
-                  ? '개발자 ID (플러그인 ID의 접두사)'
-                  : 'Publisher ID (plugin namespace)'}
-                <input
-                  name="id"
-                  required
-                  pattern="[a-z0-9][a-z0-9-]*"
-                  maxLength={63}
-                  disabled={busy}
-                  placeholder="your-name"
-                />
-              </label>
-              <label>
-                {ko ? '표시 이름' : 'Display name'}
-                <input name="name" required maxLength={80} disabled={busy} />
-              </label>
-              <button className="settings-extension-button" disabled={busy}>
-                {ko ? '등록' : 'Register'}
-              </button>
-            </form>
-          ) : (
-            <form
-              className="marketplace-form"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void perform(() => invoke('marketplace:submit', { changelog }))
-              }}
-            >
-              <h3>{dashboard.publisher.display_name}</h3>
-              <p>
-                {ko ? '플러그인 ID 접두사' : 'Plugin namespace'}:{' '}
-                <code>{dashboard.publisher.id}.</code>
-              </p>
-              <label>
-                {ko ? '이번 버전의 변경 사항' : 'Release notes'}
-                <textarea
-                  value={changelog}
-                  maxLength={10000}
-                  onChange={(event) => setChangelog(event.currentTarget.value)}
-                  disabled={busy}
-                />
-              </label>
-              <button
-                className="settings-extension-button settings-extension-button--primary"
-                disabled={busy}
-              >
-                {ko
-                  ? 'ZIP 선택 후 심사 제출'
-                  : 'Choose ZIP and submit for review'}
-              </button>
-              <p>
-                {ko
-                  ? '모든 버전은 파일 검사와 운영자 심사를 거쳐 공개됩니다. 제출한 버전은 덮어쓸 수 없습니다.'
-                  : 'Every version is validated and reviewed before publication. Submitted versions cannot be overwritten.'}
-              </p>
-            </form>
-          )}
-          <div className="marketplace-releases">
-            <h3>
-              {dashboard.reviewer
-                ? ko
-                  ? '심사·게시 관리'
-                  : 'Review and publication'
-                : ko
-                  ? '내 플러그인 버전'
-                  : 'My releases'}
-            </h3>
-            {dashboard.releases.length === 0 && (
-              <p>
-                {ko
-                  ? '아직 제출한 버전이 없습니다.'
-                  : 'No releases submitted yet.'}
-              </p>
-            )}
-            {dashboard.releases.map((release) => (
-              <button
-                type="button"
-                className="marketplace-release"
-                key={release.id}
-                aria-pressed={selected?.id === release.id}
-                onClick={() => {
-                  setSelected(release)
-                  setReason('')
+            {t('settings.marketplace.signIn')}
+          </SettingsNotice>
+        )}
+        {dashboard?.signedIn && (
+          <>
+            {!dashboard.publisher ? (
+              <form
+                className={cn('marketplace-form', CARD)}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  const data = new FormData(event.currentTarget)
+                  void perform(() =>
+                    invoke('marketplace:register', {
+                      id: String(data.get('id')),
+                      displayName: String(data.get('name')),
+                    }),
+                  )
                 }}
               >
-                <strong>{release.manifest.name}</strong>
-                <span>{release.version}</span>
-                <span>{statuses[release.status]}</span>
-              </button>
-            ))}
-          </div>
-          {dashboard.reviewer && (
-            <section className="marketplace-releases">
-              <h3>{ko ? '접수된 신고' : 'Open reports'}</h3>
-              {!dashboard.reports?.length && (
-                <p>{ko ? '미처리 신고가 없습니다.' : 'No open reports.'}</p>
-              )}
-              {dashboard.reports?.map((report) => (
-                <form
-                  key={report.id}
-                  className="marketplace-form"
-                  onSubmit={(event) => {
-                    event.preventDefault()
-                    const resolution = String(
-                      new FormData(event.currentTarget).get('resolution') ?? '',
-                    ).trim()
-                    if (resolution)
-                      void perform(() =>
-                        invoke('marketplace:resolveReport', {
-                          id: report.id,
-                          reason: resolution,
-                        }),
-                      )
-                  }}
-                >
-                  <p>{report.reason}</p>
+                <h3 className="text-sm font-medium text-foreground">{t('settings.marketplace.register.title')}</h3>
+                <Field label={t('settings.marketplace.register.id')}>
+                  {(id) => <Input id={id} name="id" required pattern="[a-z0-9][a-z0-9-]*" maxLength={63} disabled={busy} placeholder="your-name" spellCheck={false} />}
+                </Field>
+                <Field label={t('settings.marketplace.register.name')}>
+                  {(id) => <Input id={id} name="name" required maxLength={80} disabled={busy} />}
+                </Field>
+                <Button type="submit" variant="secondary" size="sm" disabled={busy}>{t('settings.marketplace.register.submit')}</Button>
+              </form>
+            ) : (
+              <form
+                className={cn('marketplace-form', CARD)}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void perform(() => invoke('marketplace:submit', { changelog }))
+                }}
+              >
+                <h3 className="text-sm font-medium text-foreground">{dashboard.publisher.display_name}</h3>
+                <p className="text-xs text-muted-foreground">
+                  {t('settings.marketplace.namespace')}: <code>{dashboard.publisher.id}.</code>
+                </p>
+                <Field label={t('settings.marketplace.changelog')}>
+                  {(id) => <Textarea id={id} value={changelog} maxLength={10000} onChange={(event) => setChangelog(event.currentTarget.value)} disabled={busy} />}
+                </Field>
+                <Button type="submit" size="sm" disabled={busy}>{t('settings.marketplace.submit')}</Button>
+                <p className="text-xs leading-relaxed text-muted-foreground">{t('settings.marketplace.submitNote')}</p>
+              </form>
+            )}
+            <section className={cn('marketplace-releases', CARD)}>
+              <h3 className="text-sm font-medium text-foreground">
+                {t(dashboard.reviewer ? 'settings.marketplace.releases.reviewer' : 'settings.marketplace.releases.mine')}
+              </h3>
+              {dashboard.releases.length === 0 && <SettingsEmptyState title={t('settings.marketplace.releases.empty')} className="py-5" />}
+              <div className="grid gap-1">
+                {dashboard.releases.map((release) => (
                   <button
                     type="button"
-                    className="settings-extension-button"
-                    disabled={busy}
-                    onClick={() =>
-                      void invoke('marketplace:release', {
-                        id: report.release_id,
-                      })
-                        .then(setSelected)
-                        .catch((failure: unknown) =>
-                          setError(
-                            failure instanceof Error
-                              ? failure.message
-                              : String(failure),
-                          ),
-                        )
-                    }
+                    className="marketplace-release flex items-center gap-3 rounded-md px-3 py-2 text-start text-sm transition-colors hover:bg-accent aria-pressed:bg-selected"
+                    key={release.id}
+                    aria-pressed={selected?.id === release.id}
+                    onClick={() => {
+                      setSelected(release)
+                      setReason('')
+                    }}
                   >
-                    {ko ? '신고된 버전 검토' : 'Inspect reported release'}
+                    <strong className="min-w-0 flex-1 truncate font-medium text-foreground">{release.manifest.name}</strong>
+                    <span className="text-xs text-muted-foreground">{release.version}</span>
+                    <span className="text-xs text-muted-foreground">{status(release.status)}</span>
                   </button>
-                  <label>
-                    {ko ? '처리 결과' : 'Resolution'}
-                    <textarea
-                      name="resolution"
-                      required
-                      maxLength={2000}
-                      disabled={busy}
-                    />
-                  </label>
-                  <button className="settings-extension-button" disabled={busy}>
-                    {ko ? '처리 완료' : 'Resolve report'}
-                  </button>
-                </form>
-              ))}
-            </section>
-          )}
-          {selected && (
-            <article className="marketplace-form">
-              <h3>
-                {selected.manifest.name} · {selected.version}
-              </h3>
-              <p>{selected.manifest.description}</p>
-              <pre className="marketplace-release-notes">
-                {selected.changelog}
-              </pre>
-              <ul>
-                {selected.manifest.permissions.map((permission) => (
-                  <li key={permission}>
-                    {describePermission(permission, locale)}
-                  </li>
                 ))}
-              </ul>
-              <p>
-                {statuses[selected.status]} {selected.review_reason}
-              </p>
-              <details>
-                <summary>
-                  {ko ? '매니페스트·무결성 정보' : 'Manifest and integrity'}
-                </summary>
-                <pre>{JSON.stringify(selected.manifest, null, 2)}</pre>
-                <code>{selected.sha256}</code>
-              </details>
-              <button
-                className="settings-extension-button"
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void perform(() =>
-                    invoke('marketplace:reviewBundle', { id: selected.id }),
-                  )
-                }
-              >
-                {ko ? '검토할 ZIP 저장' : 'Save ZIP for review'}
-              </button>
-              {dashboard.reviewer &&
-                ['pending', 'approved'].includes(selected.status) && (
-                  <>
-                    <label>
-                      {ko ? '심사·중단 사유' : 'Review or withdrawal reason'}
-                      <textarea
-                        maxLength={2000}
-                        value={reason}
-                        onChange={(event) =>
-                          setReason(event.currentTarget.value)
-                        }
-                      />
-                    </label>
-                    <div className="settings-extension-card__actions">
-                      {(selected.status === 'pending'
-                        ? (['approved', 'rejected'] as const)
-                        : (['withdrawn'] as const)
-                      ).map((decision) => (
-                        <button
-                          key={decision}
-                          type="button"
-                          className="settings-extension-button"
-                          disabled={busy || !reason.trim()}
-                          onClick={() => {
-                            if (
-                              !window.confirm(
-                                ko
-                                  ? `${statuses[decision]} 상태로 변경할까요?`
-                                  : `Change this release to ${statuses[decision]}?`,
-                              )
-                            )
-                              return
-                            void perform(() =>
-                              invoke('marketplace:review', {
-                                id: selected.id,
-                                decision,
-                                reason,
-                              }),
-                            )
-                          }}
-                        >
-                          {statuses[decision]}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-            </article>
-          )}
-        </>
-      )}
-    </div>
+              </div>
+            </section>
+            {dashboard.reviewer && (
+              <section className={cn('marketplace-releases', CARD)}>
+                <h3 className="text-sm font-medium text-foreground">{t('settings.marketplace.reports.title')}</h3>
+                {!dashboard.reports?.length && <SettingsEmptyState title={t('settings.marketplace.reports.empty')} className="py-5" />}
+                {dashboard.reports?.map((report) => (
+                  <form
+                    key={report.id}
+                    className="marketplace-form space-y-3 border-t border-border pt-3 first-of-type:border-t-0 first-of-type:pt-0"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      const resolution = String(
+                        new FormData(event.currentTarget).get('resolution') ?? '',
+                      ).trim()
+                      if (resolution)
+                        void perform(() =>
+                          invoke('marketplace:resolveReport', {
+                            id: report.id,
+                            reason: resolution,
+                          }),
+                        )
+                    }}
+                  >
+                    <p className="text-sm text-foreground select-text">{report.reason}</p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        void invoke('marketplace:release', {
+                          id: report.release_id,
+                        })
+                          .then(setSelected)
+                          .catch((failure: unknown) =>
+                            setError(
+                              failure instanceof Error
+                                ? failure.message
+                                : String(failure),
+                            ),
+                          )
+                      }
+                    >
+                      {t('settings.marketplace.reports.inspect')}
+                    </Button>
+                    <Field label={t('settings.marketplace.reports.resolution')}>
+                      {(id) => <Textarea id={id} name="resolution" required maxLength={2000} disabled={busy} />}
+                    </Field>
+                    <Button type="submit" variant="secondary" size="sm" disabled={busy}>{t('settings.marketplace.reports.resolve')}</Button>
+                  </form>
+                ))}
+              </section>
+            )}
+            {selected && (
+              <article className={cn('marketplace-form', CARD)}>
+                <h3 className="text-sm font-medium text-foreground">
+                  {selected.manifest.name} · {selected.version}
+                </h3>
+                <p className="text-xs text-muted-foreground select-text">{selected.manifest.description}</p>
+                <pre className="marketplace-release-notes max-h-60 overflow-auto rounded-md bg-secondary/60 p-3 font-mono text-2xs whitespace-pre-wrap select-text">
+                  {selected.changelog}
+                </pre>
+                <ul className="list-disc space-y-0.5 ps-5 text-xs text-secondary-foreground">
+                  {selected.manifest.permissions.map((permission) => (
+                    <li key={permission}>
+                      {describePermission(permission, locale)}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  {status(selected.status)} {selected.review_reason}
+                </p>
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer select-none">{t('settings.marketplace.integrity')}</summary>
+                  <pre className="mt-2 max-h-60 overflow-auto font-mono text-2xs whitespace-pre-wrap select-text">{JSON.stringify(selected.manifest, null, 2)}</pre>
+                  <code className="block [overflow-wrap:anywhere]">{selected.sha256}</code>
+                </details>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void perform(() =>
+                      invoke('marketplace:reviewBundle', { id: selected.id }),
+                    )
+                  }
+                >
+                  {t('settings.marketplace.saveZip')}
+                </Button>
+                {dashboard.reviewer &&
+                  ['pending', 'approved'].includes(selected.status) && (
+                    <>
+                      <Field label={t('settings.marketplace.reviewReason')}>
+                        {(id) => <Textarea id={id} maxLength={2000} value={reason} onChange={(event) => setReason(event.currentTarget.value)} />}
+                      </Field>
+                      <div className="flex flex-wrap gap-2">
+                        {(selected.status === 'pending'
+                          ? (['approved', 'rejected'] as const)
+                          : (['withdrawn'] as const)
+                        ).map((decision) => (
+                          <Button
+                            key={decision}
+                            type="button"
+                            variant={decision === 'approved' ? 'secondary' : 'destructive-outline'}
+                            size="sm"
+                            disabled={busy || !reason.trim()}
+                            onClick={() => {
+                              void confirm({
+                                title: t('settings.marketplace.decisionConfirm', { status: status(decision) }),
+                                confirmLabel: status(decision),
+                                ...(decision === 'approved' ? {} : { confirmVariant: 'destructive' as const }),
+                              }).then((ok) => {
+                                if (!ok) return
+                                void perform(() =>
+                                  invoke('marketplace:review', {
+                                    id: selected.id,
+                                    decision,
+                                    reason,
+                                  }),
+                                )
+                              })
+                            }}
+                          >
+                            {status(decision)}
+                          </Button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+              </article>
+            )}
+          </>
+        )}
+      </div>
+    </SettingsGroup>
   )
 }

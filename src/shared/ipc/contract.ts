@@ -1523,6 +1523,14 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
     req: Record<string, never>
     res: { ok: true }
   }
+  /**
+   * 앱을 다시 시작한다. 재시작해야 적용되는 설정(예: macOS 화면 기록 권한)의
+   * "지금 재시작" 버튼용. 일반 종료 경로(before-quit 저장)를 그대로 탄다.
+   */
+  'app:relaunch': {
+    req: Record<string, never>
+    res: { ok: true }
+  }
 
   // -- usage ledger (v0.39) -------------------------------------------------
   /** Aggregated AI usage for settings > 사용 통계. */
@@ -1913,6 +1921,7 @@ export const IPC_CHANNELS = [
   'notifications:test',
   'app:openLogs',
   'app:clearCache',
+  'app:relaunch',
   'usage:summary',
   'plugins:catalog',
   'plugins:installFromCatalog',

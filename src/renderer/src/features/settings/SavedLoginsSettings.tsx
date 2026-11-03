@@ -1,11 +1,17 @@
-import { BrowserProfileSelect } from '../browser/BrowserProfileSelect'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Badge } from '../../components/ui/badge'
+import { Button } from '../../components/ui/button'
+import { useConfirm } from '../../components/ui/confirm-dialog-context'
+import { Switch } from '../../components/ui/switch'
 import type {
   CredentialsAvailability,
   SavedLoginSummary,
 } from '../../../../shared/types/credentials'
-import { useLocale } from '../../i18n'
+import { useLocale, useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
+import { cn } from '../../lib/utils'
+import { BrowserProfileRow } from './browser/BrowserProfileRow'
+import { SettingsEmptyState, SettingsGroup, SettingsNotice } from './kit/SettingsKit'
 
 function formatUpdatedAt(value: string, locale: string): string {
   const date = new Date(value)
@@ -17,18 +23,73 @@ function formatUpdatedAt(value: string, locale: string): string {
     : value
 }
 
-export function SavedLoginsSettings(): JSX.Element {
+/**
+ * Saved university-portal logins, per browser profile. Rendered by the
+ * University panel; pass `searchId` (a university.* catalog id) to make the
+ * card searchable there.
+ */
+export function SavedLoginsSettings({ searchId }: { searchId?: string } = {}): JSX.Element {
+  const t = useT()
   const [profileId, setProfileId] = useState('default')
   return (
-    <>
-      <BrowserProfileSelect value={profileId} onChange={setProfileId} />
+    <SettingsGroup
+      {...(searchId !== undefined ? { searchId } : {})}
+      title={t('settings.browser.logins.title')}
+      description={t('settings.browser.logins.description')}
+    >
+      <BrowserProfileRow
+        value={profileId}
+        onChange={setProfileId}
+        description={t('settings.browser.logins.profileDescription')}
+      />
       <ProfileSavedLogins key={profileId} profileId={profileId} />
-    </>
+    </SettingsGroup>
   )
 }
-function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
+
+function SavedLoginItem({
+  login,
+  disabled,
+  onToggle,
+  onForget,
+}: {
+  login: SavedLoginSummary
+  disabled: boolean
+  onToggle: (autoSubmit: boolean) => void
+  onForget: () => void
+}): JSX.Element {
+  const t = useT()
   const locale = useLocale()
-  const korean = locale === 'ko-KR'
+  const switchId = useId()
+  return (
+    <li className="flex items-center gap-4 px-4 py-3">
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <p className="truncate font-mono text-sm font-medium text-foreground select-text">{login.origin}</p>
+        <p className="truncate text-xs text-secondary-foreground select-text">{login.username}</p>
+        <p className="truncate text-2xs text-muted-foreground">
+          {t('settings.browser.logins.updated', { date: formatUpdatedAt(login.updatedAt, locale) })}
+        </p>
+      </div>
+      <label htmlFor={switchId} className="flex items-center gap-2 text-xs text-muted-foreground">
+        {t('settings.browser.logins.autoSubmit')}
+        <Switch
+          id={switchId}
+          checked={login.autoSubmit}
+          aria-label={t('settings.browser.logins.autoSubmitFor', { origin: login.origin })}
+          disabled={disabled}
+          onCheckedChange={onToggle}
+        />
+      </label>
+      <Button variant="destructive-outline" size="xs" disabled={disabled} onClick={onForget}>
+        {t('settings.browser.logins.delete')}
+      </Button>
+    </li>
+  )
+}
+
+function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
+  const t = useT()
+  const confirm = useConfirm()
   const mountedRef = useRef(true)
   const [availability, setAvailability] =
     useState<CredentialsAvailability | null>(null)
@@ -99,12 +160,13 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
 
   const forget = async (login: SavedLoginSummary): Promise<void> => {
     if (pendingOrigin !== null) return
-    const confirmed = window.confirm(
-      korean
-        ? `${login.origin}의 저장된 로그인을 삭제할까요?`
-        : `Delete the saved login for ${login.origin}?`,
-    )
-    if (!confirmed) return
+    const confirmed = await confirm({
+      title: t('settings.browser.logins.deleteConfirmTitle'),
+      description: t('settings.browser.logins.deleteConfirm', { origin: login.origin }),
+      confirmLabel: t('settings.browser.logins.delete'),
+      confirmVariant: 'destructive',
+    })
+    if (!confirmed || !mountedRef.current) return
 
     setError(false)
     setPendingOrigin(login.id)
@@ -125,120 +187,66 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
   }
 
   return (
-    <section className="settings-card saved-logins-card">
-      <div className="settings-card__header saved-logins-card__heading">
-        <div>
-          <h2>{korean ? '저장된 로그인' : 'Saved logins'}</h2>
-          <p>
-            {korean
-              ? '내장 브라우저가 학교 포털 로그인 폼을 안전하게 채웁니다.'
-              : 'Securely fill university portal forms in the in-app browser.'}
-          </p>
-        </div>
+    <div className="px-4 py-3.5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {t('settings.browser.logins.autoSubmitHint')}
+        </p>
         {!loading && availability?.state === 'ready' && (
-          <span className="count-badge">{logins.length}</span>
+          <Badge>{logins.length}</Badge>
         )}
       </div>
 
       {loading ? (
         <div
-          className="saved-login-loading"
-          aria-label={korean ? '불러오는 중' : 'Loading'}
+          aria-label={t('settings.browser.loading')}
+          className="space-y-2"
         >
-          <span />
-          <span />
+          <span className="block h-12 animate-pulse rounded-md bg-muted" />
+          <span className="block h-12 animate-pulse rounded-md bg-muted" />
         </div>
       ) : loadFailed ? (
-        <div className="settings-feedback settings-feedback--error" role="alert">
-          <span>{korean ? '저장된 로그인을 불러오지 못했습니다.' : 'Could not load saved logins.'}</span>
-          <button type="button" className="secondary-button" onClick={load}>
-            {korean ? '다시 불러오기' : 'Reload'}
-          </button>
-        </div>
+        <SettingsNotice
+          tone="danger"
+          action={
+            <Button variant="secondary" size="xs" onClick={load}>
+              {t('settings.browser.retry')}
+            </Button>
+          }
+        >
+          {t('settings.browser.logins.loadFailed')}
+        </SettingsNotice>
       ) : availability?.state === 'unavailable' ? (
-        <div className="saved-login-unavailable" role="status">
-          <strong>
-            {korean
-              ? '저장된 로그인을 사용할 수 없습니다.'
-              : 'Saved logins are disabled.'}
-          </strong>
-          <span>{availability.reason}</span>
-          <span>
-            {korean
-              ? '비밀번호를 평문으로 저장하지 않습니다.'
-              : 'Passwords are never stored without OS-backed encryption.'}
-          </span>
-        </div>
+        <SettingsNotice tone="warning">
+          <p className="font-medium">{t('settings.browser.logins.unavailable')}</p>
+          <p>{availability.reason}</p>
+          <p>{t('settings.browser.logins.unavailableDetail')}</p>
+        </SettingsNotice>
       ) : logins.length === 0 ? (
-        <div className="saved-login-empty">
-          <strong>
-            {korean ? '저장된 로그인이 없습니다.' : 'No saved logins.'}
-          </strong>
-          <span>
-            {korean
-              ? '내장 브라우저에서 로그인 폼을 직접 작성한 뒤 저장할 수 있습니다.'
-              : 'Enter a login in the in-app browser, then choose to save it.'}
-          </span>
-        </div>
+        <SettingsEmptyState
+          title={t('settings.browser.logins.empty')}
+          description={t('settings.browser.logins.emptyDetail')}
+        />
       ) : (
-        <div className="saved-login-list">
+        <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
           {logins.map((login) => (
-            <div className="saved-login-item" key={login.id}>
-              <div className="saved-login-item__copy">
-                <strong>{login.origin}</strong>
-                <span>{login.username}</span>
-                <small>
-                  {korean ? '마지막 변경 ' : 'Updated '}
-                  {formatUpdatedAt(login.updatedAt, locale)}
-                </small>
-              </div>
-              <div className="saved-login-item__actions">
-                <label className="saved-login-auto-submit">
-                  <span>{korean ? '자동 제출' : 'Auto-submit'}</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={login.autoSubmit}
-                    aria-label={
-                      korean
-                        ? `${login.origin} 자동 제출`
-                        : `Auto-submit ${login.origin}`
-                    }
-                    className={`toggle${login.autoSubmit ? ' toggle--checked' : ''}`}
-                    disabled={pendingOrigin !== null}
-                    onClick={() =>
-                      void toggleAutoSubmit(login, !login.autoSubmit)
-                    }
-                  >
-                    <span className="toggle__thumb" />
-                  </button>
-                </label>
-                <button
-                  type="button"
-                  className="saved-login-delete"
-                  disabled={pendingOrigin !== null}
-                  onClick={() => void forget(login)}
-                >
-                  {korean ? '삭제' : 'Delete'}
-                </button>
-              </div>
-            </div>
+            <SavedLoginItem
+              key={login.id}
+              login={login}
+              disabled={pendingOrigin !== null}
+              onToggle={(autoSubmit) => void toggleAutoSubmit(login, autoSubmit)}
+              onForget={() => void forget(login)}
+            />
           ))}
-        </div>
+        </ul>
       )}
 
       <p
-        className={`settings-feedback${error ? ' settings-feedback--error' : ''}`}
+        className={cn('mt-2 text-xs empty:hidden', error && !loadFailed ? 'text-destructive' : 'hidden')}
         aria-live="polite"
       >
-        {error
-          ? korean
-            ? '저장된 로그인 작업을 완료하지 못했습니다.'
-            : 'Could not complete the saved login action.'
-          : korean
-            ? '자동 제출은 기본으로 꺼져 있으며 사이트별로 직접 켜야 합니다.'
-            : 'Auto-submit is off by default and must be enabled per site.'}
+        {error && !loadFailed ? t('settings.browser.logins.actionFailed') : ''}
       </p>
-    </section>
+    </div>
   )
 }

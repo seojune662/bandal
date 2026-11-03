@@ -1,7 +1,7 @@
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const APP_PAGES = ['index.html', 'settings.html', 'overlay.html', 'pip.html'] as const
+const APP_PAGES = ['index.html', 'overlay.html', 'pip.html'] as const
 export interface RendererLocationPolicy {
   rendererDirectory: string
   developmentUrl?: string

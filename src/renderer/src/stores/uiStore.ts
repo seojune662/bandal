@@ -3,7 +3,7 @@
  * applies it on <html>, and owns the two shell rail visibility flags.
  */
 
-import type { SettingsCategoryId } from '../../../shared/settingsCategories'
+import { toSettingsNavigationTarget, type SettingsCategoryId, type SettingsNavigationTarget } from '../../../shared/settingsCategories'
 import { create } from 'zustand'
 import { pickAppearance } from '../../../shared/appearance'
 import type { AppearanceSettings } from '../../../shared/appearance'
@@ -41,6 +41,14 @@ interface UiState {
   isSettingsOpen: boolean
   /** Category the overlay should open on; null = whatever it showed last. */
   settingsCategory: SettingsCategoryId | null
+  /**
+   * Pending deep link (sub-tab / row to scroll to). `nonce` changes on every
+   * open so the same target can be requested twice in a row.
+   */
+  settingsTarget: (SettingsNavigationTarget & { nonce: number }) | null
+  /** Applied (debounced) settings search query; rows filter on this. */
+  settingsSearchQuery: string
+  setSettingsSearchQuery: (query: string) => void
   /** Load persisted settings and subscribe to changes. Call once at boot. */
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
@@ -55,7 +63,7 @@ interface UiState {
   closeBoardOverlay: () => void
   toggleLinkGraph: () => void
   closeLinkGraph: () => void
-  openSettings: (category?: SettingsCategoryId) => void
+  openSettings: (target?: SettingsCategoryId | SettingsNavigationTarget) => void
   closeSettings: () => void
 }
 
@@ -133,12 +141,24 @@ export const useUiStore = create<UiState>()((set, get) => ({
   isLinkGraphOpen: false,
   isSettingsOpen: false,
   settingsCategory: null,
+  settingsTarget: null,
+  settingsSearchQuery: '',
+  setSettingsSearchQuery: (query) => set({ settingsSearchQuery: query }),
   toggleLinkGraph: () =>
     set((state) => ({ isLinkGraphOpen: !state.isLinkGraphOpen, materialsExpanded: false })),
   closeLinkGraph: () => set({ isLinkGraphOpen: false }),
-  openSettings: (category) =>
-    set({ isSettingsOpen: true, settingsCategory: category ?? null, materialsExpanded: false }),
-  closeSettings: () => set({ isSettingsOpen: false }),
+  openSettings: (requested) => {
+    const target = requested === undefined ? null : toSettingsNavigationTarget(requested)
+    set({
+      isSettingsOpen: true,
+      settingsCategory: target?.category ?? null,
+      settingsTarget: target === null ? null : { ...target, nonce: Date.now() },
+      // A deep link must land on its row, so a stale filter is cleared.
+      settingsSearchQuery: '',
+      materialsExpanded: false
+    })
+  },
+  closeSettings: () => set({ isSettingsOpen: false, settingsTarget: null, settingsSearchQuery: '' }),
 
   initTheme: async () => {
     if (themeInitialization === null) {

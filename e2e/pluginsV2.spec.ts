@@ -84,7 +84,8 @@ test.describe('plugin API v2', () => {
     await page.locator('.settings-nav [data-category="packs"]').click()
     await page.locator('[data-feature-id="plugin:bandal.selection-tools"] .plugin-center-row__open').click()
     const card = page.locator('.plugin-center')
-    await card.getByLabel('변환 방식').selectOption('lowercase')
+    await card.getByRole('combobox', { name: '변환 방식' }).click()
+    await page.getByRole('option', { name: 'lowercase', exact: true }).click()
     await expect
       .poll(() =>
         invoke(page, 'plugins:getSettings', { id: 'bandal.selection-tools' }),
@@ -92,11 +93,12 @@ test.describe('plugin API v2', () => {
       .toMatchObject({ values: { case: 'lowercase' } })
     await page.locator('.settings-nav [data-category="general"]').click()
     await page.locator('.settings-search input').fill('변환 방식')
-    await page.locator('.settings-search-hit', { hasText: '변환 방식' }).click()
-    await expect(
-      page.locator('.settings-panel [data-search-match="true"]'),
-    ).toContainText('변환 방식')
-    await expect(page.getByLabel('변환 방식')).toBeVisible()
+    // Plugin settings are indexed dynamically: the search lands on the plugin
+    // center, filtered to the plugin that owns the matching setting.
+    await expect(page.locator('.settings-nav [data-category="packs"]')).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('.plugin-center .plugin-center-row')).toHaveCount(1)
+    await page.locator('[data-feature-id="plugin:bandal.selection-tools"] .plugin-center-row__open').click()
+    await expect(page.getByRole('combobox', { name: '변환 방식' })).toBeVisible()
     await page.keyboard.press('Escape')
     const editor = page.getByLabel('마크다운 필기 편집기')
     await editor.getByText('Alpha Beta', { exact: true }).click({ clickCount: 3 })
@@ -229,7 +231,7 @@ test.describe('plugin API v2', () => {
     await page.keyboard.press('ControlOrMeta+,')
     await page.locator('.settings-nav [data-category="appearance"]').click()
     await expect(page.getByLabel('플러그인 테마', { exact: true })).toHaveCount(0)
-    await expect(page.locator('.appearance-note')).toContainText('플러그인 테마는 적용되지 않습니다.')
+    await expect(page.locator('[data-settings-group="appearance.theme"]')).toContainText('플러그인 테마는 적용되지 않습니다.')
     await page.getByRole('radio', { name: /^라이트 / }).click()
     await expectNeutralTheme(page, 'light')
     await expect.poll(() => invoke(page, 'settings:get', {})).toMatchObject({ theme: 'light', pluginTheme: null })

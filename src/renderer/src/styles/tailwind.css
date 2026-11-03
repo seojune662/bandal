@@ -1,0 +1,87 @@
+/*
+ * Tailwind v4 entry for the shared UI primitives (components/ui) and the
+ * settings kit. Import this FIRST in every renderer entry so the layer order
+ * below is the first one the browser sees.
+ *
+ * Coexistence rules with the legacy plain-CSS surfaces:
+ * - No preflight. base.css stays the reset, inside `@layer base`.
+ * - Utilities live in `@layer utilities`; legacy component CSS is unlayered and
+ *   therefore wins any conflict. New components must not reuse legacy class
+ *   names (.toggle, .secondary-button, .setting-row …).
+ * - Bandal's own tokens (tokens.css / themes/*.css) define --radius-*, --text-*,
+ *   --font-*, --shadow-* and --ease-out unlayered on :root, so they override
+ *   Tailwind's defaults of the same name: `rounded-md`, `text-sm`, `shadow-md`
+ *   and `font-mono` already resolve to Bandal values. Colors are bridged below.
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+/* source(none): automatic detection would also scan legacy JSX, where a
+ * plain className such as "hidden" or "grid" would suddenly gain a utility
+ * rule. Only directories that have moved to the primitives are scanned; add a
+ * directory here when you migrate it. */
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@import 'tw-animate-css';
+
+@source '../components/ui';
+@source '../features/settings';
+@source '../app/QuickFileSearch.tsx';
+@source '../features/calendar/CalendarSettingsPanel.tsx';
+@source not '../**/*.test.{ts,tsx}';
+
+/*
+ * Utilities are global CSS: a bare utility applies to ANY element carrying a
+ * class of the same name, including DOM that third-party libraries build.
+ * The scanner also picks up plain words in comments/identifiers. Names that
+ * collide with library classes are never generated:
+ * - visible   — dockview adds `.visible` to its own nodes; `visibility:
+ *               visible` leaked tabs of hidden course workspaces into view.
+ * - underline — KaTeX draws `.underline` itself; use
+ *               `[text-decoration-line:underline]` or `hover:underline`.
+ * - invisible, collapse — same family as `visible`.
+ */
+@source not inline('{visible,invisible,collapse,underline}');
+
+/* Bandal switches themes with <html data-theme>, not a `.dark` class. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+@custom-variant compact (&:where([data-density='compact'], [data-density='compact'] *));
+
+@theme {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+}
+
+/*
+ * shadcn-style semantic names → Bandal tokens.
+ * Naming trap: Bandal's `--accent` is the near-black/near-white PRIMARY ink.
+ * shadcn's `accent` is the quiet hover background. `primary` maps to Bandal
+ * `--accent`; `accent` maps to a subtle foreground tint.
+ */
+@theme inline {
+  --color-background: var(--bg-app);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--bg-surface);
+  --color-card-foreground: var(--text-primary);
+  --color-popover: var(--bg-overlay);
+  --color-popover-foreground: var(--text-primary);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--on-accent);
+  --color-secondary: var(--bg-raised);
+  --color-secondary-foreground: var(--text-secondary);
+  --color-muted: var(--bg-raised);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  --color-accent-foreground: var(--text-primary);
+  --color-selected: var(--accent-muted);
+  --color-destructive: var(--danger);
+  --color-destructive-muted: var(--danger-muted);
+  --color-destructive-foreground: var(--on-danger);
+  --color-border: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--border-strong);
+  --color-ring: var(--focus-ring);
+  --color-backdrop: var(--backdrop);
+  --color-status-success: var(--status-done);
+  --color-status-info: var(--status-progress);
+  --color-highlight: var(--highlight-yellow);
+}

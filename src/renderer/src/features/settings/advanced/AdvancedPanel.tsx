@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
+import { Folder } from 'lucide-react'
+
 import type { Settings } from '../../../../../shared/types/settings'
 import { showToast } from '../../../app/toast'
+import { Button } from '../../../components/ui/button'
+import { useConfirm } from '../../../components/ui/confirm-dialog-context'
 import { useT } from '../../../i18n'
 import { invoke } from '../../../lib/ipc'
-import { SettingsCard } from '../primitives'
-import { Icon } from '../SettingsIcon'
-import './advanced-panel.css'
+import { SettingsGroup, SettingsRow, SettingsStack } from '../kit/SettingsKit'
 
-function displayDataRoot(path: string | undefined): string {
-  if (path === undefined || path.length === 0) return '반달 앱 폴더/Courses'
+function displayDataRoot(path: string | undefined, fallback: string): string {
+  if (path === undefined || path.length === 0) return fallback
   // Show the home-relative form for macOS defaults; other paths stay verbatim.
   const home = /^\/Users\/[^/]+(\/.*)$/.exec(path)
   return home ? `~${home[1]}` : path
@@ -22,33 +24,29 @@ function rejectedMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-export function AdvancedPanel({
-  settings
-}: {
-  settings: Settings | null
-}): JSX.Element {
+export function AdvancedPanel({ settings }: { settings: Settings | null }): JSX.Element {
   const t = useT()
+  const confirm = useConfirm()
   const [pickedDataRoot, setPickedDataRoot] = useState<string | null>(null)
   const [pickingDataRoot, setPickingDataRoot] = useState(false)
   const [dataRootError, setDataRootError] = useState<string | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
-  const [confirmingReset, setConfirmingReset] = useState(false)
   const [resetting, setResetting] = useState(false)
 
   useEffect(() => setPickedDataRoot(null), [settings?.dataRoot])
 
+  // A new data folder applies live (course creation reads settings.dataRoot
+  // on each call), so no restart notice is needed here.
   const handlePickDataRoot = (): void => {
     if (pickingDataRoot) return
     setPickingDataRoot(true)
     setDataRootError(null)
     void invoke('settings:pickDataRoot', {})
-      .then((result) => {
+      .then(result => {
         if (result !== null) setPickedDataRoot(result.dataRoot)
       })
       .catch((error: unknown) => {
-        setDataRootError(
-          rejectedMessage(error, t('settings.general.workspace.pickFailed'))
-        )
+        setDataRootError(rejectedMessage(error, t('settings.general.workspace.pickFailed')))
       })
       .finally(() => setPickingDataRoot(false))
   }
@@ -62,74 +60,71 @@ export function AdvancedPanel({
       .finally(() => setClearingCache(false))
   }
 
-  const handleReset = (): void => {
+  const handleReset = async (): Promise<void> => {
     if (resetting) return
+    const confirmed = await confirm({
+      title: t('settings.advanced.reset.confirmTitle'),
+      description: t('settings.advanced.reset.confirmDescription'),
+      confirmLabel: t('settings.advanced.reset.action'),
+      cancelLabel: t('settings.advanced.reset.cancel'),
+      confirmVariant: 'destructive'
+    })
+    if (!confirmed) return
     setResetting(true)
     void invoke('settings:reset', {})
-      .then(() => {
-        setConfirmingReset(false)
-        showToast(t('settings.advanced.reset.done'))
-      })
+      .then(() => showToast(t('settings.advanced.reset.done')))
       .catch(() => showToast(t('settings.advanced.reset.failed'), 'danger'))
       .finally(() => setResetting(false))
   }
 
-  return (
-    <div className="settings-stack">
-      <SettingsCard
-        title={t('settings.general.workspace.title')}
-        description={t('settings.general.workspace.description')}
-      >
-        <div
-          className="directory-field"
-          aria-label={t('settings.general.workspace.directoryLabel')}
-        >
-          <Icon name="folder" size={17} />
-          <input
-            type="text"
-            value={displayDataRoot(pickedDataRoot ?? settings?.dataRoot)}
-            aria-label={t('settings.general.workspace.pathLabel')}
-            readOnly
-          />
-        </div>
-        <div className="settings-card__rows">
-          <div className="setting-row">
-            <span
-              className={`setting-row__description${dataRootError === null ? '' : ' settings-feedback--error'}`}
-              role={dataRootError === null ? undefined : 'alert'}
-            >
-              {dataRootError ?? t('settings.general.workspace.moveNotice')}
-            </span>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={pickingDataRoot}
-              onClick={handlePickDataRoot}
-            >
-              {t(
-                pickingDataRoot
-                  ? 'settings.general.workspace.picking'
-                  : 'settings.general.workspace.change'
-              )}
-            </button>
-          </div>
-        </div>
-      </SettingsCard>
+  const dataRoot = displayDataRoot(
+    pickedDataRoot ?? settings?.dataRoot,
+    t('settings.advanced.dataRoot.default')
+  )
 
-      <SettingsCard title={t('settings.advanced.maintenance.title')}>
-        <div className="settings-card__rows">
-          <div className="setting-row">
-            <div className="setting-row__copy">
-              <span className="setting-row__label">
-                {t('settings.advanced.logs.label')}
-              </span>
-              <span className="setting-row__description">
-                {t('settings.advanced.logs.description')}
-              </span>
+  return (
+    <SettingsStack>
+      <SettingsGroup searchId="advanced.dataRoot">
+        <SettingsRow
+          searchId="advanced.dataRoot.location"
+          control={
+            <Button variant="secondary" size="sm" disabled={pickingDataRoot} onClick={handlePickDataRoot}>
+              {t(pickingDataRoot ? 'settings.general.workspace.picking' : 'settings.general.workspace.change')}
+            </Button>
+          }
+          footer={
+            <div className="space-y-1.5">
+              <div
+                className="flex h-(--control-height) min-w-0 items-center gap-2 rounded-md border border-border bg-secondary px-3 text-muted-foreground"
+                aria-label={t('settings.general.workspace.directoryLabel')}
+              >
+                <Folder className="size-4 shrink-0" aria-hidden />
+                <input
+                  type="text"
+                  readOnly
+                  value={dataRoot}
+                  title={dataRoot}
+                  aria-label={t('settings.general.workspace.pathLabel')}
+                  className="min-w-0 flex-1 truncate bg-transparent font-mono text-xs text-foreground outline-none select-text"
+                />
+              </div>
+              {dataRootError !== null && (
+                <p role="alert" className="text-xs text-destructive">
+                  {dataRootError}
+                </p>
+              )}
             </div>
-            <button
-              type="button"
-              className="secondary-button"
+          }
+        />
+      </SettingsGroup>
+
+      <SettingsGroup searchId="advanced.maintenance">
+        <SettingsRow
+          searchId="advanced.maintenance.logs"
+          control={
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => {
                 void invoke('app:openLogs', {}).catch(() =>
                   showToast(t('settings.advanced.logs.openFailed'), 'danger')
@@ -137,79 +132,31 @@ export function AdvancedPanel({
               }}
             >
               {t('settings.advanced.logs.open')}
-            </button>
-          </div>
-          <div className="setting-row">
-            <div className="setting-row__copy">
-              <span className="setting-row__label">
-                {t('settings.advanced.cache.label')}
-              </span>
-              <span className="setting-row__description">
-                {t('settings.advanced.cache.description')}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={clearingCache}
-              onClick={handleClearCache}
+            </Button>
+          }
+        />
+        <SettingsRow
+          searchId="advanced.maintenance.cache"
+          control={
+            <Button variant="secondary" size="sm" disabled={clearingCache} onClick={handleClearCache}>
+              {t(clearingCache ? 'settings.advanced.cache.clearing' : 'settings.advanced.cache.clear')}
+            </Button>
+          }
+        />
+        <SettingsRow
+          searchId="advanced.maintenance.reset"
+          control={
+            <Button
+              variant="destructive-outline"
+              size="sm"
+              disabled={resetting}
+              onClick={() => void handleReset()}
             >
-              {t(
-                clearingCache
-                  ? 'settings.advanced.cache.clearing'
-                  : 'settings.advanced.cache.clear'
-              )}
-            </button>
-          </div>
-        </div>
-
-        <div className="settings-danger-row settings-advanced-danger-row">
-          <div className="setting-row__copy">
-            <span className="setting-row__label">
-              {confirmingReset
-                ? t('settings.advanced.reset.confirm')
-                : t('settings.advanced.reset.label')}
-            </span>
-            {!confirmingReset && (
-              <span className="setting-row__description">
-                {t('settings.advanced.reset.description')}
-              </span>
-            )}
-          </div>
-          {confirmingReset ? (
-            <div className="settings-advanced-confirm-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={resetting}
-                onClick={() => setConfirmingReset(false)}
-              >
-                {t('settings.advanced.reset.cancel')}
-              </button>
-              <button
-                type="button"
-                className="secondary-button settings-advanced-danger-button"
-                disabled={resetting}
-                onClick={handleReset}
-              >
-                {t(
-                  resetting
-                    ? 'settings.advanced.reset.resetting'
-                    : 'settings.advanced.reset.action'
-                )}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="secondary-button settings-advanced-danger-button"
-              onClick={() => setConfirmingReset(true)}
-            >
-              {t('settings.advanced.reset.action')}
-            </button>
-          )}
-        </div>
-      </SettingsCard>
-    </div>
+              {t(resetting ? 'settings.advanced.reset.resetting' : 'settings.advanced.reset.action')}
+            </Button>
+          }
+        />
+      </SettingsGroup>
+    </SettingsStack>
   )
 }

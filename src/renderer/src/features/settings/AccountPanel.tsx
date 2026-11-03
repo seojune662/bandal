@@ -1,15 +1,23 @@
-import { BillingSyncPanel } from './BillingSyncPanel'
-import { prepareUpdateInstall } from '../updates/prepareUpdateInstall'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import {
-  isValidNickname,
-  NICKNAME_MAX_LENGTH
-} from '../../../../shared/account/nickname'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { LogIn } from 'lucide-react'
+
+import { Button } from '../../components/ui/button'
+import { useConfirm } from '../../components/ui/confirm-dialog-context'
+import { isValidNickname } from '../../../../shared/account/nickname'
 import type { AuthState } from '../../../../shared/types/auth'
 import { AccountAvatar } from '../account/AccountAvatar'
+import { prepareUpdateInstall } from '../updates/prepareUpdateInstall'
 import { useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
-import './account-panel.css'
+import { BillingSyncPanel } from './BillingSyncPanel'
+import {
+  SettingsEmptyState,
+  SettingsGroup,
+  SettingsNotice,
+  SettingsRow,
+  SettingsStack,
+  SettingsTextRow
+} from './kit/SettingsKit'
 
 type PendingAction = 'nickname' | 'sign-out' | 'sign-in' | 'link' | 'delete' | 'profile'
 
@@ -18,19 +26,23 @@ interface Feedback {
   message: string
 }
 
+const PROVIDERS = ['apple', 'google'] as const
+const PROVIDER_NAME: Record<(typeof PROVIDERS)[number], string> = { apple: 'Apple', google: 'Google' }
+
 export function AccountPanel(): JSX.Element {
   const t = useT()
+  const confirm = useConfirm()
   const [auth, setAuth] = useState<AuthState | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
-  const [nickname, setNickname] = useState('')
-  const [confirmingNickname, setConfirmingNickname] = useState(false)
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
+  /** Bumped to throw away a nickname draft the user declined to save. */
+  const [nicknameReset, setNicknameReset] = useState(0)
   const mountedRef = useRef(true)
   const authRevision = useRef(0)
-  const nicknameInputRef = useRef<HTMLInputElement>(null)
-  const nicknameId = useId()
+  const pendingRef = useRef<PendingAction | null>(null)
+  const nicknameCommit = useRef<Promise<string | undefined> | null>(null)
 
   const readAuth = useCallback(async (): Promise<AuthState> => {
     const revision = authRevision.current
@@ -73,260 +85,337 @@ export function AccountPanel(): JSX.Element {
   const profile = auth?.phase === 'signed-in' ? auth.profile : null
   const email = auth?.email ?? null
 
-  useEffect(() => {
-    setNickname(profile?.nickname ?? '')
-    setConfirmingNickname(false)
-  }, [profile?.nickname])
-
+  /**
+   * Runs one account mutation at a time. Resolves true on success. With
+   * `inlineError`, a failure is returned to the caller (the nickname field
+   * shows it) instead of the panel feedback line.
+   */
   const runMutation = async (
     action: PendingAction,
     mutate: () => Promise<unknown>,
     successMessage: string,
-    failureMessage: string
-  ): Promise<void> => {
-    if (pending !== null) return
+    failureMessage: string,
+    options: { inlineError?: boolean } = {}
+  ): Promise<boolean> => {
+    if (pendingRef.current !== null) return false
+    pendingRef.current = action
     setPending(action)
     setFeedback(null)
     try {
       const result = await mutate()
       if (result && typeof result === 'object' && 'cancelled' in result && result.cancelled === true) {
-        if (mountedRef.current) setFeedback({ tone: 'success', message: '백업을 취소했습니다.' })
-        return
+        if (mountedRef.current) setFeedback({ tone: 'success', message: t('settings.account.backup.cancelled') })
+        return true
       }
       await readAuth()
-      if (mountedRef.current) {
-        setFeedback({ tone: 'success', message: successMessage })
-      }
+      if (mountedRef.current) setFeedback({ tone: 'success', message: successMessage })
+      return true
     } catch (error) {
-      if (mountedRef.current) {
-        setFeedback({ tone: 'error', message: action === 'delete' && error instanceof Error ? error.message : failureMessage })
+      if (mountedRef.current && options.inlineError !== true) {
+        setFeedback({
+          tone: 'error',
+          message: action === 'delete' && error instanceof Error ? error.message : failureMessage
+        })
       }
+      return false
     } finally {
+      pendingRef.current = null
       if (mountedRef.current) setPending(null)
     }
   }
 
+  const backupAll = (): void => {
+    void runMutation(
+      'profile',
+      async () => {
+        await prepareUpdateInstall()
+        return invoke('profile:backup', {})
+      },
+      t('settings.account.backup.done'),
+      t('settings.account.backup.failed')
+    )
+  }
+
+  const backupThenNewProfile = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: t('settings.account.backup.newProfile.confirmTitle'),
+      description: t('settings.account.backup.newProfile.confirmDescription'),
+      confirmLabel: t('settings.account.backup.newProfile.confirmAction'),
+      confirmVariant: 'destructive'
+    })
+    if (!confirmed) return
+    void runMutation(
+      'profile',
+      async () => {
+        await prepareUpdateInstall()
+        return invoke('profile:new', {})
+      },
+      t('settings.account.backup.newProfile.done'),
+      t('settings.account.backup.newProfile.failed')
+    )
+  }
+
+  const signIn = (provider: (typeof PROVIDERS)[number]): void => {
+    void runMutation(
+      'sign-in',
+      async () => {
+        const result = await invoke('auth:signIn', { provider })
+        if (!result.ok) throw new Error('sign-in-failed')
+      },
+      t('settings.account.signIn.started'),
+      t('settings.account.signIn.failed')
+    )
+  }
+
+  const linkProvider = (provider: (typeof PROVIDERS)[number]): void => {
+    void runMutation(
+      'link',
+      async () => {
+        const result = await invoke('auth:linkProvider', { provider })
+        if (!result.ok) throw new Error('identity-link-failed')
+      },
+      t('settings.account.link.started'),
+      t('settings.account.link.failed')
+    )
+  }
+
+  const deleteAccount = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: t('settings.account.delete.confirmTitle'),
+      description: t('settings.account.delete.confirmDescription'),
+      confirmLabel: t('settings.account.delete.confirmAction'),
+      confirmVariant: 'destructive'
+    })
+    if (!confirmed) return
+    void runMutation(
+      'delete',
+      async () => {
+        await prepareUpdateInstall()
+        const result = await invoke('auth:deleteAccount', { confirm: true })
+        if (!result.ok) throw new Error('deletion-incomplete')
+        if (result.appleRevocation === 'manual_required') {
+          await confirm({
+            title: t('settings.account.delete.appleTitle'),
+            description: t('settings.account.delete.appleDescription'),
+            acknowledgeOnly: true
+          })
+        }
+      },
+      t('settings.account.delete.done'),
+      t('settings.account.delete.failed')
+    )
+  }
+
+  const signOut = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: t('settings.account.signOut.confirmTitle'),
+      description: t('settings.account.signOut.confirmDescription'),
+      confirmLabel: t('settings.account.signOut.button'),
+      confirmVariant: 'destructive'
+    })
+    if (!confirmed) return
+    void runMutation(
+      'sign-out',
+      async () => {
+        await prepareUpdateInstall()
+        return invoke('auth:signOut', {})
+      },
+      t('settings.account.signOut.done'),
+      t('settings.account.signOut.failed')
+    )
+  }
+
   if (loading) {
     return (
-      <div className="account-panel-state" role="status">
-        <span>{t('settings.account.loading')}</span>
-      </div>
+      <p role="status" className="px-1 py-6 text-sm text-muted-foreground">
+        {t('settings.account.loading')}
+      </p>
     )
   }
 
   if (loadFailed) {
     return (
-      <div className="account-panel-state" role="alert">
-        <strong>{t('settings.account.loadFailed')}</strong>
-        <button type="button" className="secondary-button" onClick={loadAuth}>
-          {t('settings.account.retry')}
-        </button>
-      </div>
+      <SettingsNotice
+        tone="danger"
+        action={
+          <Button variant="secondary" size="sm" onClick={loadAuth}>
+            {t('settings.account.retry')}
+          </Button>
+        }
+      >
+        {t('settings.account.loadFailed')}
+      </SettingsNotice>
     )
   }
 
-  const profileSection = (
-    <section className="settings-card">
-      <h2>자료 백업과 새 프로필</h2><p>전체 자료를 백업하고 검증합니다. 새 프로필은 빈 상태로 시작하고, 기존 프로필과 원본 자료는 그대로 보존됩니다. 로그인한 계정과는 관계없습니다.</p>
-      <div className="account-sign-in-actions">
-        <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:backup', {}) }, '백업 절차를 마쳤습니다.', '백업을 완료하지 못했습니다.')}>전체 자료 백업</button>
-        <button type="button" className="secondary-button" disabled={pending !== null} onClick={() => { if (window.confirm('전체 자료 백업 후 빈 프로필에서 다시 시작할까요?')) void runMutation('profile', async () => { await prepareUpdateInstall(); return invoke('profile:new', {}) }, '새 프로필을 준비했습니다.', '자료를 보존했으며 프로필 전환을 완료하지 못했습니다.') }}>백업 후 새 프로필</button>
-      </div>
-    </section>
+  const busy = pending !== null
+  const feedbackNotice =
+    feedback === null ? null : (
+      <SettingsNotice tone={feedback.tone === 'error' ? 'danger' : 'info'}>{feedback.message}</SettingsNotice>
+    )
+
+  const backupGroup = (
+    <SettingsGroup searchId="account.backup">
+      <SettingsRow
+        searchId="account.backup.full"
+        control={
+          <Button variant="secondary" size="sm" disabled={busy} onClick={backupAll}>
+            {t('settings.account.backup.full.action')}
+          </Button>
+        }
+      />
+      <SettingsRow
+        searchId="account.backup.newProfile"
+        control={
+          <Button variant="destructive-outline" size="sm" disabled={busy} onClick={() => void backupThenNewProfile()}>
+            {t('settings.account.backup.newProfile.action')}
+          </Button>
+        }
+      />
+    </SettingsGroup>
   )
 
   if (profile === null) {
+    const configured = auth?.phase !== 'unconfigured'
     return (
-      <>
-      <div className="account-panel-state">
-        <strong>{t('settings.account.signedOut')}</strong>
-        {auth?.phase !== 'unconfigured' && <div className="account-sign-in-actions">
-          {(['apple', 'google'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('sign-in', async () => { const result = await invoke('auth:signIn', { provider }); if (!result.ok) throw new Error('로그인 실패') }, '브라우저에서 로그인을 완료해 주세요.', '로그인을 시작하지 못했어요.')}>{provider === 'apple' ? 'Apple' : 'Google'}로 로그인</button>)}
-        </div>}
-        {feedback && <p role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.message}</p>}
-      </div>
-      <BillingSyncPanel />
-      {profileSection}
-      </>
+      <SettingsStack>
+        <SettingsGroup searchId="account.signIn" bare>
+          <SettingsEmptyState
+            icon={<LogIn />}
+            title={t('settings.account.signedOut')}
+            description={t(configured ? 'settings.account.signIn.description' : 'settings.account.signIn.unconfigured')}
+            {...(configured
+              ? {
+                  action: (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {PROVIDERS.map(provider => (
+                        <Button
+                          key={provider}
+                          variant="secondary"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => signIn(provider)}
+                        >
+                          {t('settings.account.signIn.with', { provider: PROVIDER_NAME[provider] })}
+                        </Button>
+                      ))}
+                    </div>
+                  )
+                }
+              : {})}
+          />
+        </SettingsGroup>
+        {feedbackNotice}
+        <BillingSyncPanel />
+        {backupGroup}
+      </SettingsStack>
     )
   }
 
   const displayName = profile.nickname ?? t('settings.account.unnamed')
-  const trimmedNickname = nickname.trim()
-  const nicknameChanged = trimmedNickname !== (profile.nickname ?? '')
 
-  const saveNickname = (): void => {
-    setConfirmingNickname(false)
-    void runMutation(
-      'nickname',
-      () => invoke('auth:setNickname', { nickname: trimmedNickname }),
-      t('settings.account.nickname.saved'),
-      t('settings.account.nickname.saveFailed')
-    )
-  }
-
-  const submitNickname = (event: React.FormEvent): void => {
-    event.preventDefault()
-    if (!isValidNickname(trimmedNickname)) {
-      setFeedback({
-        tone: 'error',
-        message: t('settings.account.nickname.rule')
-      })
-      nicknameInputRef.current?.focus()
-      return
-    }
-    if (!nicknameChanged) return
-    // A renamed account frees the old nickname. First-time setup skips confirmation.
-    if (profile.nickname !== null) {
-      setConfirmingNickname(true)
-      return
-    }
-    saveNickname()
+  const commitNickname = (draft: string): Promise<string | undefined> => {
+    // Enter commits, then the confirm dialog takes focus and blurs the field:
+    // both land here, so the second one shares the first one's outcome.
+    if (nicknameCommit.current !== null) return nicknameCommit.current
+    const work = (async (): Promise<string | undefined> => {
+      const trimmed = draft.trim()
+      if (!isValidNickname(trimmed)) return t('settings.account.nickname.rule')
+      if (trimmed === (profile.nickname ?? '')) return undefined
+      // A renamed account frees the old nickname. First-time setup skips confirmation.
+      if (profile.nickname !== null) {
+        const confirmed = await confirm({
+          title: t('settings.account.nickname.confirm.title'),
+          description: t('settings.account.nickname.confirm.message'),
+          confirmLabel: t('settings.account.nickname.confirm.change'),
+          cancelLabel: t('settings.account.nickname.confirm.cancel')
+        })
+        if (!confirmed) {
+          setNicknameReset(count => count + 1)
+          return undefined
+        }
+      }
+      const saved = await runMutation(
+        'nickname',
+        () => invoke('auth:setNickname', { nickname: trimmed }),
+        t('settings.account.nickname.saved'),
+        t('settings.account.nickname.saveFailed'),
+        { inlineError: true }
+      )
+      return saved ? undefined : t('settings.account.nickname.saveFailed')
+    })()
+    nicknameCommit.current = work
+    void work.finally(() => {
+      nicknameCommit.current = null
+    })
+    return work
   }
 
   return (
-    <div className="settings-stack account-panel">
-      <section className="settings-card account-profile-card">
-        <AccountAvatar
-          avatarUrl={auth?.avatarUrl ?? null}
-          nickname={displayName}
-          size="lg"
-        />
-        <div>
-          <h2>{displayName}</h2>
-          {email !== null && (
-            <p className="account-profile-card__email">{email}</p>
-          )}
-          <p>{t('settings.account.profile.description')}</p>
-        </div>
-      </section>
-
-      <section className="settings-card">
-        <div className="settings-card__header">
-          <h2>{t('settings.account.nickname.title')}</h2>
-          <p>{t('settings.account.nickname.description')}</p>
-        </div>
-        <form className="account-nickname-form" onSubmit={submitNickname}>
-          <label htmlFor={nicknameId}>{t('settings.account.nickname.label')}</label>
-          <div className="account-nickname-form__row">
-            <input
-              ref={nicknameInputRef}
-              id={nicknameId}
-              value={nickname}
-              placeholder={t('settings.account.nickname.placeholder')}
-              maxLength={NICKNAME_MAX_LENGTH}
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              disabled={pending !== null}
-              aria-describedby={`${nicknameId}-rule`}
-              onChange={(event) => {
-                setNickname(event.target.value)
-                setConfirmingNickname(false)
-                if (feedback?.tone === 'error') setFeedback(null)
-              }}
-            />
-            <button
-              type="submit"
-              className="secondary-button"
-              disabled={
-                pending !== null ||
-                !nicknameChanged ||
-                !isValidNickname(trimmedNickname)
-              }
-            >
-              {pending === 'nickname'
-                ? t('settings.account.nickname.saving')
-                : t('settings.account.nickname.save')}
-            </button>
+    <SettingsStack>
+      <SettingsGroup searchId="account.profile">
+        <div className="flex items-center gap-4 px-4 py-4">
+          <AccountAvatar avatarUrl={auth?.avatarUrl ?? null} nickname={displayName} size="lg" />
+          <div className="min-w-0 space-y-0.5">
+            <p className="truncate text-base font-medium text-foreground">{displayName}</p>
+            {email !== null && <p className="truncate text-xs text-muted-foreground select-text">{email}</p>}
           </div>
-          <p id={`${nicknameId}-rule`} className="account-field-help">
-            {t('settings.account.nickname.rule')}
-          </p>
+        </div>
+        <SettingsTextRow
+          key={nicknameReset}
+          searchId="account.profile.nickname"
+          description={`${t('settings.account.nickname.description')} ${t('settings.account.nickname.rule')}`}
+          value={profile.nickname ?? ''}
+          placeholder={t('settings.account.nickname.placeholder')}
+          maxLength={16}
+          disabled={busy && pending !== 'nickname'}
+          onCommit={commitNickname}
+        />
+      </SettingsGroup>
 
-          {confirmingNickname && (
-            <div
-              className="account-nickname-confirm"
-              role="alertdialog"
-              aria-label={t('settings.account.nickname.confirm.title')}
-            >
-              <p>{t('settings.account.nickname.confirm.message')}</p>
-              <div className="account-nickname-confirm__actions">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={pending !== null}
-                  onClick={() => setConfirmingNickname(false)}
-                >
-                  {t('settings.account.nickname.confirm.cancel')}
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button account-nickname-confirm__accept"
-                  disabled={pending !== null}
-                  onClick={saveNickname}
-                >
-                  {t('settings.account.nickname.confirm.change')}
-                </button>
-              </div>
-            </div>
-          )}
-        </form>
-      </section>
+      {feedbackNotice}
 
       <BillingSyncPanel />
-      <section className="settings-card">
-        <h2>로그인 수단 연결</h2><p>현재 반달 계정에 로그인 수단을 추가합니다. 다른 계정의 자료는 합치지 않습니다.</p>
-        <div className="account-sign-in-actions">{(['apple', 'google'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('link', async () => { const result = await invoke('auth:linkProvider', { provider }); if (!result.ok) throw new Error('identity-link-failed') }, '로그인 화면에서 연결을 완료해 주세요.', '연결하지 못했습니다. 이미 다른 반달 계정에 연결된 수단인지 확인해 주세요.')}>{provider === 'apple' ? 'Apple' : 'Google'} 연결</button>)}</div>
-      </section>
-      {profileSection}
-      <section className="settings-card">
-        <h2>계정 삭제</h2><p>삭제 전 자료를 백업하고 구독을 확인해 주세요. 계정 삭제는 Apple·Paddle 구독 해지가 아닙니다. 각 구매처에서 별도로 해지해야 합니다.</p>
-        <p>서버의 계정 자료는 삭제되며 이 기기의 원본은 보존됩니다. 최근 로그인이 필요하며, 진행 중 거래·정산을 정리한 뒤 삭제할 수 있습니다. 완료된 거래는 개인정보를 제거해 보관합니다.</p>
-        <button type="button" className="account-sign-out-button" disabled={pending !== null} onClick={() => {
-          if (!window.confirm('계정과 서버 자료를 삭제할까요? 되돌릴 수 없습니다. 구독 해지는 구매처에서 별도로 진행해야 합니다.')) return
-          void runMutation('delete', async () => {
-            await prepareUpdateInstall()
-            const result = await invoke('auth:deleteAccount', { confirm: true })
-            if (!result.ok) throw new Error('deletion-incomplete')
-            if (result.appleRevocation === 'manual_required') window.alert('계정 자료를 삭제했습니다. Apple ID 설정 → Apple로 로그인 → 반달에서 연결 사용도 중단해 주세요.')
-          }, '계정을 삭제했습니다.', '삭제를 완료하지 못했습니다. 로그아웃 후 다시 로그인하고 시도해 주세요. 진행 중 거래가 있으면 먼저 정리해야 합니다.')
-        }}>계정 및 서버 자료 삭제</button>
-      </section>
 
-      {feedback !== null && (
-        <p
-          className="account-panel__feedback"
-          data-tone={feedback.tone}
-          role={feedback.tone === 'error' ? 'alert' : 'status'}
-        >
-          {feedback.message}
-        </p>
-      )}
+      <SettingsGroup searchId="account.link">
+        <SettingsRow
+          searchId="account.link.providers"
+          control={PROVIDERS.map(provider => (
+            <Button key={provider} variant="secondary" size="sm" disabled={busy} onClick={() => linkProvider(provider)}>
+              {t('settings.account.link.with', { provider: PROVIDER_NAME[provider] })}
+            </Button>
+          ))}
+        />
+      </SettingsGroup>
 
-      <section className="settings-card account-sign-out-card">
-        <div>
-          <h2>{t('settings.account.signOut.title')}</h2>
-          <p>{t('settings.account.signOut.description')}</p>
-        </div>
-        <button
-          type="button"
-          className="account-sign-out-button"
-          disabled={pending !== null}
-          onClick={() => {
-            void runMutation(
-              'sign-out',
-              async () => { await prepareUpdateInstall(); return invoke('auth:signOut', {}) },
-              t('settings.account.signOut.done'),
-              t('settings.account.signOut.failed')
-            )
-          }}
-        >
-          {pending === 'sign-out'
-            ? t('settings.account.signOut.pending')
-            : t('settings.account.signOut.button')}
-        </button>
-      </section>
-    </div>
+      {backupGroup}
+
+      <SettingsGroup searchId="account.session">
+        <SettingsRow
+          searchId="account.session.signOut"
+          control={
+            <Button variant="destructive-outline" size="sm" disabled={busy} onClick={() => void signOut()}>
+              {pending === 'sign-out' ? t('settings.account.signOut.pending') : t('settings.account.signOut.button')}
+            </Button>
+          }
+        />
+        <SettingsRow
+          searchId="account.session.delete"
+          alignTop
+          description={
+            <>
+              {t('settings.account.delete.description')}
+              <br />
+              {t('settings.account.delete.detail')}
+            </>
+          }
+          control={
+            <Button variant="destructive" size="sm" disabled={busy} onClick={() => void deleteAccount()}>
+              {t('settings.account.delete.action')}
+            </Button>
+          }
+        />
+      </SettingsGroup>
+    </SettingsStack>
   )
 }

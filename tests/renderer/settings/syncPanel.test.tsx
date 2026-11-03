@@ -7,6 +7,7 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ipc)
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }))
 vi.mock('../../../src/renderer/src/app/toast', () => toast)
 import { ago, SyncPanel } from '../../../src/renderer/src/features/settings/sync/SyncPanel'
+import { ConfirmDialogProvider } from '../../../src/renderer/src/components/ui/confirm-dialog'
 
 const unbound = { available: { icloud: true, gdrive: false }, provider: null, account: null, state: { state: 'off' }, device: { id: null, name: 'MacBook Air' }, devices: [], pending: 0, moving: null, moved: null }
 const bound = {
@@ -32,7 +33,7 @@ async function render(handlers: Record<string, (req: unknown) => unknown>) {
   })
   // Attached: a detached form never submits in jsdom.
   const element = document.body.appendChild(document.createElement('div')), root = createRoot(element)
-  await act(async () => root.render(<SyncPanel />))
+  await act(async () => root.render(<ConfirmDialogProvider><SyncPanel /></ConfirmDialogProvider>))
   return {
     element,
     unmount: async () => {
@@ -43,13 +44,16 @@ async function render(handlers: Record<string, (req: unknown) => unknown>) {
 }
 const button = (element: HTMLElement, text: string) => [...element.querySelectorAll('button')].find(item => item.textContent === text)
 const click = (target: Element | undefined | null) => act(async () => (target as HTMLElement).click())
+/** The confirm dialog renders in a portal under document.body. */
+const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+const dialogButton = (text: string) => [...(dialog()?.querySelectorAll('button') ?? [])].find(item => item.textContent === text)
 
 test('with data on both sides it offers the three ways and merges only the checked same-name courses', async () => {
   const { element, unmount } = await render({ 'sync:status': () => unbound, 'sync:prepare': () => ({ status: 'ready', plan }), 'sync:connect': () => bound })
   try {
     await click(button(element, 'iCloud에 연결'))
     for (const label of ['합치기', '이 기기 자료로 덮어쓰기', '클라우드 자료 가져오기']) expect(element.textContent).toContain(label)
-    await click([...element.querySelectorAll('label')].find(label => label.textContent === '물리학')!.querySelector('input'))
+    await click([...element.querySelectorAll('label')].find(label => label.textContent === '물리학')!.querySelector('[role="checkbox"]'))
     await click(button(element, '시작'))
     expect(ipc.invoke).toHaveBeenCalledWith('sync:connect', { provider: 'icloud', mode: 'merge', pairs: [{ local: 'l1', remote: 'r1' }], expect: 'choose' })
     expect(element.textContent).toContain('동기화됨 · 3분 전')
@@ -59,16 +63,17 @@ test('with data on both sides it offers the three ways and merges only the check
 })
 
 test('an overwrite says what goes away and sends nothing when declined', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   const { element, unmount } = await render({ 'sync:status': () => unbound, 'sync:prepare': () => ({ status: 'ready', plan }), 'sync:connect': () => bound })
   try {
     await click(button(element, 'iCloud에 연결'))
     await click([...element.querySelectorAll('[role="radio"]')].find(item => item.textContent?.startsWith('이 기기 자료로 덮어쓰기')))
     await click(button(element, '시작'))
-    expect(confirm.mock.calls[0]![0]).toContain('과목 1개와 문서 2개가 모든 기기에서 사라집니다')
+    expect(dialog()!.textContent).toContain('과목 1개와 문서 2개가 모든 기기에서 사라집니다')
+    await click(dialogButton('취소'))
+    expect(dialog()).toBeNull()
     expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:connect')
-    confirm.mockReturnValue(true)
     await click(button(element, '시작'))
+    await click(dialogButton('덮어쓰기'))
     expect(ipc.invoke).toHaveBeenCalledWith('sync:connect', { provider: 'icloud', mode: 'overwrite', pairs: [], expect: 'choose' })
   } finally {
     await unmount()
@@ -91,13 +96,19 @@ test('a bound profile shows its state and devices, and renames this device', asy
   const { element, unmount } = await render({ 'sync:status': () => bound, 'sync:rename': () => ({ ...bound, device: { id: 'aaaa', name: '서준의 맥' } }) })
   try {
     for (const text of ['동기화됨 · 3분 전', '보낼 변경 2건', 'MacBook Air (이 기기)', 'iPad Pro', '10분 전']) expect(element.textContent).toContain(text)
-    const input = element.querySelector('input.settings-text-input') as HTMLInputElement
+    const input = element.querySelector('[data-settings-target="sync.devices.name"] input') as HTMLInputElement
+    expect(input.value).toBe('MacBook Air')
     const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-    await act(async () => {
-      setValue.call(input, '서준의 맥')
+    const type = (value: string) => act(async () => {
+      setValue.call(input, value)
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    await click(button(element, '저장'))
+    await type('   ')
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:rename')
+    await type('서준의 맥')
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(ipc.invoke).toHaveBeenCalledWith('sync:rename', { name: '서준의 맥' })
   } finally {
     await unmount()
@@ -218,14 +229,14 @@ test('another device\'s move is followed in one step: a Google sign-in when need
     'sync:prepareMove': () => ({ status: 'ready', plan: join }), 'sync:move': () => ({ ...bound, provider: 'gdrive', moving: 'icloud', moved: null })
   })
   try {
-    expect(element.querySelector('.sync-move-offer')!.textContent).toContain('iPad Pro에서 Google Drive(student@example.com)로 옮겼어요')
+    expect(element.querySelector('[data-sync-move-offer]')!.textContent).toContain('iPad Pro에서 Google Drive(student@example.com)로 옮겼어요')
     expect(element.textContent).toContain('iPad Pro · Google Drive로 옮김')
     await click(button(element, '옮기기'))
-    expect(ipc.invoke.mock.calls.map(([channel]) => channel).filter(channel => channel !== 'sync:status')).toEqual(['sync:signIn', 'sync:prepareMove', 'sync:move'])
+    expect(ipc.invoke.mock.calls.map(([channel]) => channel).filter(channel => channel !== 'sync:status' && channel !== 'settings:get')).toEqual(['sync:signIn', 'sync:prepareMove', 'sync:move'])
     expect(ipc.invoke).toHaveBeenCalledWith('sync:signIn', { follow: true })
     expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'join' })
     expect(element.textContent).toContain('Google Drive로 옮기는 중이에요. 다 올리면 iCloud에 알리고 연결을 끊어요.')
-    expect(element.querySelector('.sync-move-offer')).toBeNull()
+    expect(element.querySelector('[data-sync-move-offer]')).toBeNull()
   } finally {
     await unmount()
   }
@@ -236,7 +247,7 @@ test('"나중에" puts the offer away, and a storage this computer cannot use is
   try {
     await click(button(element, '나중에'))
     expect(ipc.invoke).toHaveBeenCalledWith('sync:dismissMove', { t: MOVED_AT })
-    expect(element.querySelector('.sync-move-offer')).toBeNull()
+    expect(element.querySelector('[data-sync-move-offer]')).toBeNull()
   } finally {
     await unmount()
   }
@@ -257,12 +268,12 @@ test('"나중에" puts the offer away, and a storage this computer cannot use is
   }
 })
 
-test('moving from Settings shows the plan first, and disconnecting sits under 고급 (v2.7)', async () => {
+test('moving from Settings shows the plan first, and disconnecting sits in the advanced group (v2.7)', async () => {
   const upload = { kind: 'upload', local: { courses: 2, docs: 5 }, remote: { courses: 0, docs: 0 }, pairs: [] }
   const both = { ...bound, available: { icloud: true, gdrive: true }, account: 'me@example.com' }
   const { element, unmount } = await render({ 'sync:status': () => both, 'sync:prepareMove': () => ({ status: 'ready', plan: upload }), 'sync:move': () => ({ ...both, provider: 'gdrive', moving: 'icloud' }) })
   try {
-    expect(button(element, '연결 해제')!.closest('details')!.querySelector('summary')!.textContent).toBe('고급')
+    expect(button(element, '연결 해제')!.closest('[data-settings-group]')!.getAttribute('data-settings-group')).toBe('sync.advanced')
     await click(button(element, 'Google Drive로 옮기기'))
     expect(element.textContent).toContain('이 기기의 과목 2개, 문서 5개를 Google Drive로 옮깁니다. 다 올리면 iCloud 연결을 끊어요.')
     expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:move')
@@ -316,7 +327,7 @@ test('a move that fails after a quiet recheck says so and stops checking (v2.7)'
       expect(moves).toBe(1)
       expect(toast.showToast).toHaveBeenCalledWith('iCloud와 아직 다 맞추지 못했어요.', 'danger')
       // Back to the offer; nothing is checked again by itself.
-      expect(element.querySelector('.sync-move-offer')).not.toBeNull()
+      expect(element.querySelector('[data-sync-move-offer]')).not.toBeNull()
       await act(async () => { vi.advanceTimersByTime(90_000) })
       expect([asked, moves]).toEqual([2, 1])
     } finally {
@@ -347,6 +358,21 @@ test('a one-step move into storage that looks empty stops and asks: another Goog
     expect(ipc.invoke.mock.calls.filter(([channel]) => channel === 'sync:prepareMove')).toHaveLength(3)
     await click(button(element, '옮기기'))
     expect(ipc.invoke).toHaveBeenCalledWith('sync:move', { provider: 'gdrive', expect: 'upload' })
+  } finally {
+    await unmount()
+  }
+})
+
+test('disconnecting asks first and sends nothing when declined', async () => {
+  const { element, unmount } = await render({ 'sync:status': () => bound, 'sync:disconnect': () => unbound })
+  try {
+    await click(button(element, '연결 해제'))
+    expect(dialog()!.textContent).toContain('이 기기의 동기화를 끌까요?')
+    await click(dialogButton('취소'))
+    expect(ipc.invoke.mock.calls.map(([channel]) => channel)).not.toContain('sync:disconnect')
+    await click(button(element, '연결 해제'))
+    await click(dialogButton('연결 해제'))
+    expect(ipc.invoke).toHaveBeenCalledWith('sync:disconnect', {})
   } finally {
     await unmount()
   }

@@ -7,6 +7,7 @@ import {
   IMPORT_MATERIALS_SHORTCUT_EVENT,
 } from "../../app/shortcuts";
 import { BandalMark } from "../../components/BandalMark";
+import { Button } from "../../components/ui/button";
 import { useLocale, useT } from "../../i18n";
 import { invoke, onPush } from "../../lib/ipc";
 import { useCoursesStore } from "../../stores/coursesStore";
@@ -29,6 +30,7 @@ import {
   normalizeSettingsCategoryId,
   SETTINGS_CATEGORIES,
   SETTINGS_GROUPS,
+  type SettingsNavigationTarget,
   type SettingsPanelId,
   type SettingsGroupId,
 } from "../../../../shared/settingsCategories";
@@ -60,8 +62,19 @@ import { PrivacyPanel } from "./privacy/PrivacyPanel";
 import { ShortcutsPanel } from "./shortcuts/ShortcutsPanel";
 import { UsagePanel } from "./usage/UsagePanel";
 import { Icon } from "./SettingsIcon";
-import { searchSettings } from "./settingsSearchIndex";
-import { applyTheme } from "./settingsTheme";
+import {
+  buildSettingsSearchIndex,
+  paneSearchEntries,
+  type ResolvedSettingsEntry,
+} from "./search/catalog";
+import {
+  hasSettingsSearchQuery,
+  matchesSettingsSearch,
+  rankSettingsSearchItems,
+} from "./search/settingsSearch";
+import { SettingsSearchProvider } from "./kit/SettingsSearchContext";
+import { SettingsEmptyState } from "./kit/SettingsKit";
+import { revealSettingsTarget } from "./kit/settingsDeepLink";
 import { UniversitySettingsPanel } from "./UniversitySettingsPanel";
 import { WidgetSettingsPanel } from "./WidgetSettingsPanel";
 import { TabsSettingsPanel } from "./TabsSettingsPanel";
@@ -85,19 +98,22 @@ interface Category {
 }
 
 interface SettingsAppProps {
-  embedded?: boolean;
-  onClose?: () => void;
+  onClose: () => void;
   /** Category to open on; unknown/null falls back to General. */
   initialCategory?: string | null;
 }
 
+/** Orca debounces the applied query by 150ms; clearing applies at once. */
+const SEARCH_DEBOUNCE_MS = 150;
+/** Matching rows listed under a category while searching. */
+const MAX_SEARCH_HITS = 3;
+
 type ProviderState<T> = Record<AgentProvider, T>;
 
 export function SettingsApp({
-  embedded = false,
   onClose,
   initialCategory = null,
-}: SettingsAppProps = {}): JSX.Element {
+}: SettingsAppProps): JSX.Element {
   const t = useT();
   const leftRailOpen = useUiStore((state) => state.leftRailOpen);
   const isSettingsOpen = useUiStore((state) => state.isSettingsOpen);
@@ -108,8 +124,12 @@ export function SettingsApp({
   useEffect(() => {
     if (isSettingsCategoryId(initialCategory)) setActiveCategory(normalizeSettingsCategoryId(initialCategory));
   }, [initialCategory]);
-  const [query, setQuery] = useState("");
-  const [searchTarget, setSearchTarget] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const query = useUiStore((state) => state.settingsSearchQuery);
+  const setSettingsSearchQuery = useUiStore((state) => state.setSettingsSearchQuery);
+  const settingsTarget = useUiStore((state) => state.settingsTarget);
+  const [pendingTarget, setPendingTarget] = useState<SettingsNavigationTarget | null>(null);
+  const contentRef = useRef<HTMLElement>(null);
   const [settingsAttempt, setSettingsAttempt] = useState(0);
   const [settingsLoadError, setSettingsLoadError] = useState(false);
   const [milestonesOpen, setMilestonesOpen] = useState(false);
@@ -156,18 +176,88 @@ export function SettingsApp({
     categories.find((category) => category.id === activeCategory) ??
     categories[0]!;
 
-  const searchResults = useMemo(
-    () => searchSettings(query, locale, plugins.map((plugin) => plugin.manifest)),
-    [locale, query, plugins],
+  const searchIndex = useMemo(() => {
+    // Plugin names and their manifest settings stay searchable (packs pane).
+    const pluginEntries: ResolvedSettingsEntry[] = plugins.flatMap(({ manifest }) => [
+      { id: `packs.plugin.${manifest.id}`, category: "packs" as const, title: manifest.name, keywords: [manifest.id] },
+      ...(manifest.contributes.settings ?? []).map((field) => ({
+        id: `packs.plugin.${manifest.id}.${field.key}`,
+        category: "packs" as const,
+        title: field.title,
+        keywords: [manifest.name],
+      })),
+    ]);
+    return buildSettingsSearchIndex(locale, pluginEntries);
+  }, [locale, plugins]);
+
+  const searching = hasSettingsSearchQuery(query);
+  const rankedCategories = useMemo(
+    () => rankSettingsSearchItems(query, categories, (category) => paneSearchEntries(searchIndex, category.id)),
+    [categories, query, searchIndex],
   );
-  const matchesByCategory = useMemo(
-    () => new Map(searchResults.map((result) => [result.category, result.matches])),
-    [searchResults],
+  const filteredCategories = useMemo(() => rankedCategories.map(({ item }) => item), [rankedCategories]);
+  /** Up to three matching rows per category, shown under it in the sidebar. */
+  const hitsByCategory = useMemo(() => {
+    const hits = new Map<SettingsPanelId, ResolvedSettingsEntry[]>();
+    if (!searching) return hits;
+    for (const { item } of rankedCategories) {
+      const rows = rankSettingsSearchItems(query, searchIndex.byCategory.get(item.id) ?? [], (entry) => entry)
+        .map(({ item: entry }) => entry)
+        // Plugin rows only identify the pack; they have no row to scroll to.
+        .filter((entry) => !entry.id.startsWith("packs.plugin."));
+      hits.set(item.id, rows.slice(0, MAX_SEARCH_HITS));
+    }
+    return hits;
+  }, [query, rankedCategories, searchIndex, searching]);
+  // Only a hit on the category's own name reveals every row; its broad
+  // keyword list ("탭", "언어", …) would otherwise unfilter the whole pane.
+  const paneMatches = useMemo(
+    () => matchesSettingsSearch(query, { title: active.label }),
+    [active.label, query],
   );
-  const filteredCategories = useMemo(
-    () => categories.filter((category) => matchesByCategory.has(category.id)),
-    [categories, matchesByCategory],
-  );
+
+  // The input updates at once; the applied query (which re-filters every row)
+  // trails it by 150ms. An emptied input clears immediately.
+  useEffect(() => {
+    if (searchInput.trim() === "") {
+      setSettingsSearchQuery("");
+      return;
+    }
+    const timer = window.setTimeout(() => setSettingsSearchQuery(searchInput), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchInput, setSettingsSearchQuery]);
+  // A deep link clears the store query; mirror that into the input.
+  useEffect(() => {
+    if (query === "") setSearchInput((current) => (current.trim() === "" ? current : ""));
+  }, [query]);
+
+  // Keep the visible pane among the matches: fall back to the best match.
+  useEffect(() => {
+    if (!searching) return;
+    const first = filteredCategories[0];
+    if (first !== undefined && !filteredCategories.some((category) => category.id === activeCategory)) {
+      setActiveCategory(first.id);
+    }
+  }, [activeCategory, filteredCategories, searching]);
+
+  const navigateTo = useCallback((target: SettingsNavigationTarget): void => {
+    if (!isSettingsCategoryId(target.category)) return;
+    setActiveCategory(normalizeSettingsCategoryId(target.category));
+    setPendingTarget(target);
+  }, []);
+
+  // Deep links from anywhere in the app (uiStore.openSettings(target)).
+  useEffect(() => {
+    if (settingsTarget !== null) navigateTo(settingsTarget);
+  }, [navigateTo, settingsTarget]);
+
+  // Scroll to + highlight the requested row once its panel has rendered.
+  useEffect(() => {
+    const sectionId = pendingTarget?.sectionId;
+    const root = contentRef.current;
+    if (sectionId === undefined || root === null) return;
+    return revealSettingsTarget(root, sectionId);
+  }, [activeCategory, pendingTarget]);
 
   const loadAvailability = useCallback((target?: AgentProvider): void => {
     for (const provider of target === undefined ? AGENT_PROVIDERS : [target]) void refreshAgentConnection(provider, true);
@@ -200,7 +290,6 @@ export function SettingsApp({
       setSettingsLoadError(false);
       setSettings(next);
       setAppearance(pickAppearance(next));
-      if (!embedded) applyTheme(next);
     });
 
     void invoke("settings:get", {})
@@ -208,7 +297,6 @@ export function SettingsApp({
         if (!active || pushed) return;
         setSettings(result);
         setAppearance(pickAppearance(result));
-        if (!embedded) applyTheme(result);
       })
       .catch(() => {
         if (active && !pushed) {
@@ -225,55 +313,17 @@ export function SettingsApp({
       coursesRequest.current += 1;
       unsubscribe();
     };
-  }, [embedded, loadAvailability, settingsAttempt]);
+  }, [loadAvailability, settingsAttempt]);
 
   useEffect(() => {
-    const panelRoot = document.querySelector('.settings-panel');
-    if (!panelRoot || !searchTarget) return;
-    let highlighted: Element | null = null;
-    const locate = (): void => {
-      if (highlighted) return;
-      const label = [...panelRoot.querySelectorAll('.setting-row__label, .settings-card h2, label, h3')]
-        .find((node) => node.textContent?.toLocaleLowerCase().includes(searchTarget.toLocaleLowerCase()));
-      highlighted = label?.closest('.setting-row, .settings-card') ?? label ?? null;
-      if (!highlighted) return;
-      const details = highlighted.closest('details');
-      if (details) details.open = true;
-      highlighted.setAttribute('data-search-match', 'true');
-      highlighted.scrollIntoView?.({ block: 'center', behavior: 'instant' });
-      highlighted.querySelector<HTMLElement>('button, input, select, textarea')?.focus({ preventScroll: true });
-    };
-    locate();
-    const observer = new MutationObserver(locate);
-    observer.observe(panelRoot, { childList: true, subtree: true });
-    return () => { observer.disconnect(); highlighted?.removeAttribute('data-search-match'); };
-  }, [activeCategory, searchTarget]);
-
-  useEffect(() => {
-    if (embedded && !isSettingsOpen) return;
+    if (!isSettingsOpen) return;
     const releases = AGENT_PROVIDERS.map(provider => acquireAgentConnection(provider, true));
     return () => releases.forEach(release => release());
-  }, [embedded, isSettingsOpen]);
-
-  useEffect(() => {
-    if (embedded) return;
-    document.documentElement.lang = locale;
-    document.title = `${t("settings.app.name")} — ${t("settings.window.title")}`;
-  }, [embedded, locale, t]);
+  }, [isSettingsOpen]);
 
   useEffect(() => {
     void refreshMilestones(selectedCourseId);
   }, [refreshMilestones, selectedCourseId]);
-
-  useEffect(() => {
-    if (embedded) return;
-    const media = window.matchMedia("(prefers-color-scheme: light)");
-    const handleChange = (): void => {
-      if (appearance.theme === "system") applyTheme(appearance);
-    };
-    media.addEventListener("change", handleChange);
-    return () => media.removeEventListener("change", handleChange);
-  }, [embedded, appearance]);
 
   /**
    * Every appearance axis saves the same way: paint optimistically, persist
@@ -288,7 +338,6 @@ export function SettingsApp({
     const next = { ...previous, ...patch };
     if (isSameAppearance(next, previous)) return;
     setAppearance(next);
-    if (!embedded) applyTheme(next);
     setThemeSaving(true);
     setThemeErrorKey(null);
 
@@ -297,14 +346,10 @@ export function SettingsApp({
         if (!mountedRef.current || pushVersion !== settingsPushVersion.current) return;
         setSettings(nextSettings);
         setAppearance(pickAppearance(nextSettings));
-        if (!embedded) applyTheme(nextSettings);
       })
       .catch(() => {
         if (!mountedRef.current) return;
-        if (pushVersion === settingsPushVersion.current) {
-          setAppearance(previous);
-          if (!embedded) applyTheme(previous);
-        }
+        if (pushVersion === settingsPushVersion.current) setAppearance(previous);
         setThemeErrorKey("settings.appearance.saveFailed");
       })
       .finally(() => {
@@ -384,19 +429,10 @@ export function SettingsApp({
       setCourses((current) =>
         current.map((item) => (item.id === restored.id ? restored : item)),
       );
-      showToast(
-        locale === "ko-KR"
-          ? `“${course.name}” 과목을 복원했어요.`
-          : `Restored “${course.name}”.`,
-      );
+      showToast(t("settings.courses.restored", { name: course.name }));
     } catch {
       if (mountedRef.current) {
-        showToast(
-          locale === "ko-KR"
-            ? "과목을 복원하지 못했어요."
-            : "Could not restore the course.",
-          "danger",
-        );
+        showToast(t("settings.courses.restoreFailed"), "danger");
       }
     } finally {
       if (mountedRef.current) setPendingCourseId(null);
@@ -413,8 +449,7 @@ export function SettingsApp({
       return;
     }
 
-    if (embedded) onClose?.();
-    else window.close();
+    onClose();
     if (destination === "course") {
       window.dispatchEvent(new CustomEvent(ADD_COURSE_SHORTCUT_EVENT));
     } else if (destination === "materials") {
@@ -439,7 +474,7 @@ export function SettingsApp({
   };
 
   const panel: Record<SettingsPanelId, ReactNode> = {
-    tabs: null,
+    tabs: <TabsSettingsPanel settings={settings} target={pendingTarget} />,
     account: <AccountPanel />,
     sync: <SyncPanel />,
     general: <GeneralPanel settings={settings} />,
@@ -458,7 +493,7 @@ export function SettingsApp({
       />
     ),
     widgets: <WidgetSettingsPanel settings={settings} />,
-    packs: <PluginsCategoryPanel searchTarget={searchTarget} initialFilter={initialCategory === "mcp" ? "external" : "all"} />,
+    packs: <PluginsCategoryPanel initialFilter={initialCategory === "mcp" ? "external" : "all"} />,
     ai: (
       <AiPanel
         provider={settings?.agentProvider ?? "claude-code"}
@@ -502,46 +537,31 @@ export function SettingsApp({
     ),
     about: <AboutPanel />,
   } satisfies Record<SettingsPanelId, ReactNode>;
-  panel.tabs = <TabsSettingsPanel settings={settings} aiPanel={panel.ai} browserPanel={panel.browser} onNavigate={(category) => setActiveCategory(normalizeSettingsCategoryId(category))} />;
+
+  const clearSearch = (): void => {
+    setSearchInput("");
+    setSettingsSearchQuery("");
+  };
 
   return (
     <div
-      className={`settings-app${embedded ? " settings-app--embedded" : ""}`}
+      className="settings-app settings-app--embedded"
       onKeyDown={(event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
           event.preventDefault();
           searchInputRef.current?.focus();
+          searchInputRef.current?.select();
         }
       }}
     >
-      {!embedded && (
-        <header className="settings-titlebar titlebar-drag">
-          <div className="settings-titlebar__brand">
-            <BandalMark size={17} className="settings-titlebar__moon" />
-            <span>{t("settings.app.name")}</span>
-          </div>
-          <span className="settings-titlebar__divider" aria-hidden="true" />
-          <span className="settings-titlebar__label">
-            {t("settings.window.title")}
-          </span>
-        </header>
-      )}
-
       <div className="settings-layout">
         <aside
           className="settings-sidebar"
-          aria-hidden={embedded && !leftRailOpen}
-          {...{ inert: embedded && !leftRailOpen ? '' : undefined }}
+          aria-hidden={!leftRailOpen}
+          {...{ inert: !leftRailOpen ? '' : undefined }}
           aria-label={t("settings.navigation.label")}
         >
-          <button
-            type="button"
-            className="back-button"
-            onClick={() => {
-              if (embedded) onClose?.();
-              else window.close();
-            }}
-          >
+          <button type="button" className="back-button" onClick={onClose}>
             <Icon name="arrow-left" size={17} />
             <span>{t("settings.back")}</span>
           </button>
@@ -554,14 +574,19 @@ export function SettingsApp({
             <input
               ref={searchInputRef}
               type="search"
-              value={query}
+              value={searchInput}
               placeholder={t("settings.search.placeholder")}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => setSearchInput(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Escape") setQuery("");
+                // Esc clears a query first; only an empty field lets Esc close settings.
+                if (event.key === "Escape" && searchInput !== "") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  clearSearch();
+                }
               }}
             />
-            {query.length === 0 && (
+            {searchInput.length === 0 && (
               <span className="settings-search__kbd" aria-hidden="true">
                 <kbd>{window.bandal?.platform === "darwin" ? "⌘" : "Ctrl"}</kbd>
                 <kbd>F</kbd>
@@ -569,79 +594,58 @@ export function SettingsApp({
             )}
           </label>
 
-          <button
-            type="button"
-            className="settings-checklist"
-            onClick={() => {
-              setMilestonesOpen(true);
-              void refreshMilestones(selectedCourseId);
-            }}
-          >
-            <Icon name="checklist" />
-            <span>{t("settings.checklist.label")}</span>
-            <span className="settings-checklist__status">
-              {milestoneProgress >= 100 ? (
-                <span role="img" aria-label={t("settings.checklist.complete")}>
-                  <Icon name="check" />
-                </span>
-              ) : (
-                <ProgressRing
-                  compact
-                  progress={milestoneProgress}
-                  label={t("help.milestones.progress")}
-                />
-              )}
-            </span>
-          </button>
+          {!searching && (
+            <button
+              type="button"
+              className="settings-checklist"
+              onClick={() => {
+                setMilestonesOpen(true);
+                void refreshMilestones(selectedCourseId);
+              }}
+            >
+              <Icon name="checklist" />
+              <span>{t("settings.checklist.label")}</span>
+              <span className="settings-checklist__status">
+                {milestoneProgress >= 100 ? (
+                  <span role="img" aria-label={t("settings.checklist.complete")}>
+                    <Icon name="check" />
+                  </span>
+                ) : (
+                  <ProgressRing
+                    compact
+                    progress={milestoneProgress}
+                    label={t("help.milestones.progress")}
+                  />
+                )}
+              </span>
+            </button>
+          )}
 
           <nav className="settings-nav">
-            {SETTINGS_GROUPS.map((group) => {
-              const groupCategories = filteredCategories.filter(
-                (category) => category.group === group,
-              );
-              if (groupCategories.length === 0) return null;
-              return (
-                <div className="settings-nav__group" key={group}>
-                  <span className="settings-nav__group-label">
-                    {t(`settings.group.${group}`)}
-                  </span>
-                  {groupCategories.map((category) => {
-                    const matches = matchesByCategory.get(category.id) ?? [];
-                    return (
-                      <div key={category.id}>
-                      <button
-                        type="button"
-                        data-category={category.id}
-                        className={`settings-nav__item${
-                          activeCategory === category.id
-                            ? " settings-nav__item--active"
-                            : ""
-                        }`}
-                        aria-current={
-                          activeCategory === category.id ? "page" : undefined
-                        }
-                        onClick={() => { setSearchTarget(query.trim() ? matches[0] ?? null : null); setActiveCategory(category.id); }}
-                      >
-                        <Icon name={category.id} />
-                        <span className="settings-nav__copy">
-                          <span>{category.label}</span>
-                          {query.trim().length > 0 && matches.length > 0 && (
-                            <span className="settings-nav__hits">
-                              {matches.slice(0, 3).join(" · ")}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                      {query.trim() && matches.map((match) => <button className="settings-search-hit" key={match} type="button" onClick={() => {
-                        setSearchTarget(match); setActiveCategory(category.id);
-                      }}>{match}</button>)}
-                      </div>
-                    );
-                  })}
+            {searching ? (
+              filteredCategories.length > 0 && (
+                <div className="settings-nav__group">
+                  <span className="settings-nav__group-label">{t("settings.search.results")}</span>
+                  {filteredCategories.map((category) =>
+                    renderNavItem(category, hitsByCategory.get(category.id) ?? []),
+                  )}
                 </div>
-              );
-            })}
-            {filteredCategories.length === 0 && (
+              )
+            ) : (
+              SETTINGS_GROUPS.map((group) => {
+                const groupCategories = categories.filter((category) => category.group === group);
+                if (groupCategories.length === 0) return null;
+                return (
+                  <div className="settings-nav__group" key={group}>
+                    <span className="settings-nav__group-label">
+                      {t(`settings.group.${group}`)}
+                    </span>
+                    {groupCategories.map((category) => renderNavItem(category, []))}
+                  </div>
+                );
+              })
+            )}
+            {searching && filteredCategories.length === 0 && (
               <div className="settings-nav__empty">
                 <Icon name="search" size={17} />
                 <span>{t("settings.search.empty")}</span>
@@ -655,8 +659,8 @@ export function SettingsApp({
           </div>
         </aside>
 
-        <main className="settings-content" tabIndex={-1}>
-          {embedded && !leftRailOpen && <button type="button" className="back-button settings-content__back" onClick={onClose}>
+        <main ref={contentRef} className="settings-content" tabIndex={-1}>
+          {!leftRailOpen && <button type="button" className="back-button settings-content__back" onClick={onClose}>
             <Icon name="arrow-left" size={17} /><span>{t("settings.back")}</span>
           </button>}
           <div className="settings-content__inner">
@@ -664,13 +668,27 @@ export function SettingsApp({
               {t('settings.appearance.loadFailed')}
               <button type="button" className="secondary-button" onClick={() => setSettingsAttempt((n) => n + 1)}>{t('settings.plugins.action.retry')}</button>
             </div>}
-            <header className="content-heading">
-              <h1>{active.label}</h1>
-              <p>{active.description}</p>
-            </header>
-            <div className="settings-panel" key={active.id}>
-              {panel[active.id]}
-            </div>
+            {searching && filteredCategories.length === 0 ? (
+              <SettingsEmptyState
+                className="mt-10"
+                icon={<Icon name="search" size={20} />}
+                title={t("settings.search.noResults", { query: query.trim() })}
+                description={t("settings.search.noResultsHint")}
+                action={<Button variant="secondary" size="sm" onClick={clearSearch}>{t("settings.search.clear")}</Button>}
+              />
+            ) : (
+              <>
+                <header className="content-heading">
+                  <h1>{active.label}</h1>
+                  <p>{active.description}</p>
+                </header>
+                <SettingsSearchProvider index={searchIndex} paneMatches={paneMatches}>
+                  <div className="settings-panel" key={active.id}>
+                    {panel[active.id]}
+                  </div>
+                </SettingsSearchProvider>
+              </>
+            )}
           </div>
         </main>
       </div>
@@ -683,4 +701,40 @@ export function SettingsApp({
       <ToastHost />
     </div>
   );
+
+  function renderNavItem(category: Category, hits: readonly ResolvedSettingsEntry[]): JSX.Element {
+    const current = activeCategory === category.id;
+    return (
+      <div key={category.id}>
+        <button
+          type="button"
+          data-category={category.id}
+          className={`settings-nav__item${current ? " settings-nav__item--active" : ""}`}
+          aria-current={current ? "page" : undefined}
+          onClick={() => navigateTo({ category: category.id })}
+        >
+          <Icon name={category.id} />
+          <span className="settings-nav__copy">
+            <span>{category.label}</span>
+          </span>
+        </button>
+        {hits.map((hit) => (
+          <button
+            className="settings-search-hit"
+            key={hit.id}
+            type="button"
+            onClick={() =>
+              navigateTo({
+                category: category.id,
+                sectionId: hit.id,
+                ...(hit.subTab !== undefined ? { subTab: hit.subTab } : {}),
+              })
+            }
+          >
+            {hit.title}
+          </button>
+        ))}
+      </div>
+    );
+  }
 }

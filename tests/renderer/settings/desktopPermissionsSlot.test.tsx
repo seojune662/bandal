@@ -18,11 +18,16 @@ vi.mock('react', async (importOriginal) => {
       const cleanup = effect()
       if (cleanup !== undefined) hookState.cleanups.push(cleanup)
     }),
-    useState: vi.fn(() => [hookState.permission, hookState.setPermission])
+    // Only the permission state is driven by the test; other local state
+    // (e.g. whether System Settings was opened) keeps its initial value.
+    useState: vi.fn((initial: unknown) =>
+      typeof initial === 'boolean' ? [initial, vi.fn()] : [hookState.permission, hookState.setPermission]
+    )
   }
 })
 
 vi.mock('../../../src/renderer/src/i18n', () => ({
+  useLocale: () => 'ko-KR',
   useT: () => (key: string) => {
     const messages: Record<string, string> = {
       'settings.ai.permissions.screen.label': '화면 기록',
@@ -91,11 +96,11 @@ describe('DesktopPermissionsSlot', () => {
       <DesktopPermissionsSlot settings={DEFAULT_SETTINGS} />
     )
 
-    expect(html).toContain('class="setting-row"')
+    expect(html).toContain('data-settings-target="assistant.screen.permission"')
     expect(html).toContain('화면 기록')
     expect(html).toContain('data-state="unknown"')
     expect(html).toContain('미확인')
-    expect(html).toContain('>시스템 설정 열기</button>')
+    expect(html).toMatch(/<button[^>]*>시스템 설정 열기<\/button>/)
     expect(invoke).toHaveBeenCalledWith('desktopAgent:permissionStatus', {})
     await vi.waitFor(() => {
       expect(hookState.setPermission).toHaveBeenCalledWith('granted')

@@ -13,29 +13,29 @@ function server(presetId: string): McpServerSummary {
 }
 
 test('one stable row per managed entity and only unconfigured presets remain', () => {
-  const rows = buildPluginCenterRows(packs, [plugin], [server('notion')], true, true)
+  const rows = buildPluginCenterRows(packs, [plugin], [server('notion')], true, 'ko-KR')
   expect(rows).toHaveLength(packs.length + 1 + 1 + 5)
   expect(rows.filter(row => row.kind === 'plugin')).toHaveLength(1)
   expect(rows.some(row => row.id === 'preset:notion')).toBe(false)
   expect(rows.some(row => row.id === 'mcp:saved-notion')).toBe(true)
   expect(new Set(rows.map(row => row.id)).size).toBe(rows.length)
-  expect(buildPluginCenterRows(packs.map(pack => ({ ...pack, enabled: false })), [{ ...plugin, enabled: false }], [server('notion')], false, true).map(row => row.id)).toEqual(rows.map(row => row.id))
+  expect(buildPluginCenterRows(packs.map(pack => ({ ...pack, enabled: false })), [{ ...plugin, enabled: false }], [server('notion')], false, 'ko-KR').map(row => row.id)).toEqual(rows.map(row => row.id))
 })
 
 test('filesystem identity excludes the selected folder and names alone never identify a preset', () => {
   expect(presetForServer(server('filesystem'))?.id).toBe('filesystem')
   expect(presetForServer({ ...server('filesystem'), name: 'notion', command: 'node', args: ['custom-server.js'] })).toBeUndefined()
-  expect(buildPluginCenterRows([], [], [server('filesystem')], false, true).some(row => row.id === 'preset:filesystem')).toBe(false)
+  expect(buildPluginCenterRows([], [], [server('filesystem')], false, 'ko-KR').some(row => row.id === 'preset:filesystem')).toBe(false)
 })
 
 test('runtime/approval/failure states do not claim an extension is running', () => {
-  expect(buildPluginCenterRows([], [plugin], [], false, true)[0]).toMatchObject({ checked: false, status: '실행 꺼짐' })
-  expect(buildPluginCenterRows([], [{ ...plugin, state: 'errored' }], [], true, true)[0]).toMatchObject({ checked: false, status: '실행 오류' })
-  expect(buildPluginCenterRows([], [{ ...plugin, state: 'needs-approval', approvedPermissions: null }], [], true, true)[0]).toMatchObject({ checked: false, status: '승인 필요' })
+  expect(buildPluginCenterRows([], [plugin], [], false, 'ko-KR')[0]).toMatchObject({ checked: false, status: '실행 꺼짐' })
+  expect(buildPluginCenterRows([], [{ ...plugin, state: 'errored' }], [], true, 'ko-KR')[0]).toMatchObject({ checked: false, status: '실행 오류' })
+  expect(buildPluginCenterRows([], [{ ...plugin, state: 'needs-approval', approvedPermissions: null }], [], true, 'ko-KR')[0]).toMatchObject({ checked: false, status: '승인 필요' })
 })
 
 test('native results describe interactive study, legacy tools describe saved notes, and filters include setup rows', () => {
-  const rows = buildPluginCenterRows(packs, [], [], false, true)
+  const rows = buildPluginCenterRows(packs, [], [], false, 'ko-KR')
   expect(rows.find(row => row.id === 'pack:quiz')?.outcome).toContain('풀면서')
   expect(rows.find(row => row.id === 'pack:flashcards')?.outcome).toContain('카드')
   expect(rows.find(row => row.id === 'pack:summary')?.outcome).toContain('필기를 저장')
@@ -48,7 +48,7 @@ test('native results describe interactive study, legacy tools describe saved not
 
 test('disabled external tools keep the distinction between not checked, checked and failed', () => {
   const base = { ...server('notion'), enabled: false }
-  expect(buildPluginCenterRows([], [], [base], false, true)[0]?.status).toBe('확인 전 · 꺼짐')
-  expect(buildPluginCenterRows([], [], [{ ...base, lastTest: { at: '', ok: true, tools: ['search'] } }], false, true)[0]?.status).toBe('연결 확인됨 · 꺼짐')
-  expect(buildPluginCenterRows([], [], [{ ...base, lastTest: { at: '', ok: false, tools: [] } }], false, true)[0]?.status).toBe('확인 실패 · 꺼짐')
+  expect(buildPluginCenterRows([], [], [base], false, 'ko-KR')[0]?.status).toBe('확인 전 · 꺼짐')
+  expect(buildPluginCenterRows([], [], [{ ...base, lastTest: { at: '', ok: true, tools: ['search'] } }], false, 'ko-KR')[0]?.status).toBe('연결 확인됨 · 꺼짐')
+  expect(buildPluginCenterRows([], [], [{ ...base, lastTest: { at: '', ok: false, tools: [] } }], false, 'ko-KR')[0]?.status).toBe('확인 실패 · 꺼짐')
 })

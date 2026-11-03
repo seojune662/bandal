@@ -222,9 +222,8 @@ test(`tab menu order, all shortcuts and tab defaults work together with ${agentC
     const prefs = page.locator('.tab-settings')
     await expect(prefs.getByRole('tablist', { name: '탭 종류' }).getByRole('tab')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     await prefs.getByRole('tab', { name: '녹음', exact: true }).click()
-    await prefs
-      .getByRole('combobox', { name: '기본 재생 속도' })
-      .selectOption('1.5')
+    await prefs.getByRole('combobox', { name: '기본 재생 속도' }).click()
+    await page.getByRole('option', { name: '1.5×', exact: true }).click()
     await prefs
       .getByRole('switch', { name: '설정·자료 패널 열어 두기' })
       .click()
@@ -233,21 +232,17 @@ test(`tab menu order, all shortcuts and tab defaults work together with ${agentC
       path: 'e2e/test-results/recording-tab-settings.png'
     })
     await prefs.getByRole('tab', { name: '마크다운', exact: true }).click()
-    await prefs
-      .getByRole('textbox', { name: '새 파일 제목 접두어' })
-      .fill('강의 필기')
-    await prefs.getByRole('button', { name: '저장', exact: true }).click()
+    const prefix = prefs.getByRole('textbox', { name: '새 파일 제목 접두어' })
+    await prefix.fill('강의 필기')
+    await prefix.press('Enter')
     await prefs.getByRole('tab', { name: '노트', exact: true }).click()
-    await prefs.getByRole('combobox', { name: '기본 종이' }).selectOption('dots')
-    await prefs.getByRole('combobox', { name: '기본 방향' }).selectOption('landscape')
+    await prefs.getByRole('radiogroup', { name: '기본 종이' }).getByRole('radio', { name: '점', exact: true }).click()
+    await prefs.getByRole('radiogroup', { name: '기본 방향' }).getByRole('radio', { name: '가로', exact: true }).click()
+    // Browser and AI tab settings live in their own panels; the sub-tabs link there.
     await prefs.getByRole('tab', { name: '브라우저', exact: true }).click()
-    await expect(
-      prefs.getByText('홈페이지', { exact: true }).first()
-    ).toBeVisible()
+    await expect(prefs.getByRole('button', { name: '브라우저 설정 열기', exact: true })).toBeVisible()
     await prefs.getByRole('tab', { name: 'AI', exact: true }).click()
-    await expect(
-      prefs.getByText('Claude', { exact: true }).first()
-    ).toBeVisible()
+    await expect(prefs.getByRole('button', { name: 'AI 설정 열기', exact: true })).toBeVisible()
     await expect
       .poll(() =>
         page.evaluate(

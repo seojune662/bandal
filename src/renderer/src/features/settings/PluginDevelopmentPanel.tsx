@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useLocale } from '../../i18n'
+import { Button } from '../../components/ui/button'
+import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
+import { SettingsEmptyState, SettingsGroup, SettingsNotice, SettingsRow } from './kit/SettingsKit'
 
 export function PluginDevelopmentPanel(): JSX.Element {
-  const ko = useLocale() === 'ko-KR'
+  const t = useT()
   const [folders, setFolders] = useState<Array<{ id: string; path: string }>>(
     [],
   )
@@ -36,46 +38,59 @@ export function PluginDevelopmentPanel(): JSX.Element {
     }
   }
   return (
-    <section className="marketplace-form">
-      <h2>{ko ? '로컬 개발' : 'Local development'}</h2>
-      <p>
-        {ko
-          ? '폴더 변경을 감지해 설치본을 갱신합니다. 코드가 바뀌면 설치됨 화면에서 다시 승인해 실행하세요. 앱을 종료하면 감시도 종료됩니다.'
-          : 'Watch a folder and refresh its installed copy. After code changes, approve and enable it in Installed. Watching ends when Bandal exits.'}
-      </p>
-      <code>pnpm plugin create my-plugin publisher.my-plugin</code>
-      <code>pnpm plugin pack my-plugin</code>
-      <button
-        type="button"
-        className="settings-extension-button"
-        disabled={busy}
-        onClick={() =>
-          void run(async () => {
-            const picked = await invoke('plugins:pickFolder', {})
-            if (picked.path)
-              await invoke('plugins:watchFolder', { path: picked.path })
-          })
-        }
-      >
-        {ko ? '개발 폴더 연결' : 'Connect development folder'}
-      </button>
-      {error && <p role="alert">{error}</p>}
-      {folders.map((folder) => (
-        <div className="marketplace-release" key={folder.id}>
-          <strong>{folder.id}</strong>
-          <code>{folder.path}</code>
-          <button
-            type="button"
-            className="settings-extension-button"
-            disabled={busy}
-            onClick={() =>
-              void run(() => invoke('plugins:unwatchFolder', { id: folder.id }))
-            }
-          >
-            {ko ? '감시 종료' : 'Stop watching'}
-          </button>
+    <SettingsGroup
+      bare
+      title={t('settings.pluginDev.title')}
+      description={t('settings.pluginDev.description')}
+      action={
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const picked = await invoke('plugins:pickFolder', {})
+              if (picked.path)
+                await invoke('plugins:watchFolder', { path: picked.path })
+            })
+          }
+        >
+          {t('settings.pluginDev.connect')}
+        </Button>
+      }
+    >
+      <div className="space-y-3">
+        <div className="space-y-1 rounded-lg border border-border bg-secondary/60 px-4 py-3 font-mono text-2xs text-secondary-foreground select-text">
+          <code className="block">pnpm plugin create my-plugin publisher.my-plugin</code>
+          <code className="block">pnpm plugin pack my-plugin</code>
         </div>
-      ))}
-    </section>
+        {error && <SettingsNotice tone="danger">{error}</SettingsNotice>}
+        {folders.length === 0 ? (
+          <SettingsEmptyState title={t('settings.pluginDev.empty')} className="py-5" />
+        ) : (
+          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card/60">
+            {folders.map((folder) => (
+              <SettingsRow
+                key={folder.id}
+                label={folder.id}
+                description={<code className="[overflow-wrap:anywhere]">{folder.path}</code>}
+                control={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(() => invoke('plugins:unwatchFolder', { id: folder.id }))
+                    }
+                  >
+                    {t('settings.pluginDev.stop')}
+                  </Button>
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </SettingsGroup>
   )
 }

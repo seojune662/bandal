@@ -392,6 +392,9 @@ export function AgentAuditTimeline({
   )
 }
 
+// One kit-style card per section (the legacy .settings-card is gone).
+const AGENT_CARD = 'overflow-hidden rounded-lg border border-border bg-card/60 pb-4'
+
 export function AgentAccessPanel(): JSX.Element {
   const t = useT()
   const browserState = useSyncExternalStore(
@@ -417,16 +420,16 @@ export function AgentAccessPanel(): JSX.Element {
   const pastCount = (browserState.grants?.length ?? 0) - live.length
 
   return (
-    <div className="settings-stack">
-      <section className="settings-card settings-agent-card">
-        <div className="settings-card__header">
-          <h2>{t('settings.agentAccess.title')}</h2>
-          <p>{t('settings.agentAccess.description')}</p>
+    <div className="flex flex-col gap-4">
+      <section className={AGENT_CARD}>
+        <div className="space-y-0.5 px-4 pt-4 pb-2">
+          <h3 className="text-sm font-medium text-foreground">{t('settings.agentAccess.title')}</h3>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t('settings.agentAccess.description')}</p>
         </div>
         {browserState.loading && browserState.grants === null ? (
-          <p className="settings-feedback">{t('settings.agentAccess.loading')}</p>
+          <p className="px-4 py-3 text-xs text-muted-foreground" role="status">{t('settings.agentAccess.loading')}</p>
         ) : browserState.error && browserState.grants === null ? (
-          <p className="settings-feedback" role="alert">
+          <p className="px-4 py-3 text-xs text-destructive" role="alert">
             {t('settings.agentAccess.loadFailed')}
           </p>
         ) : live.length === 0 ? (
@@ -445,17 +448,17 @@ export function AgentAccessPanel(): JSX.Element {
         )}
       </section>
 
-      <section className="settings-card settings-agent-card">
-        <div className="settings-card__header">
-          <h2>{t('settings.agentAccess.toolGrants.title')}</h2>
-          <p>{t('settings.agentAccess.toolGrants.description')}</p>
+      <section className={AGENT_CARD}>
+        <div className="space-y-0.5 px-4 pt-4 pb-2">
+          <h3 className="text-sm font-medium text-foreground">{t('settings.agentAccess.toolGrants.title')}</h3>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t('settings.agentAccess.toolGrants.description')}</p>
         </div>
         {toolState.loading && toolState.grants === null ? (
-          <p className="settings-feedback">
+          <p className="px-4 py-3 text-xs text-muted-foreground" role="status">
             {t('settings.agentAccess.toolGrants.loading')}
           </p>
         ) : toolState.error ? (
-          <p className="settings-feedback" role="alert">
+          <p className="px-4 py-3 text-xs text-destructive" role="alert">
             {t('settings.agentAccess.toolGrants.loadFailed')}
           </p>
         ) : toolState.grants?.length === 0 ? (
@@ -487,15 +490,15 @@ export function AgentAccessPanel(): JSX.Element {
         )}
       </section>
 
-      <section className="settings-card settings-agent-card">
-        <div className="settings-card__header">
-          <h2>{t('settings.agentAccess.audit.title')}</h2>
-          <p>{t('settings.agentAccess.audit.description')}</p>
+      <section className={AGENT_CARD}>
+        <div className="space-y-0.5 px-4 pt-4 pb-2">
+          <h3 className="text-sm font-medium text-foreground">{t('settings.agentAccess.audit.title')}</h3>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t('settings.agentAccess.audit.description')}</p>
         </div>
         {browserState.loading && browserState.entries === null ? (
-          <p className="settings-feedback">{t('settings.agentAccess.loading')}</p>
+          <p className="px-4 py-3 text-xs text-muted-foreground" role="status">{t('settings.agentAccess.loading')}</p>
         ) : browserState.error && browserState.entries === null ? (
-          <p className="settings-feedback" role="alert">
+          <p className="px-4 py-3 text-xs text-destructive" role="alert">
             {t('settings.agentAccess.loadFailed')}
           </p>
         ) : browserState.entries?.length === 0 ? (

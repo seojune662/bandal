@@ -8,7 +8,7 @@
     "web-app/*.test.ts",
     "server/marketplace/index.ts",
     "sdk/cli/index.ts",
-    "src/renderer/src/{main,overlay-main,pip-main,settings-main}.tsx",
+    "src/renderer/src/{main,overlay-main,pip-main}.tsx",
     "scripts/**/*.mjs",
     "e2e/**/*.ts",
     "tests/**/*.{ts,tsx}",
@@ -29,8 +29,11 @@
     "resources/ipad-bridge/backend.js"
   ],
   "ignoreDependencies": [
-    "@milkdown/exception"
+    "@milkdown/exception",
+    "tailwindcss",
+    "tw-animate-css"
   ],
+  "tailwind": false,
   "ignoreBinaries": [
     "swift",
     "lipo",

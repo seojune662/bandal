@@ -1,7 +1,6 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useState } from 'react'
 import type { Settings } from '../../../../shared/types/settings'
-import { EDITOR_FONTS } from '../../../../shared/types/settings'
-import { RECORDING_PLAYBACK_RATES } from '../../../../shared/tabPreferences'
+import { RECORDING_PLAYBACK_RATES, type TabPreferences } from '../../../../shared/tabPreferences'
 import {
   formatChord,
   parseChord,
@@ -9,264 +8,287 @@ import {
   type ShortcutActionId
 } from '../../../../shared/keymap'
 import type { SpeechModelState } from '../../../../shared/recording'
-import type { SettingsCategoryId } from '../../../../shared/settingsCategories'
-import { useLocale } from '../../i18n'
+import type { SettingsNavigationTarget } from '../../../../shared/settingsCategories'
+import { Button } from '../../components/ui/button'
+import { useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
+import { cn } from '../../lib/utils'
+import { useUiStore } from '../../stores/uiStore'
 import { SpeechModelPicker } from '../recordings/SpeechModelPicker'
 import { TabKindIcon } from '../workspace/workspaceIcons'
-import { SettingsCard, ToggleRow } from './primitives'
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsSegmentedRow,
+  SettingsSelectRow,
+  SettingsStack,
+  SettingsSwitchRow,
+  SettingsTextRow,
+  type SettingsOption
+} from './kit/SettingsKit'
+import { useIsSettingsSearching } from './kit/SettingsSearchContext'
 import { savePreference } from './savePreference'
+import { TABS_ENTRIES } from './search/entries/tabs'
 import '../recordings/recording.css'
 import './tabs-settings.css'
 
+/** `id` is the public sub-tab id (deep links, catalog `subTab`). */
 const TABS = [
-  { id: 'browser', ko: '브라우저', en: 'Browser', action: 'new-browser-tab' },
-  { id: 'note', ko: '마크다운', en: 'Markdown', action: 'new-markdown' },
-  { id: 'whiteboard', ko: '노트', en: 'Note', action: 'new-whiteboard' },
-  { id: 'chat', ko: 'AI', en: 'AI', action: 'new-ai-tab' },
-  { id: 'recording', ko: '녹음', en: 'Recording', action: 'new-recording-tab' }
-] as const
+  { id: 'browser', kind: 'browser', action: 'new-browser-tab' },
+  { id: 'markdown', kind: 'note', action: 'new-markdown' },
+  { id: 'note', kind: 'whiteboard', action: 'new-whiteboard' },
+  { id: 'ai', kind: 'chat', action: 'new-ai-tab' },
+  { id: 'recording', kind: 'recording', action: 'new-recording-tab' }
+] as const satisfies readonly { id: string; kind: string; action: ShortcutActionId }[]
 type TabId = (typeof TABS)[number]['id']
+
+const NOTE_PAPERS = ['grid', 'dots', 'lines', 'blank'] as const satisfies readonly TabPreferences['notePaper'][]
+const NOTE_ORIENTATIONS = ['portrait', 'landscape'] as const satisfies readonly TabPreferences['noteOrientation'][]
+const TITLE_PREFIX_MAX = 60
+
+function isTabId(value: string | undefined): value is TabId {
+  return TABS.some((tab) => tab.id === value)
+}
+
+/** Sub-tab a deep link points at: explicit `subTab`, else the row's catalog entry. */
+function subTabFor(target: SettingsNavigationTarget | null | undefined): TabId | null {
+  if (target?.category !== 'tabs') return null
+  if (isTabId(target.subTab)) return target.subTab
+  const entry = TABS_ENTRIES.find((candidate) => candidate.id === target.sectionId)
+  const subTab = entry !== undefined && 'subTab' in entry ? entry.subTab : undefined
+  return isTabId(subTab) ? subTab : null
+}
 
 export function TabsSettingsPanel({
   settings,
-  aiPanel,
-  browserPanel,
-  onNavigate
+  target
 }: {
   settings: Settings | null
-  aiPanel: ReactNode
-  browserPanel: ReactNode
-  onNavigate: (category: SettingsCategoryId) => void
+  /** SettingsApp's current navigation target (search hits, deep links). */
+  target?: SettingsNavigationTarget | null
 }): JSX.Element {
-  const ko = useLocale() === 'ko-KR'
-  const [selected, setSelected] = useState<TabId>('browser')
+  const t = useT()
   const id = useId()
-  const current = TABS.find((tab) => tab.id === selected)!
-  const [prefix, setPrefix] = useState(settings?.tabs.markdownTitlePrefix ?? '')
-  useEffect(
-    () => setPrefix(settings?.tabs.markdownTitlePrefix ?? ''),
-    [settings?.tabs.markdownTitlePrefix]
-  )
-  const chord = [...resolveKeymap(settings?.keybindings ?? {})].find(
-    ([, action]) => action === (current.action as ShortcutActionId)
-  )?.[0]
-  const parsed = chord ? parseChord(chord) : null
-  const prefs = settings?.tabs
+  const storeTarget = useUiStore((state) => state.settingsTarget)
+  const [selected, setSelected] = useState<TabId>(() => subTabFor(storeTarget) ?? subTabFor(target) ?? 'browser')
+  const searching = useIsSettingsSearching()
+
+  // Deep links: `openSettings({ category: 'tabs', subTab })`; nonce re-fires a repeat link.
+  useEffect(() => {
+    const next = subTabFor(storeTarget)
+    if (next !== null) setSelected(next)
+  }, [storeTarget?.nonce])
+  useEffect(() => {
+    const next = subTabFor(target)
+    if (next !== null) setSelected(next)
+  }, [target])
+
+  const sections: Record<TabId, JSX.Element> = {
+    browser: <BrowserTabSection settings={settings} />,
+    markdown: <MarkdownTabSection settings={settings} />,
+    note: <NoteTabSection settings={settings} />,
+    ai: <AiTabSection settings={settings} />,
+    recording: <RecordingTabSection settings={settings} />
+  }
+
+  // While searching, every sub-tab renders so matching rows are never hidden
+  // behind an unselected tab; the rows filter themselves.
+  if (searching) {
+    return (
+      <div className="tab-settings">
+        <SettingsStack>{TABS.map((tab) => <Fragment key={tab.id}>{sections[tab.id]}</Fragment>)}</SettingsStack>
+      </div>
+    )
+  }
+
   return (
-    <div className="settings-stack tab-settings">
-      <div
-        className="tab-settings__nav"
-        role="tablist"
-        aria-label={ko ? '탭 종류' : 'Tab type'}
-      >
-        {TABS.map((tab, index) => (
-          <button
-            key={tab.id}
-            id={`${id}-${tab.id}`}
-            type="button"
-            role="tab"
-            aria-selected={selected === tab.id}
-            aria-controls={`${id}-panel`}
-            tabIndex={selected === tab.id ? 0 : -1}
-            onClick={() => setSelected(tab.id)}
-            onKeyDown={(event) => {
-              const next =
-                event.key === 'ArrowRight'
-                  ? (index + 1) % TABS.length
-                  : event.key === 'ArrowLeft'
-                    ? (index + TABS.length - 1) % TABS.length
-                    : event.key === 'Home'
-                      ? 0
-                      : event.key === 'End'
-                        ? TABS.length - 1
-                        : null
-              if (next === null) return
-              event.preventDefault()
-              setSelected(TABS[next]!.id)
-              document.getElementById(`${id}-${TABS[next]!.id}`)?.focus()
-            }}
-          >
-            <TabKindIcon kind={tab.id} />
-            <span>{ko ? tab.ko : tab.en}</span>
-          </button>
-        ))}
-      </div>
-      <div
-        id={`${id}-panel`}
-        role="tabpanel"
-        aria-labelledby={`${id}-${selected}`}
-        className="settings-stack"
-      >
-        <div className="tab-settings__shortcut">
-          <span>{ko ? '탭 열기 단축키' : 'Open tab shortcut'}</span>
-          <kbd>
-            {parsed
-              ? formatChord(parsed, window.bandal?.platform ?? 'unknown')
-              : ko
-                ? '미지정'
-                : 'Unassigned'}
-          </kbd>
-          <button
-            className="secondary-button"
-            onClick={() => onNavigate('shortcuts')}
-          >
-            {ko ? '단축키 변경' : 'Edit shortcuts'}
-          </button>
-        </div>
-        {selected === 'browser' ? (
-          browserPanel
-        ) : selected === 'chat' ? (
-          aiPanel
-        ) : selected === 'recording' ? (
-          <RecordingDefaults settings={settings} />
-        ) : selected === 'note' ? (
-          <SettingsCard
-            title={ko ? '마크다운 기본 설정' : 'Markdown defaults'}
-            description={
-              ko
-                ? '글꼴은 열린 필기에도 적용됩니다. 제목 접두어는 새로 만드는 파일에 적용됩니다.'
-                : 'Font changes apply to open notes. The title prefix applies to new files.'
-            }
-          >
-            <label className="tab-settings__field">
-              {ko ? '본문 글꼴' : 'Editor font'}
-              <select
-                disabled={!settings}
-                value={settings?.editorFont ?? 'sans'}
-                onChange={(event) =>
-                  void savePreference({
-                    editorFont: event.target.value as Settings['editorFont']
-                  })
-                }
-              >
-                {EDITOR_FONTS.map((font) => (
-                  <option key={font} value={font}>
-                    {font === 'sans'
-                      ? ko
-                        ? '고딕'
-                        : 'Sans-serif'
-                      : font === 'serif'
-                        ? ko
-                          ? '명조'
-                          : 'Serif'
-                        : ko
-                          ? '고정폭'
-                          : 'Monospace'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <form
-              className="tab-settings__field"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void savePreference({ tabs: { markdownTitlePrefix: prefix } })
-              }}
-            >
-              <label htmlFor={`${id}-prefix`}>
-                {ko ? '새 파일 제목 접두어' : 'New file title prefix'}
-              </label>
-              <div className="tab-settings__inline">
-                <input
-                  id={`${id}-prefix`}
-                  maxLength={60}
-                  value={prefix}
-                  disabled={!settings}
-                  onChange={(event) => setPrefix(event.target.value)}
-                />
-                <button
-                  className="secondary-button"
-                  disabled={!prefix.trim() || !settings}
-                >
-                  {ko ? '저장' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </SettingsCard>
-        ) : selected === 'whiteboard' ? (
-          <SettingsCard
-            title={ko ? '새 노트' : 'New notes'}
-            description={
-              ko
-                ? 'PDF 노트의 기본 종이입니다. 기존 노트의 종이와 필기는 유지합니다.'
-                : 'Default paper for new PDF notes. Existing notes and drawings stay unchanged.'
-            }
-          >
-            <label className="tab-settings__field">
-              {ko ? '기본 종이' : 'Default paper'}
-              <select
-                value={prefs?.notePaper ?? 'lines'}
-                disabled={!prefs}
-                onChange={(event) =>
-                  void savePreference({
-                    tabs: {
-                      notePaper: event.target.value as
-                        | 'grid'
-                        | 'blank'
-                        | 'dots'
-                        | 'lines'
-                    }
-                  })
-                }
-              >
-                {(['grid', 'dots', 'lines', 'blank'] as const).map(
-                  (value, index) => (
-                    <option key={value} value={value}>
-                      {ko
-                        ? ['모눈', '점', '줄', '빈 종이'][index]
-                        : ['Grid', 'Dots', 'Lines', 'Blank'][index]}
-                    </option>
-                  )
+    <div className="tab-settings">
+      <SettingsStack>
+        <div
+          role="tablist"
+          aria-label={t('settings.tabs.kindLabel')}
+          className="inline-flex w-fit flex-wrap items-center gap-0.5 rounded-md border border-border bg-secondary p-0.5"
+        >
+          {TABS.map((tab, index) => {
+            const active = selected === tab.id
+            return (
+              <button
+                key={tab.id}
+                id={`${id}-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls={`${id}-panel`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => setSelected(tab.id)}
+                onKeyDown={(event) => {
+                  const next =
+                    event.key === 'ArrowRight'
+                      ? (index + 1) % TABS.length
+                      : event.key === 'ArrowLeft'
+                        ? (index + TABS.length - 1) % TABS.length
+                        : event.key === 'Home'
+                          ? 0
+                          : event.key === 'End'
+                            ? TABS.length - 1
+                            : null
+                  if (next === null) return
+                  event.preventDefault()
+                  setSelected(TABS[next]!.id)
+                  document.getElementById(`${id}-${TABS[next]!.id}`)?.focus()
+                }}
+                className={cn(
+                  'inline-flex h-7 items-center justify-center gap-1.5 rounded-sm px-3 text-xs font-medium whitespace-nowrap transition-[color,background-color,box-shadow] duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary [&_svg]:size-3.5 [&_svg]:shrink-0',
+                  active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
-              </select>
-            </label>
-            <label className="tab-settings__field">{ko ? '기본 방향' : 'Default orientation'}
-              <select value={prefs?.noteOrientation ?? 'portrait'} disabled={!prefs} onChange={event => void savePreference({ tabs: { noteOrientation: event.target.value as 'portrait' | 'landscape' } })}>
-                <option value="portrait">{ko ? '세로' : 'Portrait'}</option><option value="landscape">{ko ? '가로' : 'Landscape'}</option>
-              </select>
-            </label>
-          </SettingsCard>
-        ) : null}
-      </div>
-      <SettingsCard title={ko ? '모든 탭의 공통 동작' : 'Common tab behavior'}>
-        <ToggleRow
-          label={ko ? '현재 탭 바로 옆에 열기' : 'Open beside the current tab'}
-          description={
-            ko
-              ? '새 탭을 같은 그룹의 현재 탭 다음 위치에 엽니다.'
-              : 'Insert new tabs after the active tab in the same group.'
-          }
-          checked={settings?.openAdjacentTab ?? false}
-          disabled={!settings}
-          onChange={(openAdjacentTab) =>
-            void savePreference({ openAdjacentTab })
-          }
-        />
-        <ToggleRow
-          label={ko ? '마지막 과목 복원' : 'Restore last course'}
-          description={
-            ko
-              ? '앱을 다시 열 때 마지막 과목과 저장된 탭 배치를 복원합니다.'
-              : 'Restore the last course and its saved tab layout on startup.'
-          }
-          checked={settings?.restoreLastCourse ?? true}
-          disabled={!settings}
-          onChange={(restoreLastCourse) =>
-            void savePreference({ restoreLastCourse })
-          }
-        />
-      </SettingsCard>
+              >
+                <TabKindIcon kind={tab.kind} />
+                <span>{t(`settings.tabs.kind.${tab.id}`)}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${selected}`}>
+          <SettingsStack>{sections[selected]}</SettingsStack>
+        </div>
+      </SettingsStack>
     </div>
   )
 }
 
-function RecordingDefaults({
-  settings
+/* ---------------------------------------------------------------- shared */
+
+function ShortcutRow({
+  searchId,
+  settings,
+  action
 }: {
+  searchId: string
   settings: Settings | null
+  action: ShortcutActionId
 }): JSX.Element {
-  const ko = useLocale() === 'ko-KR'
+  const t = useT()
+  const chord = [...resolveKeymap(settings?.keybindings ?? {})].find(([, bound]) => bound === action)?.[0]
+  const parsed = chord ? parseChord(chord) : null
+  return (
+    <SettingsRow
+      searchId={searchId}
+      control={
+        <>
+          <kbd className="rounded-sm border border-border bg-secondary px-1.5 py-0.5 font-mono text-xs text-foreground">
+            {parsed ? formatChord(parsed, window.bandal?.platform ?? 'unknown') : t('settings.tabs.shortcut.unassigned')}
+          </kbd>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => useUiStore.getState().openSettings({ category: 'shortcuts' })}
+          >
+            {t('settings.tabs.shortcut.edit')}
+          </Button>
+        </>
+      }
+    />
+  )
+}
+
+/* -------------------------------------------------------------- sections */
+
+function BrowserTabSection({ settings }: { settings: Settings | null }): JSX.Element {
+  const t = useT()
+  return (
+    <SettingsGroup searchId="tabs.browser">
+      <ShortcutRow searchId="tabs.browser.shortcut" settings={settings} action="new-browser-tab" />
+      <SettingsRow
+        searchId="tabs.browser.settings"
+        control={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => useUiStore.getState().openSettings({ category: 'browser' })}
+          >
+            {t('settings.tabs.browser.openSettings')}
+          </Button>
+        }
+      />
+    </SettingsGroup>
+  )
+}
+
+function AiTabSection({ settings }: { settings: Settings | null }): JSX.Element {
+  const t = useT()
+  return (
+    <SettingsGroup searchId="tabs.ai">
+      <ShortcutRow searchId="tabs.ai.shortcut" settings={settings} action="new-ai-tab" />
+      <SettingsRow
+        searchId="tabs.ai.settings"
+        control={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => useUiStore.getState().openSettings({ category: 'ai' })}
+          >
+            {t('settings.tabs.ai.openSettings')}
+          </Button>
+        }
+      />
+    </SettingsGroup>
+  )
+}
+
+function MarkdownTabSection({ settings }: { settings: Settings | null }): JSX.Element {
+  const t = useT()
+  // Editor font lives in Appearance (same `editorFont` setting).
+  const commitPrefix = async (value: string): Promise<string | undefined> => {
+    const markdownTitlePrefix = value.trim()
+    if (markdownTitlePrefix === '') return t('settings.tabs.markdown.prefixRequired')
+    if (markdownTitlePrefix.length > TITLE_PREFIX_MAX) {
+      return t('settings.tabs.markdown.prefixTooLong', { max: TITLE_PREFIX_MAX })
+    }
+    const saved = await savePreference({ tabs: { markdownTitlePrefix } })
+    return saved === null ? t('settings.tabs.saveFailed') : undefined
+  }
+  return (
+    <SettingsGroup searchId="tabs.markdown">
+      <ShortcutRow searchId="tabs.markdown.shortcut" settings={settings} action="new-markdown" />
+      <SettingsTextRow
+        searchId="tabs.markdown.titlePrefix"
+        value={settings?.tabs.markdownTitlePrefix ?? ''}
+        disabled={settings === null}
+        onCommit={commitPrefix}
+      />
+    </SettingsGroup>
+  )
+}
+
+function NoteTabSection({ settings }: { settings: Settings | null }): JSX.Element {
+  const t = useT()
+  const prefs = settings?.tabs
+  return (
+    <SettingsGroup searchId="tabs.note">
+      <ShortcutRow searchId="tabs.note.shortcut" settings={settings} action="new-whiteboard" />
+      <SettingsSegmentedRow
+        searchId="tabs.note.paper"
+        value={prefs?.notePaper ?? 'lines'}
+        disabled={prefs === undefined}
+        options={NOTE_PAPERS.map((paper) => ({ value: paper, label: t(`settings.tabs.note.paper.${paper}`) }))}
+        onChange={(notePaper) => void savePreference({ tabs: { notePaper } })}
+      />
+      <SettingsSegmentedRow
+        searchId="tabs.note.orientation"
+        value={prefs?.noteOrientation ?? 'portrait'}
+        disabled={prefs === undefined}
+        options={NOTE_ORIENTATIONS.map((orientation) => ({
+          value: orientation,
+          label: t(`settings.tabs.note.orientation.${orientation}`)
+        }))}
+        onChange={(noteOrientation) => void savePreference({ tabs: { noteOrientation } })}
+      />
+    </SettingsGroup>
+  )
+}
+
+function RecordingTabSection({ settings }: { settings: Settings | null }): JSX.Element {
+  const t = useT()
   const [models, setModels] = useState<SpeechModelState[]>([])
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -277,14 +299,13 @@ function RecordingDefaults({
         if (alive) setModels(value)
       })
       .catch(() => {
-        if (alive) setError('모델 목록을 불러오지 못했습니다.')
+        if (alive) setError(t('settings.tabs.recording.modelsFailed'))
       })
     const refresh = (): void => {
       void navigator.mediaDevices
         .enumerateDevices()
         .then((value) => {
-          if (alive)
-            setDevices(value.filter((device) => device.kind === 'audioinput'))
+          if (alive) setDevices(value.filter((device) => device.kind === 'audioinput'))
         })
         .catch(() => undefined)
     }
@@ -298,118 +319,73 @@ function RecordingDefaults({
     }
   }, [])
   const prefs = settings?.tabs
+  const savedDevice = prefs?.recordingDeviceId ?? 'default'
+  // Select items need a non-empty value; unpermitted devices report ''.
+  const listed = devices.filter((device) => device.deviceId !== 'default' && device.deviceId !== '')
+  const micOptions: SettingsOption<string>[] = [
+    { value: 'default', label: t('settings.tabs.recording.mic.default') },
+    ...(savedDevice !== 'default' && !listed.some((device) => device.deviceId === savedDevice)
+      ? [{ value: savedDevice, label: t('settings.tabs.recording.mic.disconnected') }]
+      : []),
+    ...listed.map((device, index) => ({
+      value: device.deviceId,
+      label: device.label || t('settings.tabs.recording.mic.fallback', { index: index + 1 })
+    }))
+  ]
   return (
     <>
-      <SettingsCard
-        title={ko ? '녹음과 자막' : 'Recording and captions'}
-        description={
-          ko
-            ? '모델과 마이크 기본값은 다음 녹음부터 적용됩니다. 진행 중인 녹음은 변경하지 않습니다.'
-            : 'Model and microphone defaults apply to the next recording, not an active capture.'
-        }
-      >
-        <label className="tab-settings__field">
-          {ko ? '기본 마이크' : 'Default microphone'}
-          <select
-            value={prefs?.recordingDeviceId ?? 'default'}
-            disabled={!prefs}
-            onChange={(event) =>
-              void savePreference({
-                tabs: { recordingDeviceId: event.target.value }
-              })
-            }
-          >
-            <option value="default">
-              {ko ? '시스템 기본 마이크' : 'System default'}
-            </option>
-            {prefs?.recordingDeviceId !== 'default' &&
-              prefs?.recordingDeviceId &&
-              !devices.some(
-                (device) => device.deviceId === prefs.recordingDeviceId
-              ) && (
-                <option value={prefs.recordingDeviceId}>
-                  {ko
-                    ? '저장된 마이크 (연결되지 않음)'
-                    : 'Saved microphone (disconnected)'}
-                </option>
-              )}
-            {devices
-              .filter((device) => device.deviceId !== 'default')
-              .map((device, index) => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label ||
-                    `${ko ? '마이크' : 'Microphone'} ${index + 1}`}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="tab-settings__field">
-          {ko ? '기본 재생 속도' : 'Default playback speed'}
-          <select
-            value={prefs?.recordingPlaybackRate ?? 1}
-            disabled={!prefs}
-            onChange={(event) =>
-              void savePreference({
-                tabs: { recordingPlaybackRate: Number(event.target.value) }
-              })
-            }
-          >
-            {RECORDING_PLAYBACK_RATES.map((rate) => (
-              <option key={rate} value={rate}>
-                {rate}×
-              </option>
-            ))}
-          </select>
-        </label>
-        <ToggleRow
-          label={ko ? '설정·자료 패널 열어 두기' : 'Keep the setup panel open'}
-          description={
-            ko
-              ? '끄면 녹음과 자막에 더 넓은 공간을 사용합니다.'
-              : 'Turn off to give captions more room.'
-          }
+      <SettingsGroup searchId="tabs.recording">
+        <ShortcutRow searchId="tabs.recording.shortcut" settings={settings} action="new-recording-tab" />
+        <SettingsSelectRow
+          searchId="tabs.recording.mic"
+          value={savedDevice}
+          options={micOptions}
+          disabled={prefs === undefined}
+          selectClassName="max-w-64"
+          onChange={(recordingDeviceId) => void savePreference({ tabs: { recordingDeviceId } })}
+        />
+        <SettingsSelectRow
+          searchId="tabs.recording.playbackRate"
+          value={String(prefs?.recordingPlaybackRate ?? 1)}
+          options={RECORDING_PLAYBACK_RATES.map((rate) => ({ value: String(rate), label: `${rate}×` }))}
+          disabled={prefs === undefined}
+          selectClassName="min-w-24"
+          onChange={(rate) => void savePreference({ tabs: { recordingPlaybackRate: Number(rate) } })}
+        />
+        <SettingsSwitchRow
+          searchId="tabs.recording.sidebar"
           checked={prefs?.recordingSidebarOpen ?? true}
-          disabled={!prefs}
-          onChange={(recordingSidebarOpen) =>
-            void savePreference({ tabs: { recordingSidebarOpen } })
-          }
+          disabled={prefs === undefined}
+          onChange={(recordingSidebarOpen) => void savePreference({ tabs: { recordingSidebarOpen } })}
         />
-        <ToggleRow
-          label={ko ? '실시간 자막 자동 따라가기' : 'Follow live captions'}
-          description={
-            ko
-              ? '새 자막을 따라갑니다. 위로 스크롤하면 자동 이동을 멈춥니다.'
-              : 'Follow incoming captions. Scrolling up pauses following.'
-          }
+        <SettingsSwitchRow
+          searchId="tabs.recording.follow"
           checked={prefs?.recordingFollowTranscript ?? true}
-          disabled={!prefs}
-          onChange={(recordingFollowTranscript) =>
-            void savePreference({ tabs: { recordingFollowTranscript } })
+          disabled={prefs === undefined}
+          onChange={(recordingFollowTranscript) => void savePreference({ tabs: { recordingFollowTranscript } })}
+        />
+      </SettingsGroup>
+      <SettingsGroup searchId="tabs.recordingModel">
+        <SettingsRow
+          searchId="tabs.recordingModel.model"
+          alignTop
+          footer={
+            <>
+              <SpeechModelPicker
+                models={models}
+                value={prefs?.recordingModel ?? 'whisper-large-v3-turbo'}
+                disabled={prefs === undefined}
+                onChange={(recordingModel) => void savePreference({ tabs: { recordingModel } })}
+              />
+              {error !== null && (
+                <p role="alert" className="mt-2 text-xs text-destructive">
+                  {error}
+                </p>
+              )}
+            </>
           }
         />
-      </SettingsCard>
-      <SettingsCard
-        title={
-          ko
-            ? '기본 음성 모델 · 다운로드'
-            : 'Default speech model and downloads'
-        }
-        description={
-          ko
-            ? '설치 후 기기에서 처리합니다. 모델 파일은 모든 과목에서 함께 사용합니다. 수시간 발열·배터리 안정성 검증은 진행 중입니다.'
-            : 'Models run locally and are shared across courses. Long-duration thermal and battery validation is still pending.'
-        }
-      >
-        <SpeechModelPicker
-          models={models}
-          value={prefs?.recordingModel ?? 'whisper-large-v3-turbo'}
-          disabled={!prefs}
-          onChange={(recordingModel) =>
-            void savePreference({ tabs: { recordingModel } })
-          }
-        />
-        {error && <p role="alert">{error}</p>}
-      </SettingsCard>
+      </SettingsGroup>
     </>
   )
 }

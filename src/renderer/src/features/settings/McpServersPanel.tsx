@@ -1,9 +1,13 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { FormEvent } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import type { McpAvailability, McpServerInput, McpServerSummary, McpTestResult, McpTransport } from '../../../../shared/types/mcp'
 import { MCP_SERVER_NAME_PATTERN } from '../../../../shared/types/mcp'
+import { Button } from '../../components/ui/button'
+import { Input, Textarea } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
 import { useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
+import { SettingsSegmented } from './kit/SettingsKit'
 import { McpQuickAdd } from './McpQuickAdd'
 import './settings-mcp.css'
 interface RegistrySnapshot {
@@ -179,13 +183,15 @@ function SecretFields({
   const kindLabel = t(`settings.mcp.form.${kind}`)
 
   return (
-    <fieldset className="settings-mcp-secrets">
-      <legend>{kindLabel}</legend>
-      <div className="settings-mcp-secret-list">
+    <fieldset className="space-y-2">
+      <legend className="mb-1.5 text-sm font-medium text-foreground">{kindLabel}</legend>
+      <div className="space-y-2">
         {rows.map((row) => (
-          <div className="settings-mcp-secret-row" key={row.id}>
-            <input
+          <div className="flex items-center gap-2" key={row.id}>
+            <Input
               type="text"
+              className="flex-1 font-mono text-xs"
+              spellCheck={false}
               value={row.key}
               aria-label={t('settings.mcp.form.secretKey', { kind: kindLabel })}
               placeholder={t('settings.mcp.form.secretKeyPlaceholder')}
@@ -201,22 +207,24 @@ function SecretFields({
             {row.existing && !row.changing && !dirty ? (
               <>
                 <span
-                  className="settings-mcp-secret-mask"
+                  className="flex-1 px-3 font-mono text-xs text-muted-foreground"
                   aria-label={t('settings.mcp.form.secretHidden')}
                 >
                   ••••
                 </span>
-                <button
+                <Button
                   type="button"
-                  className="settings-mcp-button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => beginChange((current) => current)}
                 >
                   {t('settings.mcp.form.replace')}
-                </button>
+                </Button>
               </>
             ) : (
-              <input
+              <Input
                 type="password"
+                className="flex-1"
                 value={row.value}
                 autoComplete="off"
                 aria-label={t('settings.mcp.form.secretValue', {
@@ -233,9 +241,10 @@ function SecretFields({
                 }}
               />
             )}
-            <button
+            <Button
               type="button"
-              className="settings-mcp-button settings-mcp-button--icon"
+              variant="ghost"
+              size="sm"
               aria-label={t('settings.mcp.form.removeSecret', {
                 key: row.key || kindLabel
               })}
@@ -246,13 +255,14 @@ function SecretFields({
               }
             >
               {t('settings.mcp.form.remove')}
-            </button>
+            </Button>
           </div>
         ))}
       </div>
-      <button
+      <Button
         type="button"
-        className="settings-mcp-button settings-mcp-secret-add"
+        variant="secondary"
+        size="sm"
         onClick={() =>
           beginChange((current) => [
             ...current,
@@ -267,7 +277,7 @@ function SecretFields({
         }
       >
         {t('settings.mcp.form.addSecret')}
-      </button>
+      </Button>
     </fieldset>
   )
 }
@@ -287,6 +297,16 @@ function validHttpUrl(value: string): boolean {
   } catch {
     return false
   }
+}
+
+function EditorField({ label, children }: { label: string; children: (id: string) => ReactNode }): JSX.Element {
+  const id = useId()
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children(id)}
+    </div>
+  )
 }
 
 export function McpServerEditor({
@@ -321,6 +341,7 @@ export function McpServerEditor({
   const [headersDirty, setHeadersDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const transportLabelId = useId()
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -381,82 +402,79 @@ export function McpServerEditor({
   }
 
   return (
-    <form className="settings-mcp-card settings-mcp-form" onSubmit={handleSubmit}>
-      <header className="settings-mcp-card-header">
-        <div>
-          <h2>
-            {t(
-              server === null
-                ? 'settings.mcp.form.addTitle'
-                : 'settings.mcp.form.editTitle'
-            )}
-          </h2>
-          <p>{t('settings.mcp.form.description')}</p>
-        </div>
+    <form data-mcp-editor="" className="space-y-4 rounded-lg border border-border bg-card/60 px-4 py-4" onSubmit={handleSubmit}>
+      <header className="space-y-0.5">
+        <h2 className="text-sm font-medium text-foreground">
+          {t(
+            server === null
+              ? 'settings.mcp.form.addTitle'
+              : 'settings.mcp.form.editTitle'
+          )}
+        </h2>
+        <p className="text-xs leading-relaxed text-muted-foreground">{t('settings.mcp.form.description')}</p>
       </header>
 
-      <div className="settings-mcp-fields">
-        <label className="settings-mcp-field">
-          <span>{t('settings.mcp.form.name')}</span>
-          <input
-            type="text"
-            value={name}
-            placeholder="notion-search"
-            maxLength={32}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label className="settings-mcp-field">
-          <span>{t('settings.mcp.form.serverDescription')}</span>
-          <input
-            type="text"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </label>
+      <div className="space-y-4">
+        <EditorField label={t('settings.mcp.form.name')}>
+          {(id) => (
+            <Input
+              id={id}
+              type="text"
+              spellCheck={false}
+              value={name}
+              placeholder="notion-search"
+              maxLength={32}
+              onChange={(event) => setName(event.target.value)}
+            />
+          )}
+        </EditorField>
+        <EditorField label={t('settings.mcp.form.serverDescription')}>
+          {(id) => (
+            <Input
+              id={id}
+              type="text"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          )}
+        </EditorField>
 
-        <fieldset className="settings-mcp-transport">
-          <legend>{t('settings.mcp.form.transport')}</legend>
-          <label>
-            <input
-              type="radio"
-              name="mcp-transport"
-              value="stdio"
-              checked={transport === 'stdio'}
-              onChange={() => setTransport('stdio')}
-            />
-            <span>stdio</span>
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="mcp-transport"
-              value="http"
-              checked={transport === 'http'}
-              onChange={() => setTransport('http')}
-            />
-            <span>http</span>
-          </label>
-        </fieldset>
+        <div className="space-y-1.5">
+          <span id={transportLabelId} className="block text-sm font-medium text-foreground">{t('settings.mcp.form.transport')}</span>
+          <SettingsSegmented<McpTransport>
+            ariaLabelledBy={transportLabelId}
+            value={transport}
+            options={[{ value: 'stdio', label: 'stdio' }, { value: 'http', label: 'http' }]}
+            onChange={setTransport}
+          />
+        </div>
 
         {transport === 'stdio' ? (
           <>
-            <label className="settings-mcp-field">
-              <span>{t('settings.mcp.form.command')}</span>
-              <input
-                type="text"
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-              />
-            </label>
-            <label className="settings-mcp-field">
-              <span>{t('settings.mcp.form.args')}</span>
-              <textarea
-                value={args}
-                rows={4}
-                onChange={(event) => setArgs(event.target.value)}
-              />
-            </label>
+            <EditorField label={t('settings.mcp.form.command')}>
+              {(id) => (
+                <Input
+                  id={id}
+                  type="text"
+                  className="font-mono text-xs"
+                  spellCheck={false}
+                  value={command}
+                  onChange={(event) => setCommand(event.target.value)}
+                />
+              )}
+            </EditorField>
+            <EditorField label={t('settings.mcp.form.args')}>
+              {(id) => (
+                <Textarea
+                  id={id}
+                  className="font-mono text-xs"
+                  spellCheck={false}
+                  value={args}
+                  rows={4}
+                  onChange={(event) => setArgs(event.target.value)}
+                />
+              )}
+            </EditorField>
             <SecretFields
               kind="env"
               rows={envRows}
@@ -469,14 +487,17 @@ export function McpServerEditor({
           </>
         ) : (
           <>
-            <label className="settings-mcp-field">
-              <span>{t('settings.mcp.form.url')}</span>
-              <input
-                type="url"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-              />
-            </label>
+            <EditorField label={t('settings.mcp.form.url')}>
+              {(id) => (
+                <Input
+                  id={id}
+                  type="url"
+                  spellCheck={false}
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                />
+              )}
+            </EditorField>
             <SecretFields
               kind="headers"
               rows={headerRows}
@@ -491,29 +512,23 @@ export function McpServerEditor({
       </div>
 
       {error !== null && (
-        <p
-          className="settings-mcp-feedback settings-feedback--error"
-          role="alert"
-        >
+        <p className="text-xs text-destructive [overflow-wrap:anywhere]" role="alert">
           {error}
         </p>
       )}
-      <footer className="settings-mcp-form-actions">
-        <button
+      <footer className="flex flex-wrap justify-end gap-2">
+        <Button
           type="button"
-          className="settings-mcp-button"
+          variant="ghost"
+          size="sm"
           disabled={saving}
           onClick={onCancel}
         >
           {t('settings.mcp.action.cancel')}
-        </button>
-        <button
-          type="submit"
-          className="settings-mcp-button settings-mcp-button--primary"
-          disabled={saving}
-        >
+        </Button>
+        <Button type="submit" size="sm" disabled={saving}>
           {saving ? t('settings.mcp.action.saving') : submitLabel ?? t('settings.mcp.action.save')}
-        </button>
+        </Button>
       </footer>
     </form>
   )

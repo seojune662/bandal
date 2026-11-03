@@ -98,12 +98,12 @@ describe('AI engine settings', () => {
     const html = renderAiPanel()
 
     expect(html).not.toContain('반달 오브')
-    expect(html).toContain('style="width:20px;height:20px" data-provider="claude-code"')
-    expect(html).toContain('style="width:20px;height:20px" data-provider="codex"')
-    expect(html).toContain('style="width:20px;height:20px" data-provider="gemini"')
-    expect(html).toContain('style="width:32px;height:32px" data-provider="claude-code"')
-    expect(html).toContain('style="width:32px;height:32px" data-provider="codex"')
-    expect(html).toContain('style="width:32px;height:32px" data-provider="gemini"')
+    expect(html).toContain('style="width:16px;height:16px" data-provider="claude-code"')
+    expect(html).toContain('style="width:16px;height:16px" data-provider="codex"')
+    expect(html).toContain('style="width:16px;height:16px" data-provider="gemini"')
+    expect(html).toContain('style="width:24px;height:24px" data-provider="claude-code"')
+    expect(html).toContain('style="width:24px;height:24px" data-provider="codex"')
+    expect(html).toContain('style="width:24px;height:24px" data-provider="gemini"')
   })
 
   test('shows the signed-in Gemini account and reauthentication action', () => {
