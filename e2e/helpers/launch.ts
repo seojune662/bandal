@@ -66,69 +66,20 @@ export async function launchBandal(
   mkdirSync(userDataDir, { recursive: true })
   mkdirSync(dataRoot, { recursive: true })
 
-  // Seed settings: dark theme, temp data root, onboarding already dismissed.
-  // Only for a FRESH profile — a relaunch must keep what the first run wrote
-  // (lastActiveCourseId above all), or nothing course-scoped can be restored.
+  // Seed settings only for a FRESH profile — a relaunch must keep what the
+  // first run wrote (lastActiveCourseId above all), or nothing course-scoped
+  // can be restored.
   if (options.reuseProfileDir === undefined) {
-    writeFileSync(
-      join(userDataDir, 'settings.json'),
-      JSON.stringify(
-        {
-          theme: 'dark',
-          agentProvider: 'claude-code',
-          dataRoot,
-          locale: 'ko-KR',
-          onboarding: {
-            flowVersion: ONBOARDING_FLOW_VERSION,
-            closedAt: new Date().toISOString(),
-            lastCompletedStep: 3
-          },
-          // Tour offer (.tour-offer) is a pointer-intercepting dialog — it
-          // pops mid-test and steals clicks. Mark the tour as already seen.
-          tutorial: { seenVersion: 1, activeCourseId: null },
-          // The launch announcement is a modal too; its own spec opts back in.
-          dismissedAnnouncements: ['ipad-launch-2026-10'],
-          ...options.extraSettings
-        },
-        null,
-        2
-      )
-    )
+    seedSettings(userDataDir, dataRoot, options.extraSettings)
   }
-
-  const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && key !== 'ELECTRON_RENDERER_URL') {
-      env[key] = value
-    }
-  }
-  env['BANDAL_USER_DATA_DIR'] = userDataDir
-  env['BANDAL_DATA_ROOT'] = dataRoot
-  // Keep shared documents out of the installed app's macOS App Group inbox.
-  env['BANDAL_SHARE_INBOX_DIR'] = join(profileDir, 'share-inbox')
-  // 합성 dragstart 가 webContents.startDrag 를 부르면 macOS 중첩 런루프에
-  // 걸려 앱 종료가 간헐적으로 영영 안 끝난다 — 테스트에선 끈다.
-  env['BANDAL_DISABLE_NATIVE_DRAG'] = '1'
-  env['BANDAL_PERF_TRACE'] = '1'
-  // 서명 안 된 테스트용 Electron 은 키체인 프롬프트에서 main 이 영영 멈춘다
-  // (SecItemCopyMatching 안에서 SecurityAgent 대기) — 테스트에선 safeStorage 를 끈다.
-  env['BANDAL_DISABLE_SAFE_STORAGE'] = '1'
 
   const app = await _electron.launch({
     executablePath: process.env['BANDAL_E2E_EXECUTABLE'] ?? ELECTRON_BINARY,
     args: process.env['BANDAL_E2E_EXECUTABLE'] ? [] : [process.env['BANDAL_E2E_ENTRY'] ?? MAIN_ENTRY],
-    env
+    env: launchEnv(profileDir, userDataDir, dataRoot)
   })
 
-  const isMainWindow = (candidate: Page): boolean =>
-    candidate.url().includes('index.html')
-  const page =
-    app.windows().find(isMainWindow) ??
-    (await app.waitForEvent('window', { predicate: isMainWindow }))
-  await page.waitForLoadState('domcontentloaded')
-  // The shell is up once the course rail exists and the theme is applied.
-  await expect(page.locator('aside.app-rail--left:visible')).toBeVisible()
-  await expect(page.locator('html[data-theme]')).toBeAttached()
+  const page = await waitForShell(app)
   // Unrelated learning specs start at their target form. Never overwrite an
   // existing profile: guide specs must be able to verify persisted dismissal.
   if (options.reuseProfileDir === undefined && options.englishReadingGuide !== true) {
@@ -145,6 +96,73 @@ export async function launchBandal(
   }
 
   return { app, page, dataRoot, userDataDir, profileDir, close }
+}
+
+/** Writes a fresh profile's settings.json: dark theme, the data root, onboarding and tours already dismissed. */
+export function seedSettings(userDataDir: string, dataRoot: string, extraSettings?: Partial<Settings>): void {
+  writeFileSync(
+    join(userDataDir, 'settings.json'),
+    JSON.stringify(
+      {
+        theme: 'dark',
+        agentProvider: 'claude-code',
+        dataRoot,
+        locale: 'ko-KR',
+        onboarding: {
+          flowVersion: ONBOARDING_FLOW_VERSION,
+          closedAt: new Date().toISOString(),
+          lastCompletedStep: 3
+        },
+        // Tour offer (.tour-offer) is a pointer-intercepting dialog — it
+        // pops mid-test and steals clicks. Mark the tour as already seen.
+        tutorial: { seenVersion: 1, activeCourseId: null },
+        // The launch announcement is a modal too; its own spec opts back in.
+        dismissedAnnouncements: ['ipad-launch-2026-10'],
+        ...extraSettings
+      },
+      null,
+      2
+    )
+  )
+}
+
+/**
+ * The env of a launch into the profile. A `null` data root leaves
+ * BANDAL_DATA_ROOT unset, so the startup move out of Documents/Bandal runs.
+ */
+export function launchEnv(profileDir: string, userDataDir: string, dataRoot: string | null): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && key !== 'ELECTRON_RENDERER_URL') {
+      env[key] = value
+    }
+  }
+  env['BANDAL_USER_DATA_DIR'] = userDataDir
+  if (dataRoot !== null) env['BANDAL_DATA_ROOT'] = dataRoot
+  else delete env['BANDAL_DATA_ROOT']
+  // Keep shared documents out of the installed app's macOS App Group inbox.
+  env['BANDAL_SHARE_INBOX_DIR'] = join(profileDir, 'share-inbox')
+  // 합성 dragstart 가 webContents.startDrag 를 부르면 macOS 중첩 런루프에
+  // 걸려 앱 종료가 간헐적으로 영영 안 끝난다 — 테스트에선 끈다.
+  env['BANDAL_DISABLE_NATIVE_DRAG'] = '1'
+  env['BANDAL_PERF_TRACE'] = '1'
+  // 서명 안 된 테스트용 Electron 은 키체인 프롬프트에서 main 이 영영 멈춘다
+  // (SecItemCopyMatching 안에서 SecurityAgent 대기) — 테스트에선 safeStorage 를 끈다.
+  env['BANDAL_DISABLE_SAFE_STORAGE'] = '1'
+  return env
+}
+
+/** The main window once the shell is up: the course rail exists and the theme is applied. */
+export async function waitForShell(app: ElectronApplication): Promise<Page> {
+  const isMainWindow = (candidate: Page): boolean =>
+    candidate.url().includes('index.html')
+  const page =
+    app.windows().find(isMainWindow) ??
+    (await app.waitForEvent('window', { predicate: isMainWindow }))
+  await page.waitForLoadState('domcontentloaded')
+  await expect(page.locator('aside.app-rail--left:visible')).toBeVisible()
+  await expect(page.locator('html[data-theme]')).toBeAttached()
+  return page
 }
 
 /**
