@@ -80,7 +80,7 @@ npmRebuild: false
 # register URL schemes (electron-builder 26 does so only for AppX and Linux):
 # on Windows, and in `electron-vite dev`, the runtime
 # `app.setAsDefaultProtocolClient` call registers it on every launch (see
-# src/main/index.ts).
+# src/main/index.ts), and the uninstaller removes it (resources/installer.nsh).
 protocols:
   - name: Bandal
     schemes:
@@ -180,6 +180,8 @@ nsis:
   # Per-user install: no UAC prompt, and — the reason that matters here — the
   # auto-updater can replace files without asking for admin rights every time.
   perMachine: false
+  # customUnInstall: removes this copy's bandal:// handler on uninstall.
+  include: resources/installer.nsh
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Bandal

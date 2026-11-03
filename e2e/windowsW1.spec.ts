@@ -339,7 +339,7 @@ test('W1-5 bandal:// opens this Bandal.exe, which hands the link to the running 
   }
 })
 
-test('W1-7 uninstalling keeps %APPDATA%\\bandal and a reinstall opens it without asking', async () => {
+test('W1-7 uninstalling keeps %APPDATA%\\bandal, drops bandal:// and a reinstall opens it without asking', async () => {
   const installer = process.env['BANDAL_E2E_INSTALLER']
   test.skip(installer === undefined || process.env['CI'] !== 'true', 'installs into this Windows account: CI runners only (BANDAL_E2E_INSTALLER)')
   test.setTimeout(600_000)
@@ -375,14 +375,17 @@ test('W1-7 uninstalling keeps %APPDATA%\\bandal and a reinstall opens it without
     expect(await regValue(COMMAND_KEY)).toBe(`"${exe}" "%1"`)
     await bandal.app.close()
 
+    // Installing over it is the update path: the old copy is removed with
+    // --updated, which keeps the handler (resources/installer.nsh).
+    await install()
+    expect(await regValue(COMMAND_KEY)).toBe(`"${exe}" "%1"`)
+
     await uninstall()
     expect(existsSync(join(profile, 'settings.json'))).toBe(true)
     expect(existsSync(join(profile, 'bandal.db'))).toBe(true)
     expect(readdirSync(join(profile, 'Courses')).length).toBeGreaterThan(0)
-    // The app registers bandal:// itself on launch, so the uninstaller does not know the key.
-    const left = await regValue(COMMAND_KEY).catch(() => null)
-    test.info().annotations.push({ type: 'bandal:// after uninstall', description: left ?? 'removed' })
-    console.log(`bandal:// after uninstall: ${left ?? 'removed'}`)
+    // A real uninstall removes the handler the app registered, which now points nowhere.
+    await expect(regValue('HKCU\\Software\\Classes\\bandal')).rejects.toThrow()
 
     await install()
     bandal = await open()
