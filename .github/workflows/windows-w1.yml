@@ -17,6 +17,7 @@ on:
       - 'src/main/features/account/**'
       - 'src/renderer/src/features/settings/AccountPanel.tsx'
       - 'electron-builder.yml'
+      - 'resources/installer.nsh'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/windows-w1.yml'

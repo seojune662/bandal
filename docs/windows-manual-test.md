@@ -100,7 +100,7 @@ $env:BANDAL_USER_DATA_DIR = "$env:APPDATA\bandal-synctest"
 **W1-7 제거와 다시 설치**
 - 설정 › 앱에서 Bandal을 제거한다. `%APPDATA%\bandal`(자료 포함)이 남는지.
 - 다시 설치하면 과목과 로그인이 그대로인지. 옮기기를 다시 묻지 않는지.
-- 제거 직후 `reg query HKCU\Software\Classes\bandal`의 결과를 적는다. 반달이 직접 등록한 키라 제거해도 남을 수 있다.
+- 제거하면 `reg query HKCU\Software\Classes\bandal`이 키를 찾지 못하는지. 같은 설치 파일로 덮어 설치할 때(업데이트와 같은 경로)는 키가 남는지.
 
 ## 2부. 동기화 (Google Drive, 시험 프로필, `BANDAL_SYNC_UI=1`)
 
