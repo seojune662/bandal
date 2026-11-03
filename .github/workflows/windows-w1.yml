@@ -1,0 +1,73 @@
+name: Windows W1 (installer and data folder)
+
+# W1 of docs/windows-manual-test.md on a real Windows runner: the move out of
+# Documents\Bandal (also killed mid-copy), signed-out use, bandal://
+# registration and the uninstall/reinstall path. It builds the installer here
+# and never creates or publishes a release.
+on:
+  pull_request:
+    paths:
+      - 'e2e/windowsW1.spec.ts'
+      - 'e2e/helpers/launch.ts'
+      - 'e2e/accountNotes.spec.ts'
+      - 'e2e/accountProfileBackup.spec.ts'
+      - 'src/main/index.ts'
+      - 'src/main/settingsStore.ts'
+      - 'src/main/features/dataRoot/**'
+      - 'src/main/features/account/**'
+      - 'src/renderer/src/features/settings/AccountPanel.tsx'
+      - 'electron-builder.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/windows-w1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-w1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  w1:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install pyinstaller==6.16.0
+      - name: Build the Windows companion from this source
+        run: node scripts/build-ipad-bridge.mjs x64
+      - name: Compile the packaged application
+        run: pnpm build
+        env:
+          # The public client configuration of the release build, so sign-in
+          # stays configured (W1-4). No session, key or token.
+          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+      - name: Package the installer and the unpacked app without publishing
+        run: pnpm exec electron-builder --win --x64 --publish never
+      - name: W1 on the packaged app
+        shell: pwsh
+        run: |
+          $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'
+          $env:BANDAL_E2E_INSTALLER = Join-Path $PWD 'release/Bandal-Setup.exe'
+          pnpm exec playwright test -c e2e e2e/windowsW1.spec.ts e2e/accountNotes.spec.ts e2e/accountProfileBackup.spec.ts --grep "W1-|without signing in|older versions"
+      - name: Keep the traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-w1-results
+          path: e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
