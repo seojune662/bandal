@@ -2,8 +2,8 @@ import { _electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { execFile } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
 import { promisify } from 'node:util'
 import { PDFDocument } from 'pdf-lib'
@@ -78,8 +78,6 @@ const courseRow = (page: Page, name: string) =>
   page.getByRole('complementary', { name: '과목 목록' }).locator('.course-row__name', { hasText: name })
 
 interface OldUser {
-  root: string
-  home: string
   /** `<home>\Documents\Bandal`, the data root before the move. */
   legacy: string
   profileDir: string
@@ -90,13 +88,12 @@ interface OldUser {
 
 /**
  * A profile as v0.92.9 left it: settings.dataRoot is Documents\Bandal and two
- * managed courses live there. USERPROFILE points at a temp home, so the app's
- * Documents\Bandal is this one and the runner's own folders are never touched.
+ * managed courses live there. The app looks under the account's own home (a
+ * temp USERPROFILE keeps Chromium from starting), so this is the runner's.
  */
 async function oldUser(fillerMiB = 0): Promise<OldUser> {
-  // Long path: tmpdir() is an 8.3 name on the runner and the app compares paths as strings.
-  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'bandal-w1-')))
-  const home = join(root, 'home'), legacy = join(home, 'Documents', 'Bandal')
+  const legacy = join(homedir(), 'Documents', 'Bandal')
+  expect(existsSync(legacy), 'no Documents\\Bandal on this account yet').toBe(false)
   mkdirSync(legacy, { recursive: true })
   const files: Record<string, string> = {}
   const write = (path: string, bytes: Uint8Array | string): void => {
@@ -122,14 +119,14 @@ async function oldUser(fillerMiB = 0): Promise<OldUser> {
   } finally {
     await bandal.close()
   }
-  return { root, home, legacy, profileDir: bandal.profileDir, userDataDir: bandal.userDataDir, files }
+  return { legacy, profileDir: bandal.profileDir, userDataDir: bandal.userDataDir, files }
 }
 
 /** Launches the old user's profile the way an update does: no BANDAL_DATA_ROOT, so the startup move runs. */
 async function relaunch(user: OldUser): Promise<{ app: ElectronApplication; pid: number }> {
   const app = await _electron.launch({
     executablePath: EXE,
-    env: { ...launchEnv(user.profileDir, user.userDataDir, null), USERPROFILE: user.home }
+    env: launchEnv(user.profileDir, user.userDataDir, null)
   })
   return { app, pid: await app.evaluate(() => process.pid) }
 }
@@ -157,10 +154,11 @@ async function closeKilled(app: ElectronApplication): Promise<void> {
 }
 
 function cleanUp(user: OldUser): void {
-  for (const dir of [user.root, user.profileDir]) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+  for (const dir of [user.legacy, user.profileDir]) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
 }
 
 test('W1-3 asks before moving Documents\\Bandal, keeps it on 나중에 and copies it on 옮기기', async () => {
+  test.skip(process.env['CI'] !== 'true', 'uses this account\'s Documents\\Bandal: CI runners only')
   test.setTimeout(300_000)
   const user = await oldUser()
   const newRoot = join(user.userDataDir, 'Courses')
@@ -194,6 +192,7 @@ test('W1-3 asks before moving Documents\\Bandal, keeps it on 나중에 and copie
 })
 
 test('W1-3 a move killed mid-copy keeps both folders intact, asks again and completes', async () => {
+  test.skip(process.env['CI'] !== 'true', 'uses this account\'s Documents\\Bandal: CI runners only')
   test.setTimeout(420_000)
   const user = await oldUser(320)
   const staging = join(user.userDataDir, 'Courses.partial'), journal = join(user.userDataDir, 'data-root-migration.json')
@@ -251,7 +250,8 @@ test('W1-4 signed out, work survives a restart and sign-in offers only Apple and
 
 test('W1-5 bandal:// opens this Bandal.exe, which hands the link to the running app', async () => {
   const bandal = await launchBandal()
-  const probe = `bandal://e2e-probe?id=${randomUUID()}`
+  // A path, like auth/callback: Windows adds '/' before the query when there is none.
+  const probe = `bandal://e2e/probe?id=${randomUUID()}`
   try {
     const exe = await bandal.app.evaluate(() => process.execPath)
     expect(await regValue(COMMAND_KEY)).toBe(`"${exe}" "%1"`)
