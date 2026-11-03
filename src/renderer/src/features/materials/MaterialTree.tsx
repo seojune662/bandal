@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useMemo, type CSSProperties, type ReactNode } from 'react'
 import type {
   MaterialKind,
-  MaterialNode,
-  MaterialSearchHit
+  MaterialNode
 } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
 import { MaterialFileIcon } from './materialIcons'
@@ -648,77 +647,4 @@ export function MaterialTree(props: MaterialTreeProps): JSX.Element {
   return <ul className="material-tree" role="tree" aria-label="자료 파일 트리">
     {props.nodes.map(node => <TreeNode {...props} key={node.relPath} node={node} depth={0} />)}
   </ul>
-}
-
-interface MaterialSearchResultsProps {
-  courseId: string
-  results: MaterialSearchHit[]
-  selectedRelPath: string | null
-  onSelect: (node: MaterialNode) => void
-  onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
-  onDragEnd: () => void
-}
-
-export function MaterialSearchResults({
-  courseId,
-  results,
-  selectedRelPath,
-  onSelect,
-  onContextMenu,
-  onDragEnd
-}: MaterialSearchResultsProps): JSX.Element {
-  return (
-    <ul className="material-results" aria-label="자료 검색 결과">
-      {results.map((result) => {
-        const node: MaterialNode = { ...result }
-        return (
-          <li key={result.relPath}>
-            <MaterialRowAffordance target={{ courseId, node }}>
-            <button
-              type="button"
-              className="material-result"
-              draggable
-              data-material-row="true"
-              data-kind={result.kind}
-              data-selected={selectedRelPath === result.relPath || undefined}
-              data-material-path={result.relPath}
-              title={rowTitle(result.kind, result.relPath)}
-              onFocus={() => onSelect(node)}
-              onClick={(event) => {
-                onSelect(node)
-                const newInstance =
-                  window.bandal?.platform === 'darwin'
-                    ? event.metaKey
-                    : event.ctrlKey
-                openMaterialInWorkspace(
-                  result.kind,
-                  result.relPath,
-                  newInstance ? { newInstance: true } : undefined
-                )
-              }}
-              onContextMenu={(event) => onContextMenu(event, node)}
-              onDragStart={(event) => {
-                startMaterialDragEvent(event, courseId, node)
-              }}
-              onDragEnd={() => {
-                clearCurrentMaterialDrag()
-                onDragEnd()
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
-                if (event.key === 'ArrowUp') focusAdjacentRow(event, -1)
-              }}
-            >
-              <MaterialFileIcon kind={result.kind} />
-              <span>
-                <strong>{result.name}</strong>
-                <small>{result.relPath}</small>
-              </span>
-            </button>
-            </MaterialRowAffordance>
-          </li>
-        )
-      })}
-    </ul>
-  )
 }

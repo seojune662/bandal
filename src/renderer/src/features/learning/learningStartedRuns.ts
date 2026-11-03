@@ -28,9 +28,3 @@ export async function startLearningRun(input: StartLearningRunInput) {
   rememberStartedLearningRun(result)
   return result
 }
-
-export async function retryLearningRun(input: { binding: LearningBinding; runId: string }) {
-  const result = await invoke('learning:runRetry', input)
-  rememberStartedLearningRun(result)
-  return result
-}
