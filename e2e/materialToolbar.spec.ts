@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PDFDocument } from 'pdf-lib'
 import { createCourse, launchBandal } from './helpers/launch'
+import { closeAiRail, openAiRail } from './helpers/aiRail'
 
 test('material toolbars export current Markdown, annotated PDF and original files without a duplicate title row', async ({}, info) => {
   test.setTimeout(150_000)
@@ -27,7 +28,7 @@ test('material toolbars export current Markdown, annotated PDF and original file
     await expect(page.locator('.tab-assistant-launchbar:visible')).toHaveCount(0)
     await expect(toolbar.getByRole('button', { name: '내보내기', exact: true })).toBeVisible()
     await expect(toolbar.locator('.tab-assistant-toggle')).toHaveCount(0)
-    await expect(page.getByRole('tab', { name: 'AI', exact: true })).toBeVisible()
+    await expect(page.locator('.ai-rail-handle')).toBeVisible()
     expect(await toolbar.evaluate(element => {
       const document = element.closest('.tab-document')!
       return Math.abs(element.getBoundingClientRect().top - document.getBoundingClientRect().top)
@@ -59,10 +60,11 @@ test('material toolbars export current Markdown, annotated PDF and original file
     await noteToolbar.getByRole('button', { name: '내보내기', exact: true }).click()
     await expect.poll(() => existsSync(markdownPath) ? readFileSync(markdownPath, 'utf8') : '').toContain('저장 직전 추가')
     expect(readFileSync(markdownPath, 'utf8')).toBe(readFileSync(join(course.folderPath, 'share.md'), 'utf8'))
-    await page.getByRole('tab', { name: 'AI', exact: true }).click()
-    await expect(page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeVisible()
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
+    await openAiRail(page)
+    await expect(page.getByRole('region', { name: 'AI', exact: true })).toBeVisible()
     await expect(page.locator('.tab-assistant:visible')).toHaveCount(0)
+    // Split-width checks below assume the old geometry, where AI shared the materials rail.
+    await closeAiRail(page)
 
     for (const [name, selector, expected] of [
       ['source.txt', '.file-toolbar', Buffer.from('원본 그대로 내보내기\r\n')],

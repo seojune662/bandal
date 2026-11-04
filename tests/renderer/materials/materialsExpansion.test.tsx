@@ -19,7 +19,7 @@ let root: Root, container: HTMLDivElement
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   fixture.mounts = 0
-  useUiStore.setState({ materialsExpanded: false, materialsExpandedRestoreFocus: true, rightRailOpen: true, rightRailTab: 'materials' })
+  useUiStore.setState({ materialsExpanded: false, materialsExpandedRestoreFocus: true, rightRailOpen: true, aiRailOpen: false })
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
   act(() => root.render(<RightSidebar course={null} />))
 })
@@ -60,7 +60,10 @@ test('Tab stays in the expanded browser and opening a document does not restore 
   const last = container.querySelector<HTMLButtonElement>('aside button:last-child')!
   last.focus()
   act(() => last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })))
-  expect(document.activeElement?.getAttribute('role')).toBe('tab')
+  expect(document.activeElement).not.toBe(last)
+  expect(container.querySelector('.right-sidebar')!.contains(document.activeElement)).toBe(true)
+  // The wrap may land on the trigger itself; leave it so a restore would be observable.
+  ;(document.activeElement as HTMLElement).blur()
   act(() => useUiStore.getState().closeMaterialsExpanded({ returnFocus: false }))
   expect(document.activeElement).not.toBe(trigger)
 })

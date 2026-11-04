@@ -218,6 +218,7 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
   const toggleFolder = useMaterialsStore((state) => state.toggleFolder)
   const pickFolder = useCoursesStore((state) => state.pickFolder)
   const relinkCourse = useCoursesStore((state) => state.relinkCourse)
+  const filesCollapsible = workspace?.kind === 'project'
   const [filesOpen, setFilesOpen] = useState(() => materialUiStates.get(scopeKey)?.filesOpen ?? true)
   const [view, setView] = useState<MaterialView>(() => materialUiStates.get(scopeKey)?.view ?? readMaterialView())
   const [browserDirectory, setBrowserDirectory] = useState(() => materialUiStates.get(scopeKey)?.directory ?? materialRoot)
@@ -961,53 +962,14 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
       }}
     >
       <div className="rail-heading materials-heading">
-        <div className="materials-heading__text">
-          <h2>자료</h2>
-          {course !== null && (
-            <span className="materials-heading__course" title={course.name}>
-              <CourseMark color={course.color} />
-              {view !== 'compact' && browserDirectory !== materialRoot ? materialBaseName(browserDirectory) : workspace?.kind === 'project' ? projectName ?? course.name : course.name}
-            </span>
-          )}
-        </div>
-        {onToggleExpanded && <div className="materials-heading__actions"><Tooltip label={expanded ? '자료 좁게 보기' : '자료 넓게 보기'}><button type="button" className="bare-icon-button" aria-label={expanded ? '자료 좁게 보기' : '자료 넓게 보기'} onClick={onToggleExpanded}><span aria-hidden="true">{expanded ? '↙' : '↗'}</span></button></Tooltip>{expanded && <button type="button" className="bare-icon-button" aria-label="자료 닫기" onClick={onToggleExpanded}><Icon name="x" /></button>}</div>}
-      </div>
-
-      <div className="rail-search">
-        <Icon name="search" className="rail-search__icon" />
-        <label className="sr-only" htmlFor="material-search">
-          파일 검색
-        </label>
-        <input
-          id="material-search"
-          type="search"
-          placeholder="자료 검색"
-          value={query}
-          disabled={course === null}
-          onChange={(event) => { setQuery(event.target.value); setSelectedRelPath(null) }}
-        />
-        {query.length > 0 && (
-          <button
-            type="button"
-            className="rail-search__clear"
-            aria-label="검색어 지우기"
-            onClick={() => { setQuery(''); setSelectedRelPath(null) }}
-          >
-            <Icon name="x" />
-          </button>
+        <h2 className="sr-only">자료</h2>
+        {course !== null && (
+          <span className="materials-heading__course" title={course.name}>
+            <CourseMark color={course.color} />
+            <span className="materials-heading__name">{view !== 'compact' && browserDirectory !== materialRoot ? materialBaseName(browserDirectory) : workspace?.kind === 'project' ? projectName ?? course.name : course.name}</span>
+          </span>
         )}
-      </div>
-
-      <div className="materials-toolbar">
-        <span className="materials-toolbar__count">{pendingSearch ? '검색 중…' : searching ? `파일 ${searchResults.length} · 본문 ${contentSearch.hits.length}` : `${(browsedDirectory?.children ?? tree).length}개`}</span>
-        <label className="materials-sort"><span className="sr-only">자료 정렬</span><select aria-label="자료 정렬" value={sortOrder} onChange={event => { const next = event.target.value as typeof sortOrder; setSortOrder(next); rememberMaterialSort(next) }}><option value="name">이름순</option><option value="modified">최근 수정순</option><option value="kind">종류순</option></select></label>
-                <MaterialViewMenu value={view} onChange={next => {
-                  setView(next); rememberMaterialView(next)
-                  if (selectedRelPath !== null) {
-                    if (view === 'compact') { const node = findMaterialNode(tree, selectedRelPath); setBrowserDirectory(node?.kind === 'dir' ? node.relPath : materialParentPath(selectedRelPath)); if (node?.kind === 'dir') setSelectedRelPath(null) }
-                    if (next === 'compact') ensureAncestorsExpanded(selectedRelPath)
-                  }
-                }} />        <div className="materials-heading__actions">
+        <div className="materials-heading__actions">
           <input
             ref={fileInputRef}
             type="file"
@@ -1054,9 +1016,45 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
               <Icon name="refresh" className={isLoading ? 'is-spinning' : ''} />
             </button>
           </Tooltip>
+          {onToggleExpanded && <><Tooltip label={expanded ? '자료 좁게 보기' : '자료 넓게 보기'}><button type="button" className="bare-icon-button" aria-label={expanded ? '자료 좁게 보기' : '자료 넓게 보기'} onClick={onToggleExpanded}><span aria-hidden="true">{expanded ? '↙' : '↗'}</span></button></Tooltip>{expanded && <button type="button" className="bare-icon-button" aria-label="자료 닫기" onClick={onToggleExpanded}><Icon name="x" /></button>}</>}
         </div>
       </div>
-      {searching && <div className="materials-search-scope" role="group" aria-label="검색 범위"><button aria-pressed={!searchAll} onClick={() => { setSearchAll(false); setSelectedRelPath(null) }}>현재 폴더</button><button aria-pressed={searchAll} onClick={() => { setSearchAll(true); setSelectedRelPath(null) }}>전체 자료에서 검색</button></div>}
+
+      <div className="materials-searchbar">
+        <div className="rail-search">
+          <Icon name="search" className="rail-search__icon" />
+          <label className="sr-only" htmlFor="material-search">
+            파일 검색
+          </label>
+          <input
+            id="material-search"
+            type="search"
+            placeholder="자료 검색"
+            value={query}
+            disabled={course === null}
+            onChange={(event) => { setQuery(event.target.value); setSelectedRelPath(null) }}
+          />
+          {query.length > 0 && (
+            <button
+              type="button"
+              className="rail-search__clear"
+              aria-label="검색어 지우기"
+              onClick={() => { setQuery(''); setSelectedRelPath(null) }}
+            >
+              <Icon name="x" />
+            </button>
+          )}
+        </div>
+        <label className="materials-sort"><span className="sr-only">자료 정렬</span><select aria-label="자료 정렬" value={sortOrder} onChange={event => { const next = event.target.value as typeof sortOrder; setSortOrder(next); rememberMaterialSort(next) }}><option value="name">이름순</option><option value="modified">최근 수정순</option><option value="kind">종류순</option></select></label>
+        <MaterialViewMenu value={view} onChange={next => {
+                  setView(next); rememberMaterialView(next)
+                  if (selectedRelPath !== null) {
+                    if (view === 'compact') { const node = findMaterialNode(tree, selectedRelPath); setBrowserDirectory(node?.kind === 'dir' ? node.relPath : materialParentPath(selectedRelPath)); if (node?.kind === 'dir') setSelectedRelPath(null) }
+                    if (next === 'compact') ensureAncestorsExpanded(selectedRelPath)
+                  }
+                }} />
+      </div>
+      {searching && <div className="materials-search-scope" role="group" aria-label="검색 범위"><span className="materials-search-scope__count">{pendingSearch ? '검색 중…' : searching ? `파일 ${searchResults.length} · 본문 ${contentSearch.hits.length}` : `${(browsedDirectory?.children ?? tree).length}개`}</span><button aria-pressed={!searchAll} onClick={() => { setSearchAll(false); setSelectedRelPath(null) }}>현재 폴더</button><button aria-pressed={searchAll} onClick={() => { setSearchAll(true); setSelectedRelPath(null) }}>전체 자료에서 검색</button></div>}
 
       {error !== null && (
         <div className="rail-error" role="alert">
@@ -1152,8 +1150,9 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
               aria-label="자료 파일"
               onContextMenu={(event) => handleContextMenu(event, view === 'compact' ? null : findMaterialNode(tree, browserDirectory))}
             >
-              <div className="materials-group-heading">
-                <button className="materials-section-toggle" aria-expanded={filesOpen || searching} onClick={() => setFilesOpen(!filesOpen)}><span aria-hidden="true">{filesOpen || searching ? '⌄' : '›'}</span>파일</button>
+              {/* Only a project rail has a second section, so only there is "파일" worth a row. */}
+              {(filesCollapsible || downloadingDirRelPath === '') && <div className="materials-group-heading">
+                {filesCollapsible && <button className="materials-section-toggle" aria-expanded={filesOpen || searching} onClick={() => setFilesOpen(!filesOpen)}><span aria-hidden="true">{filesOpen || searching ? '⌄' : '›'}</span>파일</button>}
 
                 {downloadingDirRelPath === '' && (
                   <span className="materials-download-status" role="status">
@@ -1161,8 +1160,8 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
                     저장 중…
                   </span>
                 )}
-              </div>
-              <div hidden={!filesOpen && !searching}>
+              </div>}
+              <div hidden={filesCollapsible && !filesOpen && !searching}>
               {course.missing ? (
                 <div className="empty-state empty-state--materials">
                   <Icon name="folder" className="empty-state__folder" />

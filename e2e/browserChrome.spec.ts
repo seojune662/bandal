@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { createServer } from 'node:http'
 import { writeFileSync } from 'node:fs'
 import { createCourse, launchBandal } from './helpers/launch'
+import { openAiRail, closeAiRail } from './helpers/aiRail'
 
 test('browser chrome stays in one row with working AI and accessible tools in narrow splits', async ({}, info) => {
   const server = createServer((_request, response) => {
@@ -71,11 +72,11 @@ test('browser chrome stays in one row with working AI and accessible tools in na
     await info.attach('compact-header-geometry', { body: JSON.stringify({ toolbarHeight: toolbarBox.height, redundantRowHeight: toolbarBox.y - documentBox.y }), contentType: 'application/json' })
     await capture('browser-chrome-dark.png')
 
-    await page.getByRole('tab', { name: 'AI', exact: true }).click()
-    const assistant = page.getByRole('tabpanel', { name: 'AI', exact: true })
+    await openAiRail(page)
+    const assistant = page.getByRole('region', { name: 'AI', exact: true })
     await expect(assistant).toBeVisible()
-    await expect(page.getByRole('tab', { name: 'AI', exact: true })).toHaveAttribute('aria-selected', 'true')
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'AI 닫기', exact: true })).toBeVisible()
+    await closeAiRail(page)
     await expect(assistant).toBeHidden()
     await page.evaluate(() => window.bandal.invoke('settings:set', { theme: 'light' }))
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')

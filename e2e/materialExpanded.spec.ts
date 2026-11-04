@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal } from './helpers/launch'
 import { startFileServer } from './helpers/fileServer'
+import { openAiRail } from './helpers/aiRail'
 
 test('expanded materials retain native pages and rail width, contain keyboard focus and close on window navigation', async ({}, info) => {
   test.setTimeout(150_000)
@@ -110,10 +111,12 @@ test('expanded materials retain native pages and rail width, contain keyboard fo
     await expect(page.locator('.workspace-windows-overview')).toHaveCount(0)
     await page.getByRole('button', { name: '자료 넓게 보기', exact: true }).click()
     await expect(expanded).toBeVisible()
-    await expanded.getByRole('tab', { name: 'AI', exact: true }).click()
+    // The AI pull tab is hidden while the materials dialog covers the workspace.
+    await expect(page.getByRole('button', { name: 'AI 열기', exact: true })).toHaveCount(0)
+    await page.keyboard.press('Escape')
     await expect(expanded).toHaveCount(0)
+    await openAiRail(page)
     await expect(page.locator('.right-sidebar')).toHaveCSS('width', '236px')
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await expect(page.locator('[data-material-path="참고.md"]')).toBeVisible()
     expect((await nativePages()).map(entry => entry.id)).toEqual([nativeId])
   } finally { await bandal.close(); await site.close() }

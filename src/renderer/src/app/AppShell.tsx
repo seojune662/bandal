@@ -21,6 +21,8 @@ import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { LearningDialogsHost } from '../features/learning/LearningDialogsHost'
 import { LearningSpacesPanel } from '../features/learning/LearningSpacesPanel'
 import { FeatureLauncherPanel } from '../features/launcher/FeatureLauncherPanel'
+import { AiRailHandle } from './AiRailHandle'
+import { WorkspaceAssistantPanel } from '../features/assistantPanel/WorkspaceAssistantPanel'
 import { RightSidebar } from './RightSidebar'
 import { WorkspaceControls } from './WorkspaceControls'
 import { HomeSidebar } from './HomeSidebar'
@@ -134,7 +136,9 @@ export function AppShell(): JSX.Element {
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const workspaceSurface = useWorkspaceStore((state) => state.surface)
   const courseRailVisible = courseRailOpen && workspaceSurface !== 'study-market' && workspaceSurface !== 'community'
-  const materialsRailVisible = rightRailOpen && (workspaceSurface === 'course' || workspaceSurface === 'learning-home')
+  const workspaceSurfaceHasRails = workspaceSurface === 'course' || workspaceSurface === 'learning-home'
+  const materialsRailVisible = rightRailOpen && workspaceSurfaceHasRails
+  const aiRailVisible = useUiStore(state => state.aiRailOpen) && workspaceSurfaceHasRails
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
@@ -144,10 +148,9 @@ export function AppShell(): JSX.Element {
   const settingsPresent = usePresence(isSettingsOpen, 160)
   useLayoutEffect(() => settingsPresent ? acquirePointerPassthrough() : undefined, [settingsPresent])
   const materialsExpandedRequested = useUiStore(state => state.materialsExpanded)
-  const rightRailTab = useUiStore(state => state.rightRailTab)
   const activeWindowKey = useWorkspaceStore(state => state.activeWindowKey)
   const windowsOverviewOpen = useWorkspaceStore(state => state.windowsOverviewOpen)
-  const materialsExpanded = materialsExpandedRequested && materialsRailVisible && rightRailTab === 'materials' &&
+  const materialsExpanded = materialsExpandedRequested && materialsRailVisible &&
     !settingsPresent && !isBoardOverlayOpen && !isLinkGraphOpen && !windowsOverviewOpen
   const previousMaterialsWindow = useRef(activeWindowKey)
   useLayoutEffect(() => {
@@ -454,6 +457,7 @@ export function AppShell(): JSX.Element {
       data-course-rail={leftRailOpen && courseRailVisible ? 'open' : 'closed'}
       data-left-panel={leftRailPanel}
       data-right-rail={materialsRailVisible ? 'open' : 'closed'}
+      data-ai-rail={aiRailVisible ? 'open' : 'closed'}
     >
       <GlobalNavigation />
       <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailVisible || settingsPresent || materialsExpanded}
@@ -465,6 +469,13 @@ export function AppShell(): JSX.Element {
         {launcherMounted && <FeatureLauncherPanel hidden={leftRailPanel !== 'plugins'} />}
       </div>
       {leftRailOpen && courseRailVisible && !settingsPresent && !materialsExpanded && <RailResizer side="left" />}
+      {/* Closed = zero width + clipped + transparent, never unmounted: drafts and streams survive. */}
+      <div id="ai-rail" className="shell-ai-rail" aria-label="AI" role="region" aria-hidden={!aiRailVisible || settingsPresent || materialsExpanded}
+        {...{ inert: !aiRailVisible || settingsPresent || materialsExpanded ? '' : undefined }}>
+        <WorkspaceAssistantPanel />
+      </div>
+      {workspaceSurfaceHasRails && !settingsPresent && !materialsExpanded && !isBoardOverlayOpen && !isLinkGraphOpen && !windowsOverviewOpen &&
+        <AiRailHandle open={aiRailVisible} />}
 
       <main className="app-workspace" aria-label="작업 공간" aria-hidden={settingsPresent || materialsExpanded || undefined} {...{ inert: settingsPresent || materialsExpanded ? '' : undefined }}>
         <WorkspaceHost />

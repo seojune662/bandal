@@ -29,7 +29,7 @@ function MaterialsPanel(): React.JSX.Element {
   useFocusTrap(ref, { active: expanded, onEscape: () => useUiStore.getState().closeMaterialsExpanded() })
   useGlobalShortcuts()
   return <div ref={ref} className="right-sidebar" data-expanded={expanded || undefined}>
-    <div id="right-panel-materials"><input id="material-search" /><button>Materials action</button></div>
+    <div className="right-sidebar"><input id="material-search" /><button>Materials action</button></div>
   </div>
 }
 

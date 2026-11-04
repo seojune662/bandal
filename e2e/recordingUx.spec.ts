@@ -276,8 +276,7 @@ test(`tab menu order, all shortcuts and tab defaults work together with ${agentC
     await expect(page.locator('.browser-toolbar:visible')).toBeVisible()
     await page.keyboard.press(`${mod}+Shift+a`)
     // AI opens beside the active document in the workspace sidebar.
-    await expect(page.getByRole('tablist', { name: '오른쪽 사이드바', exact: true })
-      .getByRole('tab', { name: 'AI', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('button', { name: 'AI 닫기', exact: true })).toBeVisible()
     const assistant = page.getByRole('region', { name: '공간 AI', exact: true })
     await expect(assistant).toBeVisible()
     await expect(assistant.getByText('탭 설정 검증', { exact: true })).toBeVisible()

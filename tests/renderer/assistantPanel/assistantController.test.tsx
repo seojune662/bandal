@@ -25,7 +25,7 @@ beforeEach(() => {
   useWorkspaceAssistantStore.setState({ spaces: {} }); useComposerDraftStore.setState({ drafts: {} })
   useWorkspaceStore.setState({ activeWorkspace: course, activeWorkspaceKey: 'c1', activeCourseId: 'c1', hydration: 'ready' })
   useCoursesStore.setState({ selectedCourseId: 'c1', courses: [{ id: 'c1' } as never] })
-  useUiStore.setState({ rightRailOpen: false, rightRailTab: 'materials' })
+  useUiStore.setState({ aiRailOpen: false })
   vi.spyOn(useWorkspaceStore.getState(), 'openTab').mockImplementation(() => {})
   vi.spyOn(useWorkspaceStore.getState(), 'showWorkspace').mockImplementation(workspace => { useWorkspaceStore.setState({ activeWorkspace: workspace, activeWorkspaceKey: workspace ? workspaceKey(workspace) : null, activeCourseId: workspace?.courseId ?? null }) })
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
@@ -51,7 +51,7 @@ test('opens one global AI without creating a document tab and retains its conver
   const id = useWorkspaceAssistantStore.getState().spaces.c1!.conversationId
   updateComposerDraft(id, { text: '첫 공간의 초안' })
   openActiveAssistant()
-  expect(useUiStore.getState()).toMatchObject({ rightRailOpen: true, rightRailTab: 'ai' })
+  expect(useUiStore.getState()).toMatchObject({ aiRailOpen: true })
   expect(useWorkspaceAssistantStore.getState().spaces.c1!.conversationId).toBe(id)
   expect(useComposerDraftStore.getState().drafts[id]?.text).toBe('첫 공간의 초안')
   expect(useWorkspaceStore.getState().openTab).not.toHaveBeenCalled()
@@ -96,11 +96,11 @@ test('document wrapper removes mini AI but retains document context, highlights 
   const id = useWorkspaceAssistantStore.getState().spaces.c1!.conversationId
   expect(useComposerDraftStore.getState().drafts[id]?.text).toBe('선택한 문장을 설명해줘')
 })
-test('AI open indicator follows the global right tab', () => {
+test('AI open indicator follows the left AI column', () => {
   function Indicator() { return <span>{String(useActiveAssistantOpen())}</span> }
   act(() => root.render(<Indicator />)); expect(container.textContent).toBe('false')
   act(openActiveAssistant); expect(container.textContent).toBe('true')
-  act(() => useUiStore.getState().setRightRailTab('materials')); expect(container.textContent).toBe('false')
+  act(() => useUiStore.getState().toggleAiRail()); expect(container.textContent).toBe('false')
 })
 test('a source-course document asks the AI of its project placement without changing its source owner', () => {
   const destination: WorkspaceRef = { kind: 'project', courseId: 'project-owner', rootRelPath: '' }

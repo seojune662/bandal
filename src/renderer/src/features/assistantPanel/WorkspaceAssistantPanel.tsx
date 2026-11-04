@@ -27,7 +27,7 @@ export function WorkspaceAssistantPanel(): JSX.Element {
   const workspace = useWorkspaceStore(state => state.activeWorkspace)
   const sourcePanelId = useWorkspaceStore(state => state.activePanelId)
   const courses = useCoursesStore(state => state.courses)
-  const active = useUiStore(state => state.rightRailOpen && state.rightRailTab === 'ai')
+  const active = useUiStore(state => state.aiRailOpen)
   const spaces = useWorkspaceAssistantStore(state => state.spaces)
   const key = workspace ? workspaceKey(workspace) : ''
   const state = spaces[key]

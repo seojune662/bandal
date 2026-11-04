@@ -27,7 +27,7 @@ vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
     activePanelSource: () => fixture.priorPanel ? { panelId: fixture.priorPanel } : null, activeBrowserTabId: () => fixture.activeBrowserId, closeTabsMatching: fixture.close, activatePanel: fixture.activate, notifyLayoutChanged: vi.fn() }) }
 }))
 vi.mock('../../../src/renderer/src/features/browser/browserGuestsStore', () => ({ useBrowserGuests: { getState: () => ({ nav: fixture.nav }) } }))
-vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: { getState: () => ({ openSettings: fixture.settings, closeSettings: fixture.closeSettings, showAssistant: fixture.showAssistant, rightRailOpen: fixture.aiOpen, rightRailTab: 'ai' }) } }))
+vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: { getState: () => ({ openSettings: fixture.settings, closeSettings: fixture.closeSettings, showAssistant: fixture.showAssistant, aiRailOpen: fixture.aiOpen }) } }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: fixture.toast }))
 import { agentLoginOpenGuard, isAgentLoginOpenAllowed, getAgentLoginForTab, installAgentLoginTabLifecycle, isLoginTabUrl, prepareAgentLoginTab } from '../../../src/renderer/src/features/browser/agentLoginTabs'
 import { resetAgentConnectionsForTests, useAgentConnectionStore } from '../../../src/renderer/src/features/chat/agentConnectionStore'

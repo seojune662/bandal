@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchBandal, createCourse, type BandalApp } from './helpers/launch'
 import { clickBrowserToolbarAction } from './helpers/browserToolbar'
+import { openAiRail, closeAiRail } from './helpers/aiRail'
 
 async function fixture() {
   const requests: { path: string; userAgent: string }[] = []
@@ -535,8 +536,8 @@ test('workspace assistant stays beside native pages while browser remains intera
   try {
     await createCourse(bandal.page, '채팅 겹침 검증')
     const root = await openTab(bandal, `${site.origin}/lecture`)
-    await bandal.page.getByRole('tab', { name: 'AI', exact: true }).click()
-    await expect(bandal.page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeVisible()
+    await openAiRail(bandal.page)
+    await expect(bandal.page.getByRole('region', { name: 'AI', exact: true })).toBeVisible()
     await bandal.app.evaluate(({ webContents }, id) => {
       const guest = webContents.fromId(id)!
       guest.focus(); guest.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] }); guest.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] })
@@ -548,8 +549,8 @@ test('workspace assistant stays beside native pages while browser remains intera
     }, root)
     await expect(bandal.page.locator('.global-navigation')).toBeVisible()
     expect(await run(bandal, root, 'document.querySelector("h1").textContent')).toBe('Lecture page')
-    await bandal.page.getByRole('tab', { name: '자료', exact: true }).click()
-    await expect(bandal.page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeHidden()
+    await closeAiRail(bandal.page)
+    await expect(bandal.page.getByRole('region', { name: 'AI', exact: true })).toBeHidden()
   } finally { await bandal.close(); await site.close() }
 })
 
@@ -696,9 +697,8 @@ test('closing a dirty tab can be cancelled without removing its tab or native pa
     expect(await run(bandal, id, 'document.body.textContent')).toBe('Draft')
     await bandal.app.evaluate(({ app }) => { app.quit() })
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).quitPrompts)).toBe(2)
-    await bandal.page.getByRole('tab', { name: 'AI', exact: true }).click()
-    await expect(bandal.page.getByRole('tabpanel', { name: 'AI', exact: true })).toBeVisible()
-    await bandal.page.getByRole('tab', { name: '자료', exact: true }).click()
+    await openAiRail(bandal.page)
+    await expect(bandal.page.getByRole('region', { name: 'AI', exact: true })).toBeVisible()
     // Cancelling quit must keep the background material watcher running.
     const course = (await bandal.page.evaluate(() => window.bandal.invoke('courses:list', {})))[0]!
     writeFileSync(join(course.folderPath, '종료 취소 후 새 자료.md'), '# 종료 취소 뒤 작성한 자료\n')

@@ -3,6 +3,7 @@ import { readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentEvent } from '../src/shared/types/agent-events'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { openAiRail } from './helpers/aiRail'
 
 const AERODYNAMICS_REPLY = String.raw`# 항공역학 지배방정식
 
@@ -252,9 +253,8 @@ test.describe('shared chat composer, readable replies and confirmations', () => 
   test('material sidebar keeps long equations inside a readable scrolling table', async ({}, info) => {
     const { page, app } = bandal
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setSize(1440, 900))
-    await page.getByRole('tablist', { name: '오른쪽 사이드바' }).getByRole('tab', { name: '자료', exact: true }).click()
     await page.locator('[data-material-path="강의 메모.md"]').click()
-    await page.getByRole('tablist', { name: '오른쪽 사이드바' }).getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     const sidebar = page.locator('.workspace-assistant:visible')
     const input = sidebar.getByRole('textbox', { name: '메시지 입력' })
     await expect(input).toBeVisible()

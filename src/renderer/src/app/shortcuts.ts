@@ -226,7 +226,7 @@ export function runShortcutAction(
     const trap = activeFocusTrap(document)
     if (trap && !trap.matches('.right-sidebar[data-expanded="true"]')) return
     if (action.type === 'browser-find' || action.type === 'quick-search') {
-      const search = document.querySelector<HTMLInputElement>('#right-panel-materials #material-search')
+      const search = document.querySelector<HTMLInputElement>('.right-sidebar #material-search')
       search?.focus(); search?.select()
       return
     }
