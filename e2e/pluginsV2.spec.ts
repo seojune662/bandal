@@ -170,11 +170,13 @@ test.describe('plugin API v2', () => {
     })
     await expect(guest).not.toBeAttached()
     await invoke(page, 'plugins:reload', { id: 'bandal.material-summary' })
-    await page.getByRole('button', { name: '새 탭 열기', exact: true }).click()
-    await page.getByLabel('새 탭 검색').fill('자료 개요')
+    // The new-tab menu lists only built-in tab kinds since v0.88.0, so reopen
+    // the panel the way a user does: from the material menu again.
     await page
-      .getByRole('option', { name: '자료 개요 자료 개요', exact: true })
-      .click()
+      .locator('.material-row', { hasText: '선택 편집' })
+      .click({ button: 'right' })
+    await page.getByRole('menuitem', { name: /자료 개요 열기/ }).click()
+    await expect(guest).toBeAttached()
     await expect.poll(preview).toContain('alpha beta')
   })
 
