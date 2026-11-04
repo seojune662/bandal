@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal } from './helpers/launch'
-import { openAiRail } from './helpers/aiRail'
+import { openAiRail, showCourseRail } from './helpers/aiRail'
 
 test('global workspace AI keeps drafts across documents and modes, separates projects, and retains PDF highlights', async ({}, info) => {
   const bandal = await launchBandal({ extraSettings: { theme: 'light' } })
@@ -41,6 +41,7 @@ test('global workspace AI keeps drafts across documents and modes, separates pro
     await input.fill('과목에서 이어 쓸 초안')
     // Legacy in-course projects remain supported; new typed review spaces use standalone placement.
     await page.evaluate(async courseId => { await window.bandal.invoke('learning:create', { placement: 'in-course', courseId, rootRelPath: 'Project', name: '독립 프로젝트', topic: '자료' }) }, courseId)
+    await showCourseRail(page)
     await page.getByRole('tab', { name: '프로젝트', exact: true }).first().click()
     await page.locator('.project-list-row__open').filter({ hasText: '독립 프로젝트' }).click()
     await openAiRail(page); await expect(input).toHaveValue('')

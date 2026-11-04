@@ -19,6 +19,7 @@ import {
   ONBOARDING_FLOW_VERSION,
   type Settings
 } from '../../src/shared/types/settings'
+import { showCourseRail } from './aiRail'
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
 const MAIN_ENTRY = join(PROJECT_ROOT, 'out', 'main', 'index.js')
@@ -173,6 +174,7 @@ async function chooseAddAction(
   page: Page,
   label: '폴더에서 추가' | '새 과목 만들기'
 ): Promise<void> {
+  await showCourseRail(page)
   const sidebar = page.getByRole('complementary', { name: '과목 목록' })
   const emptyState = sidebar.locator('.empty-state--courses')
   if (await emptyState.isVisible()) {
