@@ -75,6 +75,7 @@ test('selected document and live browser parts append immutable references to on
       for (let i = 0; i < pixels.length; i += 4) if (pixels[i + 2]! > pixels[i]! + 40 && pixels[i + 2]! > pixels[i + 1]! + 10) blue++
       return blue
     })
+    await info.attach('pdf-reference-crop', { body: Buffer.from((await refs.nth(1).getByRole('img').getAttribute('src'))!.split(',')[1]!, 'base64'), contentType: 'image/png' })
     expect(bluePixels).toBe(0)
     await paragraph.click()
     await expect(refs).toHaveCount(3)
