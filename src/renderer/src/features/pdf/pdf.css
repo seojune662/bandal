@@ -449,6 +449,8 @@
   cursor: grabbing;
 }
 
+:root[data-annotating] .pdf-page__clip-drag { visibility: hidden; }
+
 /* pdf.js canvas sits at z 0, our highlights at 1, the text layer at 2 —
  * so selection stays fully interactive above the highlight rects. */
 .pdf-highlight-layer {

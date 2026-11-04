@@ -17,6 +17,8 @@ export function AnnotationOverlay(): JSX.Element | null {
   const [highlight, setHighlight] = useState<{ rect: AnnotationBounds; region: boolean } | null>(null)
   useEffect(() => {
     if (!session) { setHighlight(null); return }
+    // Floating page controls (e.g. PDF "노트로") must not land in captures or catch the pointer.
+    document.documentElement.setAttribute('data-annotating', '')
     let live = true, frame = 0, capturing = false, hover: DocumentAnnotationTarget | null = null
     let drag: { x: number; y: number; target: DocumentAnnotationTarget } | null = null
     const selection = window.getSelection()
@@ -141,6 +143,7 @@ export function AnnotationOverlay(): JSX.Element | null {
     window.addEventListener('resize', clear)
     return () => {
       live = false; clear(); cancelAnimationFrame(frame); clearInterval(timer); unsubscribe()
+      document.documentElement.removeAttribute('data-annotating')
       for (const [tabId, capture] of starts) stopBrowser(tabId, capture)
       document.removeEventListener('pointermove', onMove, true)
       document.removeEventListener('pointerdown', onDown, true)

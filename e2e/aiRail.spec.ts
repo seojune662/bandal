@@ -40,7 +40,9 @@ test('AI opens as a left column that keeps its draft while closed, and materials
     await expect.poll(async () => Math.round((await page.locator('#ai-rail').boundingBox())!.width)).toBeGreaterThanOrEqual(280)
     await expect.poll(async () => {
       const box = (await page.locator('#ai-rail').boundingBox())!, tab = (await page.getByRole('button', { name: 'AI 닫기', exact: true }).boundingBox())!
-      return Math.abs(box.x - (courseRail.x + courseRail.width)) <= 1 && Math.abs(tab.x - (box.x + box.width)) <= 2
+      // Narrow windows (Windows CI) collapse the course rail when AI opens; the column then follows the nav rail.
+      const rail = await page.locator('#course-rail').evaluate(element => { const r = element.getBoundingClientRect(); return { x: r.x, width: r.width } })
+      return Math.abs(box.x - (rail.x + rail.width)) <= 1 && Math.abs(tab.x - (box.x + box.width)) <= 2
     }).toBe(true)
     const input = ai.getByRole('textbox', { name: '메시지 입력' })
     await input.fill('닫아도 남는 초안')
@@ -53,7 +55,7 @@ test('AI opens as a left column that keeps its draft while closed, and materials
     await expect(input).toHaveValue('닫아도 남는 초안')
 
     // Without the course sidebar the column sits right beside the navigation rail.
-    await page.getByRole('button', { name: '홈', exact: true }).click()
+    if (!await page.locator('#course-rail[aria-hidden="true"]').count()) await page.getByRole('button', { name: '홈', exact: true }).click()
     const navigation = (await page.locator('.global-navigation').boundingBox())!
     await expect.poll(async () => Math.round((await page.locator('#ai-rail').boundingBox())!.x)).toBe(Math.round(navigation.x + navigation.width))
 
