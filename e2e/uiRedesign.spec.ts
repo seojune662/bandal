@@ -96,7 +96,6 @@ test('neutral appearance preserves document geometry, navigation and settings', 
           width
         )
         await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
-        await page.getByRole('tab', { name: '자료', exact: true }).click()
         await page.locator('[data-material-path="Lecture.pdf"]').click()
         await expect(
           page.locator('.react-pdf__Page canvas').first()

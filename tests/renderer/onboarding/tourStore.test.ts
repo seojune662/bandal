@@ -29,7 +29,7 @@ let events: string[]
 let failPurge: boolean
 const originalPanel = 'note:original:notes.md'
 const course = (id: string) => ({ id, name: id, color: '#357', folderPath: `/sample/${id}` })
-const savedUi = { leftRailOpen: false, courseRailOpen: false, leftRailPanel: 'widgets', rightRailOpen: false, rightRailTab: 'materials', isSettingsOpen: true, settingsCategory: 'general', isBoardOverlayOpen: true, isLinkGraphOpen: true }
+const savedUi = { leftRailOpen: false, courseRailOpen: false, leftRailPanel: 'widgets', rightRailOpen: false, aiRailOpen: false, isSettingsOpen: true, settingsCategory: 'general', isBoardOverlayOpen: true, isLinkGraphOpen: true }
 
 beforeEach(() => {
   resetTourForTests(); vi.resetAllMocks(); document.body.innerHTML = ''
@@ -61,8 +61,8 @@ beforeEach(() => {
     closeSettings: () => { fixture.ui.isSettingsOpen = false }, closeBoardOverlay: () => { fixture.ui.isBoardOverlayOpen = false },
     showCourses: () => { fixture.ui.leftRailOpen = true; fixture.ui.courseRailOpen = true; fixture.ui.leftRailPanel = 'courses' },
     toggleRightRail: () => { fixture.ui.rightRailOpen = !fixture.ui.rightRailOpen },
-    setRightRailTab: (tab: string) => { fixture.ui.rightRailOpen = true; fixture.ui.rightRailTab = tab },
-    showAssistant: () => { fixture.ui.rightRailOpen = true; fixture.ui.rightRailTab = 'ai' },
+    showMaterials: () => { fixture.ui.rightRailOpen = true },
+    showAssistant: () => { fixture.ui.aiRailOpen = true },
     setHomeTab: (tab: string) => { fixture.ui.leftRailPanel = tab; fixture.ui.leftRailOpen = true; fixture.ui.courseRailOpen = true }
   }
   fixture.loaded.mockImplementation(async () => settings)
@@ -97,7 +97,7 @@ describe('five-feature tutorial lifecycle', () => {
     expect(fixture.opens.map(item => item.descriptor.kind)).toEqual(['pdf', 'note'])
     expect(fixture.opens[1]!.options).toEqual({ beside: true })
     await next(2)
-    expect(fixture.ui.rightRailTab).toBe('ai')
+    expect(fixture.ui.aiRailOpen).toBe(true)
     expect(fixture.mode).toHaveBeenLastCalledWith({ kind: 'course', courseId: 'demo' }, 'chat')
     await next(3)
     expect(fixture.mode).toHaveBeenLastCalledWith({ kind: 'course', courseId: 'demo' }, 'quiz')
@@ -164,11 +164,11 @@ describe('five-feature tutorial lifecycle', () => {
   test('returns to the exact nested project and shared AI tab after replay', async () => {
     fixture.workspace.activeWorkspace = { kind: 'project', courseId: 'original', rootRelPath: 'Projects/Reading' }
     fixture.workspace.activeWorkspaceKey = 'project:original:Projects%2FReading'
-    fixture.ui.rightRailTab = 'ai'
+    fixture.ui.aiRailOpen = true
     await useTourStore.getState().start(); await next(1); await next(2)
     useTourStore.getState().skip(); await ended()
     expect(fixture.workspace.activeWorkspace).toEqual({ kind: 'project', courseId: 'original', rootRelPath: 'Projects/Reading' })
-    expect(fixture.ui.rightRailTab).toBe('ai')
+    expect(fixture.ui.aiRailOpen).toBe(true)
     expect(fixture.workspace.activePanelId).toBe(originalPanel)
   })
 

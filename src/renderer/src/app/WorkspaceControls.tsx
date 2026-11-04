@@ -55,7 +55,7 @@ export function WorkspaceControls(): JSX.Element {
       (state.surface !== 'course' && state.surface !== 'learning-home')
     ui.closeSettings(); ui.closeBoardOverlay(); ui.closeLinkGraph()
     if (state.surface !== 'course' && state.surface !== 'learning-home') state.showWorkspace(state.activeWorkspace)
-    if (covered) ui.setRightRailTab(ui.rightRailTab)
+    if (covered) ui.showMaterials()
     else ui.toggleRightRail()
   }
 

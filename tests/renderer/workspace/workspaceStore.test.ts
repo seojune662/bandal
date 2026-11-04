@@ -529,16 +529,16 @@ describe('independent internal windows', () => {
     let release!: () => void
     const stop = registerBeforeWorkspaceWindowLeave(() => new Promise<void>(resolve => { release = resolve }))
     state.setActiveCourse('rail-target')
-    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-target', rightRailTab: 'materials' })
+    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-target', aiRailOpen: true })
     const opened: Array<string | null> = []
     state.afterWorkspaceTransition(() => { opened.push(useWorkspaceStore.getState().activeWorkspaceKey); ui.showAssistant() })
     expect(opened).toEqual([])
     release(); await settle(); state.attachWindowApi('rail-target', second.asApi()); await settle()
     expect(opened).toEqual(['rail-target'])
-    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-target', rightRailTab: 'ai' })
+    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-target', aiRailOpen: true })
     stop()
     state.setActiveCourse('rail-source')
-    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-source', rightRailTab: 'ai' })
+    expect(useUiStore.getState()).toMatchObject({ rightRailScope: 'rail-source', aiRailOpen: true })
   })
 
   test('a clicked cold destination resolves its saved window and survives a superseding course selection', async () => {
@@ -747,7 +747,7 @@ describe('expanded materials successful opening', () => {
     state.setWindowsOverviewOpen(false)
     useUiStore.getState().setMaterialsExpanded(true)
     state.createWindow()
-    expect(useUiStore.getState()).toMatchObject({ materialsExpanded: false, rightRailOpen: true, rightRailTab: 'materials' })
+    expect(useUiStore.getState()).toMatchObject({ materialsExpanded: false, rightRailOpen: true })
   })
 
   test('a queued hydration delivers its exact panel once without closing before success', async () => {
@@ -831,14 +831,14 @@ test('renaming a dormant project preserves its selected draft conversation and r
   const after = { ...before, rootRelPath: 'Archive/Review' }
   useWorkspaceAssistantStore.setState({ spaces: { [workspaceKey(before)]: { conversationId: 'unsent-draft', mode: 'quiz' } } })
   const ui = useUiStore.getState()
-  ui.setRightRailScope(workspaceKey(before)); ui.setRightRailTab('ai'); ui.toggleRightRail()
+  ui.setRightRailScope(workspaceKey(before)); ui.toggleRightRail()
   ui.setRightRailScope('c1')
   expect(retainedTabDescriptors(workspaceKey(before))).toEqual([])
   reconcileWorkspaceMaterialRename('c1', 'Old', 'Archive')
   expect(useWorkspaceAssistantStore.getState().spaces[workspaceKey(before)]).toBeUndefined()
   expect(useWorkspaceAssistantStore.getState().spaces[workspaceKey(after)]).toEqual({ conversationId: 'unsent-draft', mode: 'quiz' })
   ui.setRightRailScope(workspaceKey(after))
-  expect(useUiStore.getState()).toMatchObject({ rightRailOpen: false, rightRailTab: 'ai' })
+  expect(useUiStore.getState()).toMatchObject({ rightRailOpen: false })
 })
 
 test('project path changes wait for relevant learning writes without closing any pane', async () => {

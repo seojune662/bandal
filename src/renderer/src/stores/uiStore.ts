@@ -21,7 +21,8 @@ interface UiState {
   courseRailOpen: boolean
   leftRailPanel: 'courses' | 'learning' | 'plugins'
   rightRailOpen: boolean
-  rightRailTab: 'materials' | 'ai'
+  /** Left AI column; it stays mounted while closed so drafts and streams survive. */
+  aiRailOpen: boolean
   rightRailScope: string | null
   /** A temporary presentation of the same materials rail, never a saved width. */
   materialsExpanded: boolean
@@ -30,7 +31,8 @@ interface UiState {
   closeMaterialsExpanded: (options?: { returnFocus?: boolean }) => void
   setRightRailScope: (scope: string | null) => void
   moveRightRailScope: (from: string, to: string) => void
-  setRightRailTab: (tab: 'materials' | 'ai') => void
+  showMaterials: () => void
+  toggleAiRail: () => void
   showAssistant: () => void
   setHomeTab: (tab: 'courses' | 'learning') => void
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
@@ -67,13 +69,13 @@ interface UiState {
   closeSettings: () => void
 }
 
-type RightRailPreference = { open: boolean; tab: 'materials' | 'ai' }
+type RightRailPreference = { open: boolean }
 const RIGHT_RAIL_KEY = 'bandal:right-panels:v1'
 function readRightRails(): Record<string, RightRailPreference> {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(RIGHT_RAIL_KEY) ?? '{}')
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-    return Object.fromEntries(Object.entries(value).filter(([, item]) => item && typeof item.open === 'boolean' && ['materials', 'ai'].includes(item.tab)))
+    return Object.fromEntries(Object.entries(value).filter(([, item]) => item && typeof item.open === 'boolean').map(([key, item]) => [key, { open: item.open }]))
   } catch { return {} }
 }
 const rightRails = readRightRails()
@@ -84,6 +86,11 @@ function saveRightRail(scope: string | null, preference: RightRailPreference): v
   rightRails[scope] = preference
   try { localStorage.setItem(RIGHT_RAIL_KEY, JSON.stringify(rightRails)) } catch { /* In-memory restoration remains available. */ }
 }
+
+// ponytail: fixed breakpoint; below it nav + course + AI + materials leave the workspace under ~400px.
+const NARROW_WINDOW_WIDTH = 1280
+/** Opening AI in a narrow window gives the course sidebar's width to the workspace. */
+const openAiRail = (): Partial<UiState> => ({ aiRailOpen: true, ...(globalThis.innerWidth < NARROW_WINDOW_WIDTH ? { courseRailOpen: false } : {}) })
 
 let themeInitialization: Promise<void> | null = null
 
@@ -102,18 +109,18 @@ export const useUiStore = create<UiState>()((set, get) => ({
   courseRailOpen: true,
   leftRailPanel: (() => { try { return localStorage.getItem('bandal:home-tab') === 'learning' ? 'learning' : 'courses' } catch { return 'courses' } })(),
   rightRailOpen: true,
-  rightRailTab: 'materials',
+  aiRailOpen: false,
   rightRailScope: null,
   materialsExpanded: false,
   materialsExpandedRestoreFocus: true,
   setMaterialsExpanded: expanded => set(expanded
-    ? { materialsExpanded: true, materialsExpandedRestoreFocus: true, rightRailOpen: true, rightRailTab: 'materials', isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false }
+    ? { materialsExpanded: true, materialsExpandedRestoreFocus: true, rightRailOpen: true, isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false }
     : { materialsExpanded: false, materialsExpandedRestoreFocus: true }),
   closeMaterialsExpanded: options => set({ materialsExpanded: false, materialsExpandedRestoreFocus: options?.returnFocus ?? true }),
   moveRightRailScope: (from, to) => {
     if (from === to) return
     const current = get()
-    const preference = from === current.rightRailScope ? { open: current.rightRailOpen, tab: current.rightRailTab } : rightRails[from]
+    const preference = from === current.rightRailScope ? { open: current.rightRailOpen } : rightRails[from]
     delete rightRails[from]
     if (preference) saveRightRail(to, preference)
     if (current.rightRailScope === from) set({ rightRailScope: to })
@@ -121,17 +128,17 @@ export const useUiStore = create<UiState>()((set, get) => ({
   setRightRailScope: scope => {
     const current = get()
     if (scope === current.rightRailScope) return
-    saveRightRail(current.rightRailScope, { open: current.rightRailOpen, tab: current.rightRailTab })
+    saveRightRail(current.rightRailScope, { open: current.rightRailOpen })
     const saved = scope ? rightRails[scope] : undefined
-    set({ rightRailScope: scope, rightRailOpen: saved?.open ?? true, rightRailTab: saved?.tab ?? 'materials', materialsExpanded: false })
+    set({ rightRailScope: scope, rightRailOpen: saved?.open ?? true, materialsExpanded: false })
   },
-  setRightRailTab: tab => {
-    saveRightRail(get().rightRailScope, { open: true, tab })
-    set({ rightRailTab: tab, rightRailOpen: true, ...(tab === 'ai' ? { materialsExpanded: false } : {}) })
+  showMaterials: () => {
+    saveRightRail(get().rightRailScope, { open: true })
+    set({ rightRailOpen: true })
   },
+  toggleAiRail: () => set(state => ({ ...(state.aiRailOpen ? { aiRailOpen: false } : openAiRail()), materialsExpanded: false })),
   showAssistant: () => {
-    saveRightRail(get().rightRailScope, { open: true, tab: 'ai' })
-    set({ rightRailTab: 'ai', rightRailOpen: true, materialsExpanded: false, isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false })
+    set({ ...openAiRail(), materialsExpanded: false, isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false })
   },
   setHomeTab: tab => {
     try { localStorage.setItem('bandal:home-tab', tab) } catch { /* Optional UI preference. */ }
@@ -230,7 +237,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
 
   toggleRightRail: () => {
     const state = get()
-    saveRightRail(state.rightRailScope, { open: !state.rightRailOpen, tab: state.rightRailTab })
+    saveRightRail(state.rightRailScope, { open: !state.rightRailOpen })
     set({ rightRailOpen: !state.rightRailOpen, materialsExpanded: false })
   },
 

@@ -36,10 +36,10 @@ test('learning and plugin navigation switch the shared panel and reopen above ov
 test.each(['ai', 'hide', 'settings', 'board', 'graph', 'scope'] as const)('materials expansion closes on %s while the remembered rail preference remains separate', transition => {
   const ui = useUiStore.getState()
   ui.setRightRailScope(`expansion-${transition}`)
-  ui.setRightRailTab('materials')
+  ui.showMaterials()
   ui.setMaterialsExpanded(true)
-  expect(useUiStore.getState()).toMatchObject({ materialsExpanded: true, rightRailOpen: true, rightRailTab: 'materials' })
-  if (transition === 'ai') ui.setRightRailTab('ai')
+  expect(useUiStore.getState()).toMatchObject({ materialsExpanded: true, rightRailOpen: true })
+  if (transition === 'ai') ui.toggleAiRail()
   else if (transition === 'hide') ui.toggleRightRail()
   else if (transition === 'settings') ui.openSettings('account')
   else if (transition === 'board') ui.toggleBoardOverlay()
@@ -48,4 +48,16 @@ test.each(['ai', 'hide', 'settings', 'board', 'graph', 'scope'] as const)('mater
   expect(useUiStore.getState().materialsExpanded).toBe(false)
   const persisted = JSON.parse(localStorage.getItem('bandal:right-panels:v1')!)
   expect(persisted[`expansion-${transition}`]).not.toHaveProperty('materialsExpanded')
+})
+
+test.each([[1024, false], [1440, true]])('opening AI in a %ipx window leaves the course sidebar open: %s', (width, courseOpen) => {
+  const original = window.innerWidth
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+  try {
+    useUiStore.setState({ aiRailOpen: false, courseRailOpen: true })
+    useUiStore.getState().showAssistant()
+    expect(useUiStore.getState()).toMatchObject({ aiRailOpen: true, courseRailOpen: courseOpen })
+    useUiStore.getState().toggleAiRail()
+    expect(useUiStore.getState().aiRailOpen).toBe(false)
+  } finally { Object.defineProperty(window, 'innerWidth', { configurable: true, value: original }) }
 })

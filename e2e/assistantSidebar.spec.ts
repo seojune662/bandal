@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal } from './helpers/launch'
+import { openAiRail } from './helpers/aiRail'
 
 test('global workspace AI keeps drafts across documents and modes, separates projects, and retains PDF highlights', async ({}, info) => {
   const bandal = await launchBandal({ extraSettings: { theme: 'light' } })
@@ -20,9 +21,9 @@ test('global workspace AI keeps drafts across documents and modes, separates pro
     const dir = join(bandal.dataRoot, readdirSync(bandal.dataRoot)[0]!)
     writeFileSync(join(dir, 'first.md'), '# First\n\n첫 번째 자료\n'); writeFileSync(join(dir, 'second.md'), '# Second\n\n두 번째 자료\n')
     const { PDFDocument } = await import('pdf-lib'), pdf = await PDFDocument.create(); pdf.addPage([600, 800]); writeFileSync(join(dir, 'sample.pdf'), await pdf.save())
-    const rail = page.getByRole('tablist', { name: '오른쪽 사이드바' }), ai = page.locator('.workspace-assistant:visible')
+    const ai = page.locator('.workspace-assistant:visible')
     const input = ai.getByRole('textbox', { name: '메시지 입력' })
-    const open = async (name: string) => { await rail.getByRole('tab', { name: '자료', exact: true }).click(); await page.locator(`[data-material-path="${name}"]`).click(); await rail.getByRole('tab', { name: 'AI', exact: true }).click() }
+    const open = async (name: string) => { await page.locator(`[data-material-path="${name}"]`).click(); await openAiRail(page) }
     await page.getByRole('button', { name: '자료 새로고침' }).click()
     await open('first.md'); await expect(input).toBeVisible()
     await expect(page.locator('.tab-assistant,.tab-assistant-toggle')).toHaveCount(0)
@@ -42,7 +43,7 @@ test('global workspace AI keeps drafts across documents and modes, separates pro
     await page.evaluate(async courseId => { await window.bandal.invoke('learning:create', { placement: 'in-course', courseId, rootRelPath: 'Project', name: '독립 프로젝트', topic: '자료' }) }, courseId)
     await page.getByRole('tab', { name: '프로젝트', exact: true }).first().click()
     await page.locator('.project-list-row__open').filter({ hasText: '독립 프로젝트' }).click()
-    await rail.getByRole('tab', { name: 'AI', exact: true }).click(); await expect(input).toHaveValue('')
+    await openAiRail(page); await expect(input).toHaveValue('')
     await expect(ai.locator('.chat-context-auto .chat-context-chip')).toHaveCount(0)
     await input.fill('프로젝트 초안')
     await ai.getByRole('tab', { name: '퀴즈', exact: true }).click()
@@ -81,7 +82,7 @@ test('unsent workspace drafts restore text, multiple materials and annotated ima
     await page.getByRole('button', { name: '자료 새로고침' }).click()
     await page.locator('[data-material-path="source.pdf"]').click()
     await expect(page.locator('.pdf-page:visible .textLayer')).toContainText('Persisted annotated PDF source.')
-    await page.getByRole('tablist', { name: '오른쪽 사이드바' }).getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     const ai = page.locator('.workspace-assistant:visible')
     await ai.getByRole('textbox', { name: '메시지 입력' }).fill('재시작해도 이어 쓸 요청')
     await ai.getByRole('tab', { name: '플래시카드', exact: true }).click()
@@ -112,7 +113,7 @@ test('unsent workspace drafts restore text, multiple materials and annotated ima
     await bandal.close()
     bandal = await launchBandal({ reuseProfileDir: profileDir }); await prepare(); page = bandal.page
     await page.reload(); await expect(page.locator('aside.app-rail--left:visible')).toBeVisible()
-    await page.getByRole('tablist', { name: '오른쪽 사이드바' }).getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     const restored = page.locator('.workspace-assistant:visible')
     await expect(restored.getByRole('textbox', { name: '메시지 입력' })).toHaveValue('재시작해도 이어 쓸 요청')
     await expect(restored.getByRole('tab', { name: '플래시카드', exact: true })).toHaveAttribute('aria-selected', 'true')

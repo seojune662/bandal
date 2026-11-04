@@ -56,7 +56,7 @@ type TourLocation = {
   activeWorkspace: WorkspaceRef | null
   activePanelId: string | null
   surface: WorkspaceSurface
-  ui: Pick<ReturnType<typeof useUiStore.getState>, 'leftRailOpen' | 'courseRailOpen' | 'leftRailPanel' | 'rightRailOpen' | 'rightRailTab' | 'isSettingsOpen' | 'settingsCategory' | 'isBoardOverlayOpen' | 'isLinkGraphOpen'>
+  ui: Pick<ReturnType<typeof useUiStore.getState>, 'leftRailOpen' | 'courseRailOpen' | 'leftRailPanel' | 'rightRailOpen' | 'aiRailOpen' | 'isSettingsOpen' | 'settingsCategory' | 'isBoardOverlayOpen' | 'isLinkGraphOpen'>
 }
 let previousLocation: TourLocation | null = null
 
@@ -68,7 +68,7 @@ function captureLocation(): TourLocation {
     activeCourseId: workspace.activeCourseId, activeWorkspace: workspace.activeWorkspace, activePanelId: workspace.activePanelId,
     surface: workspace.surface,
     ui: { leftRailOpen: ui.leftRailOpen, courseRailOpen: ui.courseRailOpen, leftRailPanel: ui.leftRailPanel,
-      rightRailOpen: ui.rightRailOpen, rightRailTab: ui.rightRailTab, isSettingsOpen: ui.isSettingsOpen, settingsCategory: ui.settingsCategory,
+      rightRailOpen: ui.rightRailOpen, aiRailOpen: ui.aiRailOpen, isSettingsOpen: ui.isSettingsOpen, settingsCategory: ui.settingsCategory,
       isBoardOverlayOpen: ui.isBoardOverlayOpen, isLinkGraphOpen: ui.isLinkGraphOpen }
   }
 }
@@ -184,7 +184,7 @@ async function prepareStep(
   workspace.showCourseWorkspace(courseId)
   await waitForWorkspace({ kind: 'course', courseId })
   if (!isCurrent() || useWorkspaceStore.getState().activeCourseId !== courseId) return
-  if (action === 'show-materials') { ui.setRightRailTab('materials'); return }
+  if (action === 'show-materials') { ui.showMaterials(); return }
   if (action === 'show-projects') { ui.setHomeTab('learning'); return }
   const pdf = descriptorFor('pdf', { courseId, relPath: seedPdfPath })
   if (action === 'open-reading') {

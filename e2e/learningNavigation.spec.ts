@@ -43,7 +43,7 @@ test('home tabs change the list, while project selection hides and restores the 
     await openProject(page, '복습 프로젝트')
     await expect.poll(visible).toBe(false)
     await expect(page.getByRole('navigation', { name: '학습 화면' })).toHaveCount(0)
-    await expect(page.getByRole('tab', { name: '자료', exact: true })).toBeVisible()
+    await expect(page.locator('.right-sidebar')).toBeVisible()
     await page.locator('.app-rail:not([hidden])').getByRole('tab', { name: '과목', exact: true }).click()
     await expect.poll(visible).toBe(false)
     await page.getByRole('complementary', { name: '과목 목록', exact: true }).getByRole('button', { name: '원래 자료 과목', exact: true }).click()

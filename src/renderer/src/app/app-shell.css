@@ -5,10 +5,11 @@
   --shell-navigation-width: var(--navigation-width);
   --shell-course-width: var(--rail-left-width);
   --shell-materials-width: var(--rail-right-width);
-  grid-template-columns: var(--shell-navigation-width) var(--shell-course-width) minmax(0, 1fr) var(--shell-materials-width);
+  --shell-ai-width: var(--rail-ai-width);
+  grid-template-columns: var(--shell-navigation-width) var(--shell-course-width) var(--shell-ai-width) minmax(0, 1fr) var(--shell-materials-width);
   /* Tabs share the window's top edge. Only the sidebars start below the
      independent corner controls; the workspace has no extra titlebar row. */
-  grid-template-areas: 'chrome chrome center .' 'navigation left center right';
+  grid-template-areas: 'chrome chrome . center .' 'navigation left ai center right';
   transition: grid-template-columns var(--dur-base) var(--ease-out);
   width: 100%;
   height: 100%;
@@ -22,9 +23,10 @@
 .rail-resizer {
   position: absolute;
   inset-block: var(--chrome-height) 0;
-  z-index: 20;
   width: 7px;
   cursor: col-resize;
+  /* Above the AI pull tab, whose hit area starts on the same edge. */
+  z-index: 22;
   touch-action: none;
 }
 
@@ -58,6 +60,61 @@
 .app-shell[data-left-rail='closed'] { --shell-navigation-width: 0px; }
 .app-shell[data-course-rail='closed'] { --shell-course-width: 0px; }
 .app-shell[data-right-rail='closed'] { --shell-materials-width: 0px; }
+.app-shell[data-ai-rail='closed'] { --shell-ai-width: 0px; }
+
+/* AI column: fixed-width content clipped by its grid track, so closing never reflows the chat. */
+.shell-ai-rail {
+  grid-area: ai;
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+  border-left: 1px solid var(--shell-divider);
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.shell-ai-rail > .workspace-assistant { width: var(--rail-ai-width); }
+.app-shell[data-ai-rail='closed'] .shell-ai-rail { opacity: 0; border-left-color: transparent; pointer-events: none; }
+
+/* Pull tab: 26×72 visible, 44×96 hit area, pinned to the rightmost left column's edge. */
+.ai-rail-handle {
+  position: absolute;
+  top: calc(50% + var(--chrome-height) / 2);
+  left: 0;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  width: 44px;
+  height: 96px;
+  padding: 0;
+  border: 0;
+  background: none;
+  transform: translate(calc(var(--shell-navigation-width) + var(--shell-course-width) + var(--shell-ai-width) - 1px), -50%);
+  transition: transform var(--dur-base) var(--ease-out);
+  -webkit-app-region: no-drag;
+}
+.ai-rail-handle__tab {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  width: 26px;
+  height: 72px;
+  color: var(--text-primary);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-left: 0;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.ai-rail-handle[data-open='true'] .ai-rail-handle__tab { color: var(--text-secondary); background: var(--bg-surface); }
+.ai-rail-handle:hover .ai-rail-handle__tab { color: var(--accent); }
+.ai-rail-handle:active .ai-rail-handle__tab { transform: scale(0.94); }
+.ai-rail-handle:focus-visible { outline: none; }
+.ai-rail-handle:focus-visible .ai-rail-handle__tab { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.ai-rail-handle:disabled { cursor: default; }
+.ai-rail-handle:disabled .ai-rail-handle__tab { opacity: 0.5; }
+.ai-rail-handle__spark { font-size: 13px; line-height: 1; }
+.ai-rail-handle__label { font-size: 9px; font-weight: 650; letter-spacing: 0.04em; line-height: 1; }
 .shell-course-rail, .shell-materials-rail {
   min-width: 0;
   min-height: 0;
@@ -606,13 +663,7 @@ div.toast {
 
 /* A single shared rail, with chrome owned by the shell rather than a dock group. */
 .right-sidebar { display:flex; flex-direction:column; width:var(--rail-right-width); height:100%; min-height:0; border-left:1px solid var(--shell-divider); background:var(--bg-surface); }
-.right-sidebar__tabs { display:flex; align-items:stretch; gap:6px; height:var(--chrome-height); min-height:var(--chrome-height); padding:0 12px; border-bottom:1px solid var(--shell-divider); }
-.right-sidebar__tabs button { display:grid; place-items:center; position:relative; width:36px; height:100%; color:var(--text-muted); -webkit-app-region:no-drag; }
-.right-sidebar__tabs button[aria-selected='true'] { color:var(--text-primary); }
-.right-sidebar__tabs button[aria-selected='true']::after { content:''; position:absolute; bottom:0; left:8px; right:8px; height:2px; border-radius:2px; background:currentColor; }
-.right-sidebar > section { flex:1; min-height:0; overflow:hidden; }
-.right-sidebar > section[hidden] { display:none; }
-.right-sidebar > section > .app-rail { height:100%; border-left:0; }
+.right-sidebar > .app-rail { flex:1; min-height:0; border-left:0; }
 .app-shell[data-right-rail='closed'] .right-sidebar { visibility:hidden; pointer-events:none; }
 .home-tabs { display:flex; align-items:center; gap:12px; }
 .home-tabs button { position:relative; padding:6px 0; font-size:var(--text-base); color:var(--text-muted); font-weight:500; white-space:nowrap; }

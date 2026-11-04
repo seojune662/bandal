@@ -105,7 +105,7 @@ export function prepareAgentLoginTab(payload: BrowserOpenUrl, proposedId: string
     tabId: proposedId, provider: payload.loginProvider, origin: new URL(payload.url).origin,
     callbackUrl: new URL(payload.url).searchParams.get('redirect_uri'),
     previousPanelId: previous?.previousPanelId ?? workspace.activePanelSource()?.panelId ?? null,
-    assistantWorkspace: previous?.assistantWorkspace ?? (useUiStore.getState().rightRailOpen && useUiStore.getState().rightRailTab === 'ai' ? workspace.activeWorkspace : null),
+    assistantWorkspace: previous?.assistantWorkspace ?? (useUiStore.getState().aiRailOpen ? workspace.activeWorkspace : null),
     courseId: workspace.activeCourseId, workspaceKey: workspace.activeWindowKey
   })
   return { tabId: proposedId, courseId: workspace.activeCourseId }

@@ -139,7 +139,8 @@ export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectory
   const columnPaths = [rootRelPath, ...trail]
   const listView = view === 'list' || view === 'compact'
   return <div className="materials-browser" data-view={view}>
-    {!searching && <nav className="materials-breadcrumbs" aria-label="자료 폴더 경로">
+    {/* At the root the rail heading already names the course. */}
+    {!searching && validDirectory !== rootRelPath && <nav className="materials-breadcrumbs" aria-label="자료 폴더 경로">
       <>{validDirectory !== rootRelPath && <button type="button" aria-label="상위 폴더로" onClick={() => navigate(materialParentPath(validDirectory).length < rootRelPath.length ? rootRelPath : materialParentPath(validDirectory))}><Icon name="chevronLeft" /></button>}<button type="button" aria-label="전체 자료" onClick={() => navigate(rootRelPath)}><Icon name="folder" /><span>{rootTitle}</span></button></>
       {trail.map(path => <span key={path}><Icon name="chevronRight" /><button type="button" aria-current={path === validDirectory ? 'location' : undefined} onClick={() => navigate(path)}>{materialBaseName(path)}</button></span>)}
     </nav>}

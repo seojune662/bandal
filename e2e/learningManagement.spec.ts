@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { createLearningRepo } from '../src/main/features/learning/learningRepo'
 import { createCourse, launchBandal } from './helpers/launch'
 import { installLearningAiFixture } from './helpers/learning'
+import { openAiRail } from './helpers/aiRail'
 
 const ai = { provider: 'gemini' as const, model: 'pro', effort: null }
 
@@ -86,7 +87,7 @@ test('review opens with useful creation actions and keeps old English failures i
     await showProjects(page)
     const list = page.getByRole('complementary', { name: '프로젝트 목록' })
     await list.locator('.project-list-row__open').filter({ hasText: '생물학 복습' }).click()
-    await page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     await expect(page.getByRole('tab', { name: '퀴즈', exact: true })).toBeVisible()
     await expect(page.getByRole('tab', { name: '플래시카드', exact: true })).toBeVisible()
     await expect(page.locator('.learning-run:visible')).toHaveCount(0)

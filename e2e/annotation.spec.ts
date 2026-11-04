@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal } from './helpers/launch'
+import { openAiRail } from './helpers/aiRail'
 
 test('selected document and live browser parts append immutable references to one workspace draft', async ({}, info) => {
   const server = createServer((_request, response) => {
@@ -36,7 +37,7 @@ test('selected document and live browser parts append immutable references to on
     await page.locator('[data-material-path="source.md"]').click()
     const paragraph = page.locator('.ProseMirror:visible p').filter({ hasText: 'Original immutable paragraph.' }).first()
     await expect(paragraph).toBeVisible()
-    await page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     const composer = page.getByRole('textbox', { name: '메시지 입력' })
     await expect(composer).toBeVisible()
     await composer.fill('선택한 부분을 설명해 줘')
@@ -55,14 +56,13 @@ test('selected document and live browser parts append immutable references to on
     await refs.first().getByRole('button', { name: 'source.md', exact: true }).click()
     await expect(paragraph).toContainText('Edited afterward.')
 
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await page.locator('[data-material-path="source.pdf"]').click()
     await expect(page.locator('.pdf-page:visible .textLayer').first()).toContainText('Selectable PDF source line')
     await page.getByRole('button', { name: '작업 공간 배치', exact: true }).click()
     await page.getByRole('menuitem', { name: '좌우 2분할', exact: true }).click()
     await expect(page.locator('.note-tab:visible')).toHaveCount(1)
     await expect(page.locator('.pdf-tab:visible')).toHaveCount(1)
-    await page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     await page.getByRole('button', { name: '화면에서 부분 선택' }).click()
     await page.locator('.pdf-page:visible .textLayer span').filter({ hasText: 'Selectable PDF source line' }).first().click()
     await expect(refs).toHaveCount(2)
@@ -132,7 +132,7 @@ test('selected document and live browser parts append immutable references to on
     await expect(page.getByRole('button', { name: '부분 선택 마치기' })).toHaveCount(0)
     await expect(refs).toHaveCount(0)
     await page.locator('.course-row').filter({ hasText: '부분 선택 원본' }).first().click()
-    await page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     await expect(refs).toHaveCount(6)
     await page.screenshot({ path: info.outputPath('annotation-source-references.png') })
   } finally { await bandal.close(); await new Promise<void>(resolve => server.close(() => resolve())) }

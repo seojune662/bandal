@@ -9,6 +9,7 @@ import { learningHash, splitLearningParagraphs } from '../src/main/features/lear
 import { BUILTIN_PACKS } from '../src/shared/workflowPacks/builtins'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { configureEnglishForm, installLearningAiFixture, ENGLISH_FIXTURE_SETTINGS } from './helpers/learning'
+import { openAiRail } from './helpers/aiRail'
 
 /** Keep provider authentication/network out of these native storage/UI checks. */
 async function isolateProvider(bandal: BandalApp): Promise<void> {
@@ -120,7 +121,7 @@ test('native learning keeps article evidence, quiz results, card schedules and e
     writeFileSync(oldPath, oldContent)
     await repo.updateRun({ binding, run: { id: 'import-1', kind: 'import-material', status: 'awaiting-confirmation', provider: 'fixture', articleIds: [], wordIds: [], source: { kind: 'material', relPath: '기존 카드.md' }, message: '미리보기를 확인하세요.', error: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), draft: { version: 1, words: [{ surface: 'adapt', lemma: 'adapt', meaning: '적응하다', sentence: 'Communities adapt to change.', sourceRef: { kind: 'material', pathScope: 'course', relPath: '기존 카드.md', quote: 'Communities adapt to change.', contentHash: learningHash(oldContent) } }], artifacts: [{ id: 'import-cards', kind: 'cards', title: '변환된 카드', cards: [{ id: 'import-card', front: 'resilient', back: '회복력이 있는', sourceRefs: [{ kind: 'material', pathScope: 'course', relPath: '기존 카드.md', quote: 'resilient', contentHash: learningHash(oldContent) }] }] }] } } })
     await publishChange(bandal, binding)
-    await page.getByRole('tab', { name: 'AI', exact: true }).click()
+    await openAiRail(page)
     const preview = page.getByRole('region', { name: '학습 자료 변환 미리보기' })
     await expect(preview).toBeVisible()
     await expect(preview.locator('.learning-preview-word')).toContainText('Communities adapt to change.')
@@ -129,7 +130,6 @@ test('native learning keeps article evidence, quiz results, card schedules and e
     await preview.getByLabel('뒷면').fill('회복력과 적응력이 있는')
     await preview.getByRole('button', { name: '새 학습 자료로 저장', exact: true }).click()
     await expect(preview).toBeHidden()
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await expect(page.locator('.project-materials').getByRole('button', { name: '내가 확인한 카드', exact: true })).toBeVisible()
     expect(readFileSync(oldPath, 'utf8')).toBe(oldContent)
     const imported = await repo.readArtifact(binding, 'import-cards')

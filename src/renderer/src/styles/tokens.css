@@ -54,6 +54,7 @@
   --shell-divider: color-mix(in srgb, var(--border-subtle) 55%, transparent);
   --rail-left-width: 15rem;
   --rail-right-width: 18rem;
+  --rail-ai-width: clamp(18rem, 28vw, 22rem);
   --control-height: 2rem;
   --button-height: 2.25rem;
   --icon-button-size: 2rem;

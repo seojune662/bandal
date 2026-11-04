@@ -6,6 +6,7 @@ import { createLearningRepo } from '../src/main/features/learning/learningRepo'
 import { learningHash } from '../src/main/features/learning/model'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { chooseLearningAi, configureEnglishForm, installLearningAiFixture } from './helpers/learning'
+import { openAiRail } from './helpers/aiRail'
 
 const rail = (bandal: BandalApp) => bandal.page.getByRole('navigation', { name: '앱 메뉴' })
 const learning = (bandal: BandalApp) => bandal.page.getByRole('complementary', { name: '프로젝트 목록' })
@@ -66,7 +67,6 @@ test('English starts from explicit topics and AI in an independent space while a
     await page.screenshot({ path: info.outputPath('learning-spaces-separated.png') })
     await learning(bandal).locator('.project-list-row__open').filter({hasText:'경제 복습'}).click()
     await expect(page.locator('.project-list-row[data-selected=true]')).toContainText('경제 복습')
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await expect(page.getByRole('button', { name: '첫 영어 글 찾기', exact: true })).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: '학습 화면' }).getByRole('button', { name: '읽기', exact: true })).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: '학습 화면' })).toHaveCount(0)
@@ -127,7 +127,7 @@ test('a model rejection exposes the actual run details and requires a different 
     // This is a failure of the current visit. Hydrate the initial home first so
     // the injected run is not correctly classified as a historical failure.
     await expect(bandal.page.locator('.project-list-row[data-selected=true]')).toContainText('오류 복구 읽기')
-    await bandal.page.getByRole('tab', {name:'AI',exact:true}).click()
+    await openAiRail(bandal.page)
     const course = await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(course => course.name === '오류 복구 읽기')!)
     const binding = { courseId: course.id, rootRelPath: '' }
     const repo = createLearningRepo({ getCourseFolder: () => course.folderPath })

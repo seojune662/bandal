@@ -103,7 +103,7 @@ test('five features use real surfaces and remove the temporary sample without AI
     const sidebar = page.locator('[data-tour="assistant-panel"]')
     await expect(sidebar).toBeVisible()
     await expect(sidebar.locator('.chat-context-auto')).toContainText('예시 강의자료.pdf')
-    await expect(page.getByRole('tab', { name: 'AI', exact: true })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('button', { name: 'AI 닫기', exact: true })).toBeVisible()
     await expect(page.locator('.workspace-host .chat-tab[data-variant="tab"]')).toHaveCount(0)
     await screenshot(bandal, 'tutorial-3-assistant')
     await advance(page, '내 자료로 퀴즈와 카드 만들기', 4)

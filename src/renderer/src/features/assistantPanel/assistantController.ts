@@ -30,7 +30,7 @@ export function openActiveAssistant(): void {
   })
 }
 export function useActiveAssistantOpen(): boolean {
-  return useUiStore(state => state.rightRailOpen && state.rightRailTab === 'ai')
+  return useUiStore(state => state.aiRailOpen)
 }
 export async function openChosenAssistant(choice: { courseId: string; binding?: LearningBinding }): Promise<void> {
   if (!useCoursesStore.getState().courses.some(course => course.id === choice.courseId)) throw new Error('선택한 공간을 찾을 수 없어요.')

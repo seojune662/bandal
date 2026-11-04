@@ -12,10 +12,10 @@ const state = vi.hoisted(() => ({
     setWorkspaceChromeMode: vi.fn(), showWorkspace: vi.fn()
   },
   ui: {
-    rightRailOpen: true, rightRailTab: 'materials', isSettingsOpen: false,
+    rightRailOpen: true, isSettingsOpen: false,
     isBoardOverlayOpen: false, isLinkGraphOpen: false,
     closeSettings: vi.fn(), closeBoardOverlay: vi.fn(), closeLinkGraph: vi.fn(),
-    setRightRailTab: vi.fn(), toggleRightRail: vi.fn()
+    showMaterials: vi.fn(), toggleRightRail: vi.fn()
   },
   overview: vi.fn(), shortcutMounts: 0
 }))
@@ -62,13 +62,13 @@ test('keeps the three controls in the requested order and offers all chrome mode
   click('윈도우 관리')
   expect(state.overview).toHaveBeenCalledOnce()
 })
-test('right sidebar control returns from covering surfaces and opens the remembered tab', () => {
+test('right sidebar control returns from covering surfaces and opens materials', () => {
   state.workspace.surface = 'community'; state.ui.isSettingsOpen = true
   act(() => root.render(<WorkspaceControls />))
   click('오른쪽 사이드바 펼치기')
   expect(state.workspace.showWorkspace).toHaveBeenCalledWith(state.workspace.activeWorkspace)
   expect(state.ui.closeSettings).toHaveBeenCalledOnce()
-  expect(state.ui.setRightRailTab).toHaveBeenCalledWith('materials')
+  expect(state.ui.showMaterials).toHaveBeenCalledOnce()
   expect(state.ui.toggleRightRail).not.toHaveBeenCalled()
 })
 test('empty workspaces retain all control buttons and keep the sidebar usable', () => {

@@ -7,9 +7,10 @@ import { learningHash, splitLearningParagraphs } from '../src/main/features/lear
 import type { LearningBinding, LearningSourceRef } from '../src/shared/types/learning'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { configureEnglishForm, installLearningAiFixture, ENGLISH_FIXTURE_SETTINGS } from './helpers/learning'
+import { openAiRail } from './helpers/aiRail'
 
 const assistant = (page: Page) => page.getByRole('region', { name: '공간 AI' })
-async function openAi(page: Page): Promise<void> { await page.getByRole('tab', { name: 'AI', exact: true }).click(); await expect(assistant(page).getByRole('textbox', { name: '메시지 입력' })).toBeVisible() }
+async function openAi(page: Page): Promise<void> { await openAiRail(page); await expect(assistant(page).getByRole('textbox', { name: '메시지 입력' })).toBeVisible() }
 async function sendMode(page: Page, mode: string, prompt: string): Promise<void> {
   await assistant(page).getByRole('tab', { name: mode, exact: true }).click()
   await assistant(page).getByRole('textbox', { name: '메시지 입력' }).fill(prompt)
@@ -156,14 +157,12 @@ test('independent project article and vocabulary tabs refresh AI generation sour
     await bandal.app.evaluate(({ BrowserWindow }, binding) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('learning:changed', { binding }) }, binding)
     await page.getByRole('tab', { name: '프로젝트', exact: true }).click()
     await page.locator('.project-list-row__open').filter({ hasText: '영어 자료 프로젝트' }).click()
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await page.locator('.project-materials').getByRole('button', { name: '단어장' }).click()
     await expect(page.locator('.learning-vocabulary-word')).toHaveCount(2)
     await openAi(page); await sendMode(page, '플래시카드', '저장한 표현으로 카드 만들어 줘')
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).studyModeProbe.generations.length)).toBe(1)
     const cards = await bandal.app.evaluate(() => (globalThis as any).studyModeProbe.generations[0])
     expect(cards).toMatchObject({ packId: 'flashcards', binding, source: { kind: 'vocabulary', wordIds, sourceCourseId: course.id } })
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await page.locator('.project-materials').getByRole('button', { name: 'Resilient communities', exact: true }).click()
     await expect(page.locator('.learning-reader:visible h1')).toHaveText('Resilient communities')
     await openAi(page); await sendMode(page, '퀴즈', '이 글로 퀴즈 만들어 줘')
@@ -196,7 +195,6 @@ test('Projects starts a fresh English space and resumed browser source uses the 
     await bandal.app.evaluate(({ BrowserWindow }, binding) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('learning:changed', { binding }) }, binding)
     await openNew(); await expect(dialog.getByLabel('학습 공간 이름')).toHaveValue(''); await dialog.getByRole('button', { name: '취소', exact: true }).click()
     await page.locator('.project-list-row__open').filter({ hasText: '프로젝트 영어 읽기' }).click()
-    await page.getByRole('tab', { name: '자료', exact: true }).click()
     await page.locator('.project-materials').getByRole('button', { name: 'Saved English article', exact: true }).click()
     await expect(page.locator('.learning-reader:visible h1')).toHaveText('Saved English article')
     await bandal.app.evaluate(({ BrowserWindow }, url) => { BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents.send('browser:open-url', { url }) }, `${origin}/first`)
