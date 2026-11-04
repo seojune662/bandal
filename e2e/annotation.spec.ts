@@ -73,10 +73,12 @@ test('selected document and live browser parts append immutable references to on
       const context = canvas.getContext('2d')!; context.drawImage(source, 0, 0)
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data; let blue = 0
       for (let i = 0; i < pixels.length; i += 4) if (pixels[i + 2]! > pixels[i]! + 40 && pixels[i + 2]! > pixels[i + 1]! + 10) blue++
-      return blue
+      return { blue, perimeter: canvas.width + canvas.height }
     })
     await info.attach('pdf-reference-crop', { body: Buffer.from((await refs.nth(1).getByRole('img').getAttribute('src'))!.split(',')[1]!, 'base64'), contentType: 'image/png' })
-    expect(bluePixels).toBe(0)
+    // The hover outline is a 2px accent border (≥ 4 × (w + h) pixels). A tiny 1x-DPI JPEG crop of black
+    // text shows a few chroma-fringe pixels on Windows, so allow far fewer than any outline would leave.
+    expect(bluePixels.blue).toBeLessThan(bluePixels.perimeter)
     await paragraph.click()
     await expect(refs).toHaveCount(3)
     await expect(refs.nth(2)).toContainText('Edited afterward.')
