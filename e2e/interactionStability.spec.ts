@@ -10,13 +10,16 @@ async function frames(page: Page, count = 3): Promise<void> {
 }
 
 // The materials list renders only the rows near its viewport, so scroll it
-// until the row exists before clicking.
+// from the top one screen at a time until the row exists before clicking.
 async function clickMaterial(page: Page, relPath: string): Promise<void> {
   const row = page.locator(`[data-material-path="${relPath}"]`)
-  for (const top of [0, Number.MAX_SAFE_INTEGER]) {
-    if (await row.count()) break
-    await page.locator('.materials-body:visible').evaluate((node, value) => { node.scrollTop = value }, top)
+  const body = page.locator('.materials-body:visible')
+  await body.evaluate(node => { node.scrollTop = 0 })
+  await frames(page)
+  while (!await row.count()) {
+    const moved = await body.evaluate(node => { const before = node.scrollTop; node.scrollTop += node.clientHeight; return node.scrollTop !== before })
     await frames(page)
+    if (!moved) break
   }
   await row.click()
 }
@@ -40,10 +43,10 @@ test.describe('continuous study interactions', () => {
 
   test('prepared 100-page documents remain responsive with 20 tabs', async ({}, info) => {
     const { page, app } = bandal
-    for (let i = 0; i < 18; i++) await page.locator(`[data-material-path="note-${i}.md"]`).click()
-    await page.locator('[data-material-path="pages.pdf"]').click()
+    for (let i = 0; i < 18; i++) await clickMaterial(page, `note-${i}.md`)
+    await clickMaterial(page, 'pages.pdf')
     await expect(page.locator('.react-pdf__Page canvas').first()).toBeVisible()
-    await page.locator('[data-material-path="slides.pptx"]').click()
+    await clickMaterial(page, 'slides.pptx')
     await expect(page.locator('.presentation-page__text').first()).toContainText('슬라이드 복사')
     await page.getByRole('button', { name: '페이지 필기', exact: true }).click()
     await page.getByRole('button', { name: '만들고 나란히 열기', exact: true }).click()
@@ -87,7 +90,7 @@ test.describe('continuous study interactions', () => {
     const { page, app } = bandal
     // Exercise the small desktop layout used by hosted Windows runners too.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 768))
-    await page.locator('[data-material-path="slides.pptx"]').click()
+    await clickMaterial(page, 'slides.pptx')
     const viewer = page.locator('.presentation-viewer:visible')
     await viewer.getByRole('spinbutton', { name: '슬라이드 번호' }).fill('5')
     const slide = viewer.locator('section[data-slide-index="4"]')
@@ -135,7 +138,7 @@ test.describe('continuous study interactions', () => {
     const originalSize = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize())
     try {
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 768))
-      await page.locator('[data-material-path="slides.pptx"]').click()
+      await clickMaterial(page, 'slides.pptx')
       const viewer = page.locator('.presentation-viewer:visible')
       if (!await page.locator('.page-note-scroll:visible').count()) {
         await viewer.getByRole('button', { name: /^페이지 필기/ }).click()
@@ -209,7 +212,7 @@ test.describe('continuous study interactions', () => {
         })
       }
     })
-    await page.locator('[data-material-path="ink-heavy.pptx"]').click()
+    await clickMaterial(page, 'ink-heavy.pptx')
     const viewer = page.locator('.presentation-viewer:visible')
     const layer = viewer.locator('.pdf-drawing-layer').first()
     await expect(layer.locator('.ink-layer__mark')).toHaveCount(200)
@@ -273,7 +276,7 @@ test('PDF pairs hand scrolling back immediately after text composition and keep 
     for (let i = 0; i < 100; i++) pdf.addPage([720, 540])
     writeFileSync(join(bandal.dataRoot, folder.name, 'paired.pdf'), await pdf.save())
     await page.getByRole('button', { name: '자료 새로고침' }).click()
-    await page.locator('[data-material-path="paired.pdf"]').click()
+    await clickMaterial(page, 'paired.pdf')
     await page.getByRole('button', { name: '페이지 필기', exact: true }).click()
     await page.getByRole('button', { name: '만들고 나란히 열기', exact: true }).click()
     await expect(page.locator('.page-note-paper')).toHaveCount(100)
@@ -350,7 +353,7 @@ for (const action of ['restore', 'wheel', 'jump'] as const) {
         })
       })
       await page.getByRole('button', { name: '자료 새로고침' }).click()
-      await page.locator('[data-material-path="restore.pdf"]').click()
+      await clickMaterial(page, 'restore.pdf')
       await expect(page.locator('[data-pdf-page]')).toHaveCount(100)
       await expect.poll(() => app.evaluate(() => typeof Reflect.get(globalThis, '__releasePdfViewState'))).toBe('function')
       const scroller = page.locator('.pdf-scroller')
@@ -377,7 +380,7 @@ for (const action of ['restore', 'wheel', 'jump'] as const) {
         await expect(page.getByRole('button', { name: '현재 배율 200%, 클릭하면 폭 맞춤' })).toBeVisible()
         const tab = page.locator('.workspace-tab').filter({ hasText: 'restore.pdf' })
         await tab.getByRole('button', { name: '탭 닫기' }).click()
-        await page.locator('[data-material-path="restore.pdf"]').click()
+        await clickMaterial(page, 'restore.pdf')
         await expect(jump).toHaveValue('30')
         await expect(page.getByRole('button', { name: '현재 배율 200%, 클릭하면 폭 맞춤' })).toBeVisible()
       } else {
