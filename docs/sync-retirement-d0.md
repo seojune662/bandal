@@ -114,6 +114,7 @@ where exists (select 1 from public.bandal_records r where r.user_id = u.id)
 | 날짜 | 항목 | 결과 |
 |---|---|---|
 | 2026-11-04 | Paddle 판매 중지 | 보류. 사용자가 나중에 직접 한다 |
+| 2026-11-04 | 앱 릴리스 | v0.93.2 공개(17:47 KST). v0.93.0·v0.93.1은 오래된 E2E 실패로 공개하지 않음. `release-notes/v0.93.2.md` |
 | | 사전 확인 | |
 | | 쓰기 차단 | |
 | | D0+30 삭제 | |
