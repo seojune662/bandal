@@ -9,7 +9,7 @@
 
 | # | 할 일 | 누가 | 준비물 |
 |---|---|---|---|
-| 1 | Paddle 대시보드에서 Bandal Sync 판매를 중지한다 | 사람 | — |
+| 1 | **보류(2026-11-04).** Paddle 대시보드에서 Bandal Sync 판매를 중지한다. 사용자가 나중에 직접 한다 | 사람 | — |
 | 2 | 앱을 릴리스한다(태그 → `release.yml`). 설치 파일과 업데이트 피드가 올라왔는지 확인한다 | 개발 | `docs/release.md` |
 | 3 | 사전 확인 쿼리를 실행하고 결과를 이 문서 끝에 적는다 | 사람 | 아래 "사전 확인" |
 | 4 | SQL Editor에서 `supabase/operations/sync-write-block.sql` 파일 전체를 실행한다. 오류 없이 끝나면 차단이 확인된 것이다 | 사람 | SQL 파일 |
@@ -113,6 +113,7 @@ where exists (select 1 from public.bandal_records r where r.user_id = u.id)
 
 | 날짜 | 항목 | 결과 |
 |---|---|---|
+| 2026-11-04 | Paddle 판매 중지 | 보류. 사용자가 나중에 직접 한다 |
 | | 사전 확인 | |
 | | 쓰기 차단 | |
 | | D0+30 삭제 | |
