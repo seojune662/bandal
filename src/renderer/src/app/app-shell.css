@@ -111,8 +111,7 @@
 .ai-rail-handle:active .ai-rail-handle__tab { transform: scale(0.94); }
 .ai-rail-handle:focus-visible { outline: none; }
 .ai-rail-handle:focus-visible .ai-rail-handle__tab { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.ai-rail-handle:disabled { cursor: default; }
-.ai-rail-handle:disabled .ai-rail-handle__tab { opacity: 0.5; }
+.ai-rail-handle[data-dragging] { pointer-events: none; }
 .ai-rail-handle__spark { font-size: 13px; line-height: 1; }
 .ai-rail-handle__label { font-size: 9px; font-weight: 650; letter-spacing: 0.04em; line-height: 1; }
 .shell-course-rail, .shell-materials-rail {

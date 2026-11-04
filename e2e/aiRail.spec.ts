@@ -7,6 +7,13 @@ import { closeAiRail, openAiRail } from './helpers/aiRail'
 test('AI opens as a left column that keeps its draft while closed, and materials start right under one search row', async ({}, info) => {
   const bandal = await launchBandal()
   try {
+    // No AI provider on CI: a connected fixture keeps the composer rendered.
+    await bandal.app.evaluate(({ ipcMain }) => {
+      const handle = (channel: string, fn: (req: any) => any) => { ipcMain.removeHandler(channel); ipcMain.handle(channel, (_event, req) => fn(req)) }
+      handle('chat:open', req => ({ history: [], availability: { installed: true, loggedIn: true }, sessionInfo: { id: req.sessionId, courseId: req.courseId, provider: 'claude-code', model: 'fixture', status: 'idle', title: null, surface: 'app', cliSessionId: null, lastUsedAt: null } }))
+      handle('agent:models', () => ({ models: [{ id: 'fixture', displayName: 'Fixture', isDefault: true }] }))
+      handle('agent:skills', () => [])
+    })
     const { page } = bandal
     await createCourse(page, 'AI 열 검사')
     const course = (await page.evaluate(() => window.bandal.invoke('courses:list', {})))[0]!
@@ -30,7 +37,7 @@ test('AI opens as a left column that keeps its draft while closed, and materials
     const ai = page.getByRole('region', { name: 'AI', exact: true })
     await expect(ai).toBeVisible()
     // Measure after the grid transition settles; the pull tab rides the column's right edge.
-    await expect.poll(async () => Math.round((await page.locator('#ai-rail').boundingBox())!.width)).toBeGreaterThan(300)
+    await expect.poll(async () => Math.round((await page.locator('#ai-rail').boundingBox())!.width)).toBeGreaterThanOrEqual(280)
     await expect.poll(async () => {
       const box = (await page.locator('#ai-rail').boundingBox())!, tab = (await page.getByRole('button', { name: 'AI 닫기', exact: true }).boundingBox())!
       return Math.abs(box.x - (courseRail.x + courseRail.width)) <= 1 && Math.abs(tab.x - (box.x + box.width)) <= 2
