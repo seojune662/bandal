@@ -39,6 +39,8 @@ export class DataRootMoveError extends Error {
 
 type Journal = DataRootMove & { state: 'copying' | 'switching' }
 
+// Windows keeps a killed process's handles (and antivirus scans) open briefly, so a plain rm can hit ENOTEMPTY/EBUSY.
+const removeStaging = (staging: string): void => rmSync(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 const inside = (root: string, path: string): boolean => path === root || path.startsWith(root + sep)
 const rebase = (move: Pick<DataRootMove, 'from' | 'to'>, path: string): string => join(move.to, relative(move.from, path))
 const tableExists = (db: Database, name: string): boolean => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name))
@@ -57,7 +59,7 @@ export async function moveDataRoot(db: Database, move: DataRootMove, deps: DataR
   if (existsSync(move.to) && readdirSync(move.to).length > 0) {
     throw new DataRootMoveError('target-not-empty', `새 자료 위치에 이미 파일이 있어요: ${move.to}`)
   }
-  rmSync(staging, { recursive: true, force: true })
+  removeStaging(staging)
   writeJournal(deps.journalPath, { ...move, state: 'copying' })
   try {
     const sources = move.folders.filter(folder => existsSync(folder.from))
@@ -84,7 +86,7 @@ export async function moveDataRoot(db: Database, move: DataRootMove, deps: DataR
       }
     })()
   } catch (error) {
-    rmSync(staging, { recursive: true, force: true })
+    removeStaging(staging)
     rmSync(deps.journalPath, { force: true })
     throw error
   }
@@ -112,7 +114,7 @@ export function recoverDataRootMove(db: Database, deps: { journalPath: string; c
       if (deps.currentDataRoot === journal.to) deps.setDataRoot(journal.from)
     }
   }
-  rmSync(staging, { recursive: true, force: true })
+  removeStaging(staging)
   rmSync(deps.journalPath, { force: true })
 }
 
