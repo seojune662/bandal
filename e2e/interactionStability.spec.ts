@@ -9,6 +9,18 @@ async function frames(page: Page, count = 3): Promise<void> {
   await page.evaluate(async (n) => { for (let i = 0; i < n; i++) await new Promise(requestAnimationFrame) }, count)
 }
 
+// The materials list renders only the rows near its viewport, so scroll it
+// until the row exists before clicking.
+async function clickMaterial(page: Page, relPath: string): Promise<void> {
+  const row = page.locator(`[data-material-path="${relPath}"]`)
+  for (const top of [0, Number.MAX_SAFE_INTEGER]) {
+    if (await row.count()) break
+    await page.locator('.materials-body:visible').evaluate((node, value) => { node.scrollTop = value }, top)
+    await frames(page)
+  }
+  await row.click()
+}
+
 test.describe('continuous study interactions', () => {
   let bandal: BandalApp
   test.beforeAll(async () => {
@@ -158,8 +170,8 @@ test.describe('continuous study interactions', () => {
       await page.keyboard.press('Enter')
       await expect(page.locator('.workspace-course:not([hidden]) .dv-tab')).toHaveCount(openTabCount)
       await expect(viewer.getByRole('button', { name: '스크롤 연결됨', exact: true })).toBeVisible()
-      await page.locator('[data-material-path="note-0.md"]').click()
-      await page.locator('[data-material-path="slides.pptx"]').click()
+      await clickMaterial(page, 'note-0.md')
+      await clickMaterial(page, 'slides.pptx')
       await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
       await viewer.getByRole('button', { name: '확대', exact: true }).click()
       await frames(page, 5)
