@@ -1,5 +1,7 @@
 # 배포와 자동 업데이트
 
+v0.94.0은 AI 채팅을 오른쪽 패널의 탭에서 과목 사이드바 오른쪽 열로 옮긴다. 오른쪽 패널은 자료 전용으로 바꾸고 상단을 두 줄로 줄인다. 변경과 검증은 [`release-notes/v0.94.0.md`](release-notes/v0.94.0.md)를 따른다.
+
 v0.93.2는 D0(2026-11-04) 릴리스다. v0.93.0·v0.93.1은 자료 목록 창 렌더링을 따라가지 못한 오래된 E2E가 실패해 공개하지 않았다. 로그인을 선택으로 바꾸고 Bandal Sync 계정 동기화·Paddle 화면과 카카오 로그인을 없앤다. 설정창 개편과 Gmail 웹메일 버튼을 포함한다. 변경과 검증은 [`release-notes/v0.93.2.md`](release-notes/v0.93.2.md)를 따른다.
 
 v0.92.9는 Gmail 연결의 토큰 교환에 Google 데스크톱 클라이언트 시크릿을 포함해 `client_secret is missing.` 실패를 수정한다. 릴리스 빌드는 Actions secret `MAIN_VITE_GOOGLE_DESKTOP_CLIENT_SECRET`을 번들에 넣는다. 검증과 공개 결과는 [`release-notes/v0.92.9.md`](release-notes/v0.92.9.md)를 따른다.
