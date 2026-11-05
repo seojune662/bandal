@@ -75,6 +75,21 @@ test('icon cards preview actual contents, drill into folders, and retain opening
   expect(row('memo.md')).not.toBeNull()
 })
 
+test('list view expands folders in place with indented children instead of browsing into them', async () => {
+  const onDirectoryChange = vi.fn()
+  const renderList = async (expandedPaths: Record<string, boolean>): Promise<void> => { await act(async () => { root.render(<MaterialBrowser {...props} expandedPaths={expandedPaths} view="list" directory="" onDirectoryChange={onDirectoryChange} />) }) }
+  await renderList({})
+  expect(row('Week 1/lesson.pdf')).toBeNull()
+  await act(async () => click(row('Week 1')))
+  expect(props.onToggleFolder).toHaveBeenCalledWith('Week 1')
+  expect(onDirectoryChange).not.toHaveBeenCalled()
+  await renderList({ 'Week 1': true })
+  expect(row('Week 1').closest('li')?.getAttribute('aria-expanded')).toBe('true')
+  expect(row('Week 1/lesson.pdf').closest('[aria-level]')?.getAttribute('aria-level')).toBe('2')
+  expect(row('memo.md')).not.toBeNull()
+  expect(host.querySelector('.materials-breadcrumbs')).toBeNull()
+})
+
 test('gallery selection updates a large preview without opening, while Enter and the open button do open', async () => {
   await render('gallery')
   click(row('image.png'))
@@ -130,24 +145,19 @@ test('inline rename remains usable in icon view', async () => {
   expect(props.onCancelRename).toHaveBeenCalledOnce()
 })
 
-test('readable list shows thumbnails and metadata, enters folders and returns without a tree', async () => {
+test('readable list shows thumbnails and metadata without the compact tree markup', async () => {
   await render('list')
   expect(row('memo.md').querySelector('.material-card-preview')).not.toBeNull()
   expect(row('memo.md').querySelector('.material-row__details')?.textContent).toContain('마크다운')
-  await act(async () => click(row('Week 1')))
-  expect(row('Week 1/lesson.pdf')).not.toBeNull()
-  expect(row('memo.md')).toBeNull()
-  await act(async () => click(host.querySelector('[aria-label="상위 폴더로"]')!))
-  expect(row('memo.md')).not.toBeNull()
   expect(host.querySelector('.material-tree')).toBeNull()
 })
 
-test('compact retains expandable inline tree and scoped list cannot escape its project root', async () => {
+test('compact retains expandable inline tree and scoped browsing cannot escape its project root', async () => {
   await render('compact')
   click(row('Week 1'))
   expect(props.onToggleFolder).toHaveBeenCalledWith('Week 1')
   expect(row('memo.md')).not.toBeNull()
-  await act(async () => root.render(<MaterialBrowser {...props} nodes={[{ kind: 'dir', name: 'Empty', relPath: 'projects/a/Empty', children: [] }]} view="list" rootRelPath="projects/a" directory="projects/a/Empty" onDirectoryChange={props.onToggleFolder} />))
+  await act(async () => root.render(<MaterialBrowser {...props} nodes={[{ kind: 'dir', name: 'Empty', relPath: 'projects/a/Empty', children: [] }]} view="icons" rootRelPath="projects/a" directory="projects/a/Empty" onDirectoryChange={props.onToggleFolder} />))
   click(host.querySelector('[aria-label="상위 폴더로"]')!)
   expect(props.onToggleFolder).toHaveBeenLastCalledWith('projects/a')
   expect(host.textContent).toContain('이 폴더에 자료를 드래그')
@@ -158,7 +168,7 @@ test('a large readable list mounts a bounded set of previews and keyboard End re
   // jsdom has no layout: model a real viewport whose list moves when scrolled.
   // Otherwise a pending measurement sees top=0 even after End and unmounts
   // the last row by incorrectly returning the virtual window to the start.
-  const rowHeight = 100, viewportHeight = 600, listOffset = 50
+  const rowHeight = 52, viewportHeight = 600, listOffset = 50
   let scrollTop = 0
   Object.defineProperties(host, {
     clientHeight: { configurable: true, value: viewportHeight },

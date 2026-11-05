@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
-import { MaterialTree, TreeNode, VirtualMaterialTree, type MaterialTreeProps } from './MaterialTree'
+import { flattenVisible, MaterialTree, TreeNode, VirtualMaterialTree, type MaterialTreeProps } from './MaterialTree'
 import { MaterialFileIcon } from './materialIcons'
 import { findMaterialNode, materialBaseName, materialParentPath } from './materialPaths'
 import type { MaterialView } from './materialViewPreference'
@@ -107,8 +107,10 @@ interface MaterialBrowserProps extends MaterialTreeProps {
 }
 
 export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectoryChange, searching = false, expanded = false, rootTitle = '전체 자료', ...props }: MaterialBrowserProps): JSX.Element {
+  // The list view expands folders in place like the compact tree; only icons/columns/gallery browse into folders.
+  const listTree = view === 'list' && !searching
   const directoryNode = findMaterialNode(props.nodes, directory)
-  const validDirectory = !searching && directoryNode?.kind === 'dir' ? directoryNode.relPath : rootRelPath
+  const validDirectory = !searching && !listTree && directoryNode?.kind === 'dir' ? directoryNode.relPath : rootRelPath
   const nodes = searching || validDirectory === rootRelPath ? props.nodes : directoryNode?.children ?? []
   const selected = findMaterialNode(props.nodes, props.selectedRelPath)
   const columns = useRef<HTMLDivElement>(null)
@@ -124,12 +126,12 @@ export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectory
     if (node && view === 'columns') props.onSelect(node)
   }
   const trail = validDirectory.split('/').filter(Boolean).map((_, index, parts) => parts.slice(0, index + 1).join('/')).filter(path => !rootRelPath || path.startsWith(rootRelPath + '/'))
-  const item = (node: MaterialNode, appearance: 'icon' | 'gallery' | 'column' | 'list', index?: number): JSX.Element => <TreeNode
-    {...props} key={node.relPath} node={node} depth={0} flat appearance={appearance} {...(index === undefined ? {} : { virtualIndex: index })} selectOnly={appearance === 'gallery' || appearance === 'column'}
-    expandedPaths={Object.fromEntries(trail.map(path => [path, true]))}
+  const item = (node: MaterialNode, appearance: 'icon' | 'gallery' | 'column' | 'list', index?: number, depth = 0): JSX.Element => <TreeNode
+    {...props} key={node.relPath} node={node} depth={depth} flat appearance={appearance} {...(index === undefined ? {} : { virtualIndex: index })} selectOnly={appearance === 'gallery' || appearance === 'column'}
+    expandedPaths={listTree ? props.expandedPaths : Object.fromEntries(trail.map(path => [path, true]))}
     preview={appearance === 'column' ? undefined : <><CardPreview courseId={props.courseId} node={node} />{appearance !== 'list' && <small className="material-card-metadata">{metadata(node)}</small>}</>}
     details={appearance === 'list' ? <span className="material-row__details"><small>{metadata(node)}</small><span><span className="material-type-badge">{materialTypeLabel(node)}</span>{searching && <small className="material-row__path">{materialParentPath(node.relPath) || rootTitle}</small>}</span></span> : undefined}
-    onToggleFolder={navigate}
+    onToggleFolder={listTree ? props.onToggleFolder : navigate}
     onSelect={node => {
       if (appearance === 'column' && node.kind !== 'dir' && materialParentPath(node.relPath) !== validDirectory) onDirectoryChange(materialParentPath(node.relPath))
       props.onSelect(node)
@@ -155,8 +157,8 @@ export function MaterialBrowser({ view, directory, rootRelPath = '', onDirectory
       {selected && selected.kind !== 'dir' && <SelectedPreview courseId={props.courseId} node={selected} className="materials-column-preview" />}
     </div> : <>
       {view === 'gallery' && galleryNode && <SelectedPreview courseId={props.courseId} node={galleryNode} className="materials-gallery-preview" />}
-      {listView ? <VirtualMaterialTree {...props} rows={nodes.map(node => ({ node, depth: 0 }))} initialHeight={expanded ? 116 : 100}
-        className="materials-items materials-items--list" label={searching ? '자료 검색 결과' : '자료 목록'} renderRow={(node, index) => item(node, 'list', index)} />
+      {listView ? <VirtualMaterialTree {...props} rows={listTree ? flattenVisible(props.nodes, props.expandedPaths) : nodes.map(node => ({ node, depth: 0 }))} initialHeight={expanded ? 64 : 52}
+        className="materials-items materials-items--list" label={searching ? '자료 검색 결과' : '자료 목록'} renderRow={(node, index, depth) => item(node, 'list', index, depth)} />
         : <ul className={`materials-items materials-items--${view}`} role="tree" aria-label={searching ? '자료 검색 결과' : view === 'icons' ? '자료 아이콘 보기' : '자료 갤러리 보기'}>{nodes.map(node => item(node, view === 'icons' ? 'icon' : 'gallery'))}</ul>}
       {nodes.length === 0 && <p className="materials-empty-folder">이 폴더에 자료를 드래그해서 추가하세요.</p>}
       <p className="materials-item-count">{nodes.length}개 항목{view === 'gallery' && nodes.length > 0 ? ' · 두 번 클릭해서 열기' : ''}</p>

@@ -564,7 +564,7 @@ export interface MaterialTreeProps {
 }
 
 interface FlatMaterial { node: MaterialNode; depth: number }
-function flattenVisible(nodes: MaterialNode[], expanded: Record<string, boolean>, depth = 0): FlatMaterial[] {
+export function flattenVisible(nodes: MaterialNode[], expanded: Record<string, boolean>, depth = 0): FlatMaterial[] {
   const rows: FlatMaterial[] = []
   for (const node of nodes) {
     rows.push({ node, depth })
@@ -575,7 +575,7 @@ function flattenVisible(nodes: MaterialNode[], expanded: Record<string, boolean>
 
 export function VirtualMaterialTree({ rows, renderRow, className = 'material-tree', label = '자료 파일 트리', initialHeight = 32, ...props }: MaterialTreeProps & {
   rows: FlatMaterial[]
-  renderRow?: (node: MaterialNode, index: number) => ReactNode
+  renderRow?: (node: MaterialNode, index: number, depth: number) => ReactNode
   className?: string
   label?: string
   initialHeight?: number
@@ -636,7 +636,7 @@ export function VirtualMaterialTree({ rows, renderRow, className = 'material-tre
     }}>
     <li role="presentation" aria-hidden style={{ height: start * window.height }} />
     {rows.slice(start, end).map(({ node, depth }, index) =>
-      renderRow ? renderRow(node, start + index) : <TreeNode {...props} key={node.relPath} node={node} depth={depth} flat virtualIndex={start + index} />)}
+      renderRow ? renderRow(node, start + index, depth) : <TreeNode {...props} key={node.relPath} node={node} depth={depth} flat virtualIndex={start + index} />)}
     <li role="presentation" aria-hidden style={{ height: Math.max(0, rows.length - end) * window.height }} />
   </ul>
 }

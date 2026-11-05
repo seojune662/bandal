@@ -29,7 +29,7 @@ import { descriptorFor } from '../workspace/tabIdentity'
 import { MaterialDeleteDialog } from './MaterialDeleteDialog'
 import { type MaterialTreeProps } from './MaterialTree'
 import { MaterialBrowser, MaterialViewMenu } from './MaterialViews'
-import { readMaterialView, rememberMaterialView, readMaterialSort, rememberMaterialSort, type MaterialView } from './materialViewPreference'
+import { readMaterialView, rememberMaterialView, readMaterialSort, rememberMaterialSort, isTreeView, type MaterialView } from './materialViewPreference'
 import { sortMaterials } from './materialPresentation'
 import { revealMaterialRow } from './materialScroll'
 import { useMaterialContentSearch } from './useMaterialContentSearch'
@@ -224,7 +224,7 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
   const [browserDirectory, setBrowserDirectory] = useState(() => materialUiStates.get(scopeKey)?.directory ?? materialRoot)
   const [searchAll, setSearchAll] = useState(() => materialUiStates.get(scopeKey)?.searchAll ?? false)
   const [query, setQuery] = useState(() => materialUiStates.get(scopeKey)?.query ?? '')
-  const searchRoot = searchAll || view === 'compact' ? materialRoot : browserDirectory
+  const searchRoot = searchAll || isTreeView(view) ? materialRoot : browserDirectory
   const searchResults = workspaceSearchResults(allSearchResults, searchRoot)
   const contentSearch = useMaterialContentSearch(course && !course.missing ? course.id : null, query, searchRoot)
   const [projectName, setProjectName] = useState<string | null>(null)
@@ -419,11 +419,11 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
     [ensureAncestorsExpanded, presentationIsCurrent]
   )
 
-  const browsedDirectory = view !== 'compact' ? findMaterialNode(tree, browserDirectory) : null
+  const browsedDirectory = !isTreeView(view) ? findMaterialNode(tree, browserDirectory) : null
   const importDirRelPath = browsedDirectory?.kind === 'dir' ? browsedDirectory.relPath : materialRoot
   const selectedNode = findMaterialNode(tree, selectedRelPath)
-  const creationTarget = view === 'compact' ? selectedNode : browsedDirectory
-  const pasteDirRelPath = view === 'compact' ? workspaceDestination(targetDirectory(selectedNode), materialRoot) : importDirRelPath
+  const creationTarget = isTreeView(view) ? selectedNode : browsedDirectory
+  const pasteDirRelPath = isTreeView(view) ? workspaceDestination(targetDirectory(selectedNode), materialRoot) : importDirRelPath
   const pasteDestinationName =
     pasteDirRelPath === ''
       ? `${course?.name ?? '과목'} 루트`
@@ -668,7 +668,7 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
     setQuery('')
     clearSearch()
     ensureAncestorsExpanded(target.relPath)
-    if (view !== 'compact') setBrowserDirectory(materialParentPath(target.relPath))
+    if (!isTreeView(view)) setBrowserDirectory(materialParentPath(target.relPath))
     setEditing({ relPath: target.relPath, reopenAfterRename: false })
   }
 
@@ -966,7 +966,7 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
         {course !== null && (
           <span className="materials-heading__course" title={course.name}>
             <CourseMark color={course.color} />
-            <span className="materials-heading__name">{view !== 'compact' && browserDirectory !== materialRoot ? materialBaseName(browserDirectory) : workspace?.kind === 'project' ? projectName ?? course.name : course.name}</span>
+            <span className="materials-heading__name">{!isTreeView(view) && browserDirectory !== materialRoot ? materialBaseName(browserDirectory) : workspace?.kind === 'project' ? projectName ?? course.name : course.name}</span>
           </span>
         )}
         <div className="materials-heading__actions">
@@ -1049,8 +1049,8 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
         <MaterialViewMenu value={view} onChange={next => {
                   setView(next); rememberMaterialView(next)
                   if (selectedRelPath !== null) {
-                    if (view === 'compact') { const node = findMaterialNode(tree, selectedRelPath); setBrowserDirectory(node?.kind === 'dir' ? node.relPath : materialParentPath(selectedRelPath)); if (node?.kind === 'dir') setSelectedRelPath(null) }
-                    if (next === 'compact') ensureAncestorsExpanded(selectedRelPath)
+                    if (isTreeView(view) && !isTreeView(next)) { const node = findMaterialNode(tree, selectedRelPath); setBrowserDirectory(node?.kind === 'dir' ? node.relPath : materialParentPath(selectedRelPath)); if (node?.kind === 'dir') setSelectedRelPath(null) }
+                    if (isTreeView(next)) ensureAncestorsExpanded(selectedRelPath)
                   }
                 }} />
       </div>
@@ -1148,7 +1148,7 @@ export function MaterialsSidebar({ course, expanded = false, onToggleExpanded }:
             <section
               className="materials-files-group"
               aria-label="자료 파일"
-              onContextMenu={(event) => handleContextMenu(event, view === 'compact' ? null : findMaterialNode(tree, browserDirectory))}
+              onContextMenu={(event) => handleContextMenu(event, isTreeView(view) ? null : findMaterialNode(tree, browserDirectory))}
             >
               {/* Only a project rail has a second section, so only there is "파일" worth a row. */}
               {(filesCollapsible || downloadingDirRelPath === '') && <div className="materials-group-heading">

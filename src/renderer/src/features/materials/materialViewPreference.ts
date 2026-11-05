@@ -26,3 +26,8 @@ export function rememberMaterialSort(value: MaterialSortOrder): void {
 export function rememberMaterialView(value: MaterialView): void {
   try { window.localStorage.setItem(MATERIAL_VIEW_STORAGE_KEY, value) } catch { /* Keep the current session's selection. */ }
 }
+
+/** Tree views expand folders in place instead of browsing into them. */
+export function isTreeView(view: MaterialView): boolean {
+  return view === 'compact' || view === 'list'
+}
