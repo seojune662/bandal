@@ -53,6 +53,12 @@ test('material views preview documents, navigate folders and persist the chosen 
     await expect(page.locator('.materials-browser[data-view="gallery"]')).toBeVisible()
     await chooseView(page, '목록')
     await expect(page.locator('.materials-items--list [data-material-path="과제.pdf"]')).toBeVisible()
+    // The list expands folders in place like the compact tree.
+    await page.locator('.materials-items--list [data-material-path="강의"]').click()
+    await expect(page.locator('.materials-items--list [data-material-path="강의/요약.md"]')).toBeVisible()
+    await expect(page.locator('.materials-items--list [data-material-path="과제.pdf"]')).toBeVisible()
+    await expect(page.locator('.materials-breadcrumbs')).toHaveCount(0)
+    await info.attach('material-list-tree', { body: await page.screenshot({ path: info.outputPath('material-list-tree.png') }), contentType: 'image/png' })
   } finally {
     await bandal.close()
   }
@@ -71,6 +77,8 @@ test('readable library preserves folder and search while expanded and opens an u
     writeFileSync(join(course.folderPath, 'Lectures', 'lecture.pdf'), await pdf.save())
     writeFileSync(join(course.folderPath, 'outside.md'), '# Outside\n\nquantum outside the current folder\n')
     await page.getByRole('button', { name: '자료 새로고침' }).click()
+    // Folder-scoped browsing and search live in the icon view; the list expands folders in place.
+    await chooseView(page, '아이콘')
     await page.locator('[data-material-path="Lectures"]').click()
     await expect(page.locator('[data-material-path="Lectures/lecture.pdf"] .material-card-preview img')).toBeVisible({ timeout: 30_000 })
     await info.attach('readable-materials-sidebar', { body: await page.screenshot({ path: info.outputPath('readable-materials-sidebar.png') }), contentType: 'image/png' })
@@ -128,10 +136,9 @@ test('renaming a nested search result enters its folder and view changes never s
     await editor.fill('renamed.md')
     await editor.press('Enter')
     await expect(page.locator('[data-material-path="Folder/renamed.md"]')).toBeVisible()
-    await page.getByRole('button', { name: '상위 폴더로', exact: true }).click()
     await chooseView(page, '간단히')
     await page.locator('[data-material-path="Folder"]').click()
-    await chooseView(page, '목록')
+    await chooseView(page, '아이콘')
     await expect(page.locator('[data-material-path="Folder/renamed.md"]')).toBeVisible()
     await page.keyboard.press('Delete')
     await expect(page.locator('.material-delete-dialog')).toHaveCount(0)
