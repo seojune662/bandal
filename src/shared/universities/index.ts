@@ -24,11 +24,7 @@ import { SNU, VERIFIED_AT } from './snu'
 
 export { VERIFIED_AT as CATALOG_VERIFIED_AT }
 export { COMMON_SERVICES } from './common'
-export {
-  moveServiceBefore,
-  moveServiceBy,
-  moveServiceToEnd
-} from './order'
+export { moveServiceBy } from './order'
 export * from './courseLink'
 
 /** 18 schools verified on 2026-08-05, 서울대 first (the reference entry). */

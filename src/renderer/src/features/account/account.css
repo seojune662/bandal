@@ -151,3 +151,54 @@
 
 
 .account-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── 프로필 (iPad NativeAccountRailButton): a 276 px glass card beside the rail ── */
+.profile-menu { position: relative; display: flex; }
+.profile-menu__trigger { position: relative; }
+.profile-menu__trigger .account-avatar { width: 26px; height: 26px; }
+.profile-menu__disc { display: grid; place-items: center; width: 26px; height: 26px; color: #fff; background: #3e8e9a; border-radius: 50%; }
+.profile-menu__dot { position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; background: var(--decor-accent, var(--accent)); border: 2px solid var(--paper, var(--bg-app)); border-radius: 50%; }
+.profile-menu__popover {
+  position: absolute;
+  bottom: -4px;
+  left: 52px;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  width: 276px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 22px;
+  -webkit-app-region: no-drag;
+  animation: profile-menu-in 160ms ease-out;
+}
+@keyframes profile-menu-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } }
+.profile-menu__header { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px 12px; }
+.profile-menu__header strong { overflow: hidden; font-size: 17px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu__email { overflow: hidden; color: var(--text-secondary); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  border-radius: 12px;
+}
+.profile-menu__item svg { flex: none; color: var(--glass-icon); }
+.profile-menu__item > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu__item:hover, .profile-menu__item:focus-visible { background: var(--glass-selection); outline: none; }
+.profile-menu__item[aria-disabled='true'] { opacity: 0.45; cursor: default; }
+.profile-menu__item--update, .profile-menu__item--update svg { color: var(--decor-accent, var(--accent)); }
+.profile-menu__item--danger, .profile-menu__item--danger svg { color: var(--danger); }
+.profile-menu__trailing { color: var(--text-muted); font-size: 18px; line-height: 1; }
+.profile-menu__divider { margin: 6px 8px; border-top: 1px solid rgb(0 0 0 / 0.08); }
+:root[data-theme='dark'] .profile-menu__divider { border-top-color: rgb(255 255 255 / 0.11); }
+.profile-menu__error { margin: 4px 12px 8px; color: var(--danger); font-size: 13px; }

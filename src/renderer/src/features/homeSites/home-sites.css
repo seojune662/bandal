@@ -1,0 +1,78 @@
+/* Home site tiles (iPad NativeHomeSiteTiles): three across, snapping sideways, 64 high. */
+.home-sites { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--glass-hairline); }
+.home-sites__school { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 4px; color: var(--text-secondary); font-size: 14px; border-radius: 8px; }
+.home-sites__school:hover { color: var(--text-primary); background: var(--glass-selection); }
+.home-sites__row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 16px) / 3);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  list-style: none;
+}
+.home-sites__row::-webkit-scrollbar { display: none; }
+.home-sites__row > li { scroll-snap-align: start; min-width: 0; }
+.home-site {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: 64px;
+  padding: 8px 6px 7px;
+  color: var(--text-secondary);
+  background: var(--glass-selection);
+  border-radius: 14px;
+  transition: background 120ms ease-out, transform 120ms ease-out;
+}
+.home-site:hover { background: color-mix(in srgb, var(--glass-selection), var(--decor-accent) 8%); }
+.home-site:active { transform: scale(0.97); }
+.home-site:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.home-site__icon { width: 24px; height: 24px; border-radius: 5px; object-fit: contain; }
+.home-site__letter {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--decor-accent) 85%, transparent);
+  border-radius: 6px;
+}
+:root[data-theme='dark'] .home-site__letter { color: #18181a; }
+.home-site__title { max-width: 100%; overflow: hidden; font-size: 11px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.home-site__pin { position: absolute; top: 6px; right: 7px; color: var(--text-muted); }
+.home-site--add { color: var(--text-muted); background: transparent; border: 1.2px dashed color-mix(in srgb, var(--text-muted) 55%, transparent); }
+.home-site--add:hover, .home-site--add[aria-expanded='true'] { color: var(--text-primary); background: var(--glass-selection); }
+
+.home-sites__menu { position: fixed; z-index: 300; min-width: 150px; }
+.home-sites__add {
+  position: fixed;
+  z-index: 300;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 14px;
+  border-radius: 22px;
+}
+.home-sites__add form { display: flex; flex-direction: column; gap: 8px; }
+.home-sites__field { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; background: var(--glass-field); border: 1px solid var(--glass-field-stroke); border-radius: 12px; }
+.home-sites__field span { flex: none; width: 28px; color: var(--text-muted); font-size: 13px; }
+.home-sites__field input { flex: 1; min-width: 0; height: 100%; font-size: 14px; background: transparent; border: 0; outline: none; }
+.home-sites__field:focus-within { border-color: var(--focus-ring); }
+.home-sites__submit { height: 40px; color: var(--on-accent); font-size: 15px; font-weight: 600; background: var(--accent); border-radius: 12px; }
+.home-sites__submit:disabled { opacity: 0.4; }
+.home-sites__suggest-title { margin: 14px 4px 6px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.home-sites__suggestions { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.home-sites__suggestions button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 6px 8px; font-size: 14px; text-align: left; border-radius: 10px; }
+.home-sites__suggestions button > span:not(.home-site__letter) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-sites__suggestions button:hover, .home-sites__suggestions button:focus-visible { background: var(--glass-selection); outline: none; }
+.home-sites__suggestions svg { color: var(--text-muted); }
+.home-sites__suggestions .home-site__icon, .home-sites__suggestions .home-site__letter { width: 20px; height: 20px; font-size: 11px; }

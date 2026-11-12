@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { PDFDocument, StandardFonts } from 'pdf-lib'
 import { DEFAULT_UNIVERSITY_SETTINGS } from '../src/shared/types/university'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 
 const rail = (page: Page) => page.getByRole('navigation', { name: '앱 메뉴' })
 const market = (page: Page) => page.getByRole('main', { name: '공부 마켓플레이스' })
@@ -99,8 +100,8 @@ test('market navigation preserves live study state, clears AI context, and stays
     await expect.poll(async () => Object.keys((await page.evaluate(id => window.bandal.invoke('layout:get', { courseId: id }), course.id)).layout?.panels ?? {}).length).toBeGreaterThan(0)
     const panelIds = await page.evaluate(async id => Object.keys((await window.bandal.invoke('layout:get', { courseId: id })).layout!.panels), course.id)
     const labels = await rail(page).getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))
-    expect(labels.slice(labels.indexOf('더보기'), labels.indexOf('더보기') + 3)).toEqual(['더보기', '커뮤니티', '도움말'])
-    await rail(page).getByRole('button', { name: '더보기', exact: true }).click()
+    expect(labels.map(label => label?.replace(/:.*$/, ''))).toEqual(['홈', 'AI', '학업 보드 열기', '프로필', '설정'])
+    await openProfileItem(page, '플러그인')
     await expect(page.getByRole('complementary', { name: '앱 더보기' })).toBeVisible()
     await openLegacyMarket(page)
     await expect(market(page)).toBeVisible(); await expect(page.locator('.app-shell')).toHaveAttribute('data-course-rail', 'closed'); await expect(page.locator('.app-shell')).toHaveAttribute('data-right-rail', 'closed')
@@ -127,10 +128,9 @@ test('market navigation preserves live study state, clears AI context, and stays
     await expect(market(page)).toBeVisible()
     expect(await market(page).evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
     await page.screenshot({ path: info.outputPath('market-narrow.png') })
-    await rail(page).getByRole('button', { name: '더보기', exact: true }).click()
+    await openProfileItem(page, '플러그인')
     await expect(market(page)).toBeHidden()
     await expect(page.getByRole('complementary', { name: '앱 더보기' })).toBeVisible()
-    await expect(rail(page).getByRole('button', { name: '더보기', exact: true })).toHaveAttribute('aria-expanded', 'true')
     await rail(page).getByRole('button', { name: '홈', exact: true }).click()
     await expect(editor).toBeVisible(); await expect(editor).toContainText('Live draft remains.')
     expect(await editor.evaluate(element => element === (window as any).__marketLiveEditor)).toBe(true)

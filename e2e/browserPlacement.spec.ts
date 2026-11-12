@@ -99,7 +99,7 @@ test('only active native browser views stay within their live panel after resizi
     })
     const { page } = bandal
     await createCourse(page, '브라우저 위치 검사')
-    const shortcuts = page.getByRole('region', { name: 'AI 웹 바로가기' })
+    const shortcuts = page.getByRole('region', { name: '사이트' })
     for (const name of ['Gemini', 'ChatGPT', 'Claude', 'Gemini']) await shortcuts.getByRole('button', { name, exact: true }).click()
     await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => {
       const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!

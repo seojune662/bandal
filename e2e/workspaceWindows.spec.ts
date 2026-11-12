@@ -149,7 +149,8 @@ test('fixed workspace controls collapse pane chrome, preserve live pages, and ke
     await expect(rightResize).toHaveAttribute('aria-valuenow', '220')
     await expect.poll(async () => Math.round((await page.locator('#right-sidebar').boundingBox())!.width)).toBe(220)
     await expectFlushHeaders(page); await fixedAtCorner()
-    const sidebar = (await page.locator('#right-sidebar').boundingBox())!
+    // The materials glass runs up behind the corner controls; its content starts below them.
+    const sidebar = (await page.locator('#right-sidebar .right-sidebar').boundingBox())!
     expect(sidebar.y).toBeGreaterThanOrEqual(fixed.y + fixed.height)
     await page.getByRole('button', { name: '과목 사이드바 접기', exact: true }).click()
     await expect(page.locator('.app-shell')).toHaveAttribute('data-left-rail', 'closed')
@@ -280,14 +281,12 @@ test('fixed workspace controls collapse pane chrome, preserve live pages, and ke
     await manage(page)
     await overview(page).getByRole('button', { name: '윈도우 관리 닫기', exact: true }).click()
     await page.evaluate(async id => { await window.bandal.invoke('learning:create', { placement: 'in-course', courseId: id, rootRelPath: 'Project', name: '같은 탐색', topic: '자료' }) }, course.id)
-    await expect(page.getByRole('region', { name: '학교 바로가기', exact: true })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'AI 웹 바로가기', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: '사이트', exact: true })).toBeVisible()
     await page.getByRole('tab', { name: '프로젝트', exact: true }).first().click()
     const project = page.locator('.project-list-row__open').filter({ hasText: '같은 탐색' })
     await project.click()
     await expect(project).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByRole('region', { name: '학교 바로가기', exact: true })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'AI 웹 바로가기', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: '사이트', exact: true })).toBeVisible()
     await manage(page)
     await expect(overview(page).locator('.workspace-window-card')).toHaveCount(1)
     await overview(page).getByRole('button', { name: '윈도우 추가', exact: true }).click()

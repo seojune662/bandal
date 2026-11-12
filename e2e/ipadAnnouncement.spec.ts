@@ -2,11 +2,13 @@ import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchBandal } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 
 const SHOTS = process.env['BANDAL_ANNOUNCEMENT_SHOTS']
 
 test('iPad announcement shows once for existing users and reopens from help', async () => {
-  const first = await launchBandal({ keepProfileOnClose: true, extraSettings: { dismissedAnnouncements: [] } })
+  // The design greeting comes first; the iPad news follows on a later launch.
+  const first = await launchBandal({ keepProfileOnClose: true, extraSettings: { dismissedAnnouncements: ['design-refresh-0-96'] } })
   const dialog = first.page.getByRole('dialog', { name: 'iPad에서도 반달' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'App Store에서 보기' })).toBeFocused()
@@ -14,7 +16,7 @@ test('iPad announcement shows once for existing users and reopens from help', as
   if (SHOTS) await first.page.screenshot({ path: join(SHOTS, 'announcement-dark.png') })
   await dialog.getByRole('button', { name: '다음에' }).click()
   await expect(dialog).toBeHidden()
-  await expect.poll(() => JSON.parse(readFileSync(join(first.userDataDir, 'settings.json'), 'utf8')).dismissedAnnouncements).toEqual(['ipad-launch-2026-10'])
+  await expect.poll(() => JSON.parse(readFileSync(join(first.userDataDir, 'settings.json'), 'utf8')).dismissedAnnouncements).toEqual(['design-refresh-0-96', 'ipad-launch-2026-10'])
   await first.close()
 
   const second = await launchBandal({ reuseProfileDir: first.profileDir })
@@ -22,7 +24,7 @@ test('iPad announcement shows once for existing users and reopens from help', as
     // Longer than the show delay: a dismissed announcement must stay closed.
     await second.page.waitForTimeout(2_000)
     await expect(second.page.getByRole('dialog', { name: 'iPad에서도 반달' })).toHaveCount(0)
-    await second.page.getByRole('button', { name: '도움말', exact: true }).click()
+    await openProfileItem(second.page, /도움말/)
     await second.page.getByRole('menuitem', { name: 'iPad 앱 받기' }).click()
     await expect(second.page.getByRole('dialog', { name: 'iPad에서도 반달' })).toBeVisible()
   } finally {

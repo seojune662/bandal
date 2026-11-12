@@ -28,41 +28,39 @@ test('AI opens as a left column that keeps its draft while closed, and materials
     await page.screenshot({ path: info.outputPath('materials-header.png') })
     expect(firstRow.y - rail.y).toBeLessThan(120)
 
-    const handle = page.getByRole('button', { name: 'AI 열기', exact: true })
-    await expect(handle).toBeVisible()
-    const courseRail = (await page.locator('#course-rail').boundingBox())!
-    expect(Math.abs((await handle.boundingBox())!.x - (courseRail.x + courseRail.width))).toBeLessThanOrEqual(2)
-
+    // AI opens from the rail into the same slot as home (iPad): never both at once.
+    const aiButton = page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: 'AI', exact: true })
+    await expect(aiButton).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.locator('.ai-rail-handle')).toHaveCount(0)
     await openAiRail(page)
     const ai = page.getByRole('region', { name: 'AI', exact: true })
     await expect(ai).toBeVisible()
-    // Measure after the grid transition settles; the pull tab rides the column's right edge.
+    await expect(page.locator('#course-rail')).toHaveAttribute('aria-hidden', 'true')
+    const navigation = (await page.locator('.global-navigation').boundingBox())!
     await expect.poll(async () => Math.round((await page.locator('#ai-rail').boundingBox())!.width)).toBeGreaterThanOrEqual(280)
-    await expect.poll(async () => {
-      const box = (await page.locator('#ai-rail').boundingBox())!, tab = (await page.getByRole('button', { name: 'AI 닫기', exact: true }).boundingBox())!
-      // Narrow windows (Windows CI) collapse the course rail when AI opens; the column then follows the nav rail.
-      const rail = await page.locator('#course-rail').evaluate(element => { const r = element.getBoundingClientRect(); return { x: r.x, width: r.width } })
-      return Math.abs(box.x - (rail.x + rail.width)) <= 1 && Math.abs(tab.x - (box.x + box.width)) <= 2
-    }).toBe(true)
+    await expect.poll(async () => Math.round((await page.locator('#ai-rail').boundingBox())!.x)).toBe(Math.round(navigation.x + navigation.width))
     const input = ai.getByRole('textbox', { name: '메시지 입력' })
     await input.fill('닫아도 남는 초안')
     await page.screenshot({ path: info.outputPath('ai-rail-open.png') })
 
+    // Pressing the open button folds it; the draft survives.
     await closeAiRail(page)
     await expect(ai).toBeHidden()
     await expect(page.locator('#ai-rail')).toHaveAttribute('inert', '')
     await openAiRail(page)
     await expect(input).toHaveValue('닫아도 남는 초안')
 
-    // Without the course sidebar the column sits right beside the navigation rail.
-    if (!await page.locator('#course-rail[aria-hidden="true"]').count()) await page.getByRole('button', { name: '홈', exact: true }).click()
-    const navigation = (await page.locator('.global-navigation').boundingBox())!
-    await expect.poll(async () => Math.round((await page.locator('#ai-rail').boundingBox())!.x)).toBe(Math.round(navigation.x + navigation.width))
+    // Home takes the slot back.
+    await page.getByRole('button', { name: '홈', exact: true }).click()
+    await expect(page.locator('#course-rail')).not.toHaveAttribute('aria-hidden', 'true')
+    await expect(aiButton).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.locator('#ai-rail')).toHaveAttribute('inert', '')
 
-    // A covering board hides the pull tab.
+    // A covering board closes into AI when the rail's AI is pressed.
     await page.getByRole('button', { name: '학업 보드 열기', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'AI 닫기', exact: true })).toHaveCount(0)
-    await page.getByRole('button', { name: '학업 보드 닫기', exact: true }).first().click()
-    await expect(page.getByRole('button', { name: 'AI 닫기', exact: true })).toBeVisible()
+    await aiButton.click()
+    await expect(page.locator('.board')).toHaveCount(0)
+    await expect(aiButton).toHaveAttribute('aria-expanded', 'true')
+    await expect(input).toHaveValue('닫아도 남는 초안')
   } finally { await bandal.close() }
 })

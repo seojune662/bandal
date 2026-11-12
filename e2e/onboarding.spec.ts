@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEFAULT_ONBOARDING, TUTORIAL_VERSION } from '../src/shared/types/settings'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 
 const card = (page: Page) => page.locator('.tour-card[role="dialog"]')
 const fresh = { theme: 'light' as const, onboarding: DEFAULT_ONBOARDING, tutorial: { seenVersion: 0, activeCourseId: null } }
@@ -103,7 +104,7 @@ test('five features use real surfaces and remove the temporary sample without AI
     const sidebar = page.locator('[data-tour="assistant-panel"]')
     await expect(sidebar).toBeVisible()
     await expect(sidebar.locator('.chat-context-auto')).toContainText('예시 강의자료.pdf')
-    await expect(page.getByRole('button', { name: 'AI 닫기', exact: true })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: 'AI', exact: true })).toHaveAttribute('aria-expanded', 'true')
     await expect(page.locator('.workspace-host .chat-tab[data-variant="tab"]')).toHaveCount(0)
     await screenshot(bandal, 'tutorial-3-assistant')
     await advance(page, '내 자료로 퀴즈와 카드 만들기', 4)
@@ -134,7 +135,7 @@ test('skip restores the original course, active document, and open plugin panel'
     await page.getByRole('button', { name: '자료 새로고침' }).click()
     await page.locator('[data-material-path="원래 필기.md"]').click()
     await expect(page.locator('[aria-label="마크다운 필기 편집기"]')).toBeVisible()
-    await page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '더보기', exact: true }).click()
+    await openProfileItem(page, '플러그인')
     await expect(page.getByRole('complementary', { name: '앱 더보기' })).toBeVisible()
     await page.evaluate(() => window.bandal.invoke('settings:set', { tutorial: { seenVersion: 0, activeCourseId: null } }))
     await expect(card(page).getByRole('heading')).toHaveText('과목에 자료 모으기')

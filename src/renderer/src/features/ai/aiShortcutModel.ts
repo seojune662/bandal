@@ -25,11 +25,3 @@ export function findAiShortcutPanel(service: AiWebService, openTabs: Record<stri
   // Unvisited restored tabs have no live guest yet; prefer the last such tab.
   return matches.sort((a, b) => b.recency - a.recency || b.order - a.order).at(0)?.panelId ?? null
 }
-
-export const AI_SHORTCUTS_COLLAPSED_KEY = 'bandal:ai-shortcuts:collapsed:v1'
-export function readAiShortcutsCollapsed(): boolean {
-  try { return typeof window !== 'undefined' && window.localStorage.getItem(AI_SHORTCUTS_COLLAPSED_KEY) === 'true' } catch { return false }
-}
-export function persistAiShortcutsCollapsed(collapsed: boolean): void {
-  try { window.localStorage.setItem(AI_SHORTCUTS_COLLAPSED_KEY, String(collapsed)) } catch { /* Storage can be disabled. */ }
-}

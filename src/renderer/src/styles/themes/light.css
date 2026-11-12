@@ -1,21 +1,21 @@
-/* Neutral light chrome; content colors retain their meaning. */
+/* Neutral light chrome, translated from the iPad app (NativeDesktopTheme.swift). Content colors retain their meaning. */
 :root[data-theme='light'] {
   color-scheme: light;
   --bg-app: #ffffff;
-  --bg-surface: #f9f9f9;
-  --bg-raised: #eeeeee;
+  --bg-surface: #f7f7f7;
+  --bg-raised: #ededed;
   --bg-overlay: #ffffff;
-  --text-primary: #0d0d0d;
-  --text-secondary: #565656;
-  --text-muted: #686868;
-  --accent: #171717;
-  --accent-muted: #e8e8e8;
+  --text-primary: #141414;
+  --text-secondary: #5f5f5f;
+  --text-muted: #666666;
+  --accent: #1a1a1a;
+  --accent-muted: #ededed;
   --on-accent: #ffffff;
   --danger: oklch(54% 0.17 25);
   --danger-muted: oklch(54% 0.17 25 / 0.11);
   --on-danger: oklch(100% 0 0);
   --backdrop: rgb(0 0 0 / 0.24);
-  --border-subtle: rgb(0 0 0 / 0.075);
+  --border-subtle: #e5e5e5;
   --border-strong: rgb(0 0 0 / 0.22);
   --course-gold: oklch(52% 0.105 75);
   --course-green: oklch(50% 0.11 153);
@@ -33,6 +33,6 @@
   --on-status-progress: oklch(100% 0 0);
   --status-done: oklch(52% 0.13 152);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 16px rgb(0 0 0 / 0.08);
-  --shadow-lg: 0 12px 40px rgb(0 0 0 / 0.12);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.12);
+  --shadow-lg: 0 8px 48px rgb(0 0 0 / 0.25);
 }

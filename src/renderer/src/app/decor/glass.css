@@ -1,0 +1,319 @@
+/*
+ * Glass: the iPad app's NativeGlass / NativeDecorStyle translated to CSS.
+ * The window paints its own backdrop (the decor mesh + grain); the rail and
+ * the side panels are translucent glass over it; the editor stays paper.
+ * Values come from src/shared/decor.ts through applyDecor.ts:
+ *   --glass-rail / --glass-panel / --glass-selection / --glass-popup /
+ *   --glass-sheet / --decor-accent / --decor-mesh / --decor-grain.
+ */
+
+:root {
+  --glass-hairline: rgb(0 0 0 / 0.06);
+  --glass-rim: #dbdbdb;
+  --glass-icon: #1a1a1a;
+  --glass-panel-icon: #555555;
+  --glass-field: rgb(255 255 255 / 0.7);
+  --glass-field-stroke: #e6e6e6;
+  --glass-tool: #f7f7f7;
+  --glass-lit: rgb(255 255 255 / 0.85);
+  --glass-shadow: 0 8px 48px rgb(0 0 0 / 0.25);
+  --glass-blur: blur(30px) saturate(1.5);
+  --paper: #ffffff;
+  --rail-ease: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --rail-dur: 320ms;
+}
+:root[data-theme='dark'] {
+  --glass-hairline: rgb(255 255 255 / 0.07);
+  --glass-rim: rgb(255 255 255 / 0.14);
+  --glass-icon: #ededed;
+  --glass-panel-icon: #9a9a9a;
+  --glass-field: rgb(28 28 30 / 0.7);
+  --glass-field-stroke: #222222;
+  --glass-tool: #1f1f1f;
+  --glass-lit: rgb(255 255 255 / 0.12);
+  --glass-shadow: 0 8px 48px rgb(0 0 0 / 0.5);
+  --paper: #18181a;
+}
+/* The shared dividers follow the glass hairline. */
+:root { --shell-divider: var(--glass-hairline); --sidebar-selection: var(--glass-selection); --sidebar-hover: color-mix(in srgb, var(--glass-selection) 60%, transparent); }
+
+/* ── Backdrop ─────────────────────────────────────────────────────────── */
+.app-shell { background: var(--decor-base, var(--bg-surface)); isolation: isolate; }
+.workspace-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--decor-mesh, none) center / 100% 100% no-repeat, var(--decor-base, var(--bg-surface));
+}
+.workspace-backdrop::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: var(--decor-grain, none) 0 0 / 64px 64px repeat;
+  mix-blend-mode: overlay;
+  opacity: var(--decor-grain-opacity, 0.12);
+}
+
+/* ── Columns ──────────────────────────────────────────────────────────── */
+/* The rail and the left slot run up behind the window controls, as on iPad. */
+.app-shell {
+  grid-template-areas: 'navigation left ai center .' 'navigation left ai center right';
+  transition: grid-template-columns var(--rail-dur) var(--rail-ease);
+}
+.shell-chrome { background: transparent; }
+.global-navigation { grid-row: 1 / -1; }
+.shell-course-rail, .shell-ai-rail { grid-row: 1 / -1; padding-top: var(--chrome-height); background: var(--glass-panel); }
+.shell-course-rail > .app-rail, .shell-course-rail > .shell-home-sidebar,
+.shell-home-sidebar, .shell-course-rail .app-rail, .shell-ai-rail .workspace-assistant { background: transparent; }
+.shell-home-sidebar, .app-rail--left { border-right: 0; }
+.shell-course-rail, .shell-ai-rail { box-shadow: inset -1px 0 var(--glass-hairline); }
+.shell-ai-rail { border-left: 0; }
+.app-shell[data-course-rail='closed'] .shell-course-rail,
+.app-shell[data-ai-rail='closed'] .shell-ai-rail { box-shadow: none; background: transparent; }
+.shell-course-rail > .app-rail, .shell-course-rail > .shell-home-sidebar, .shell-materials-rail > .app-rail, .global-navigation {
+  transition: transform var(--rail-dur) var(--rail-ease), visibility 0s;
+}
+.shell-ai-rail { transition: opacity var(--rail-dur) var(--rail-ease); }
+.app-workspace { background: var(--paper); }
+.right-sidebar { background: var(--glass-panel); border-left-color: var(--glass-hairline); }
+.shell-materials-rail .app-rail { background: transparent; }
+
+/* ── Rail ─────────────────────────────────────────────────────────────── */
+.global-navigation {
+  position: relative;
+  gap: 4px;
+  padding: calc(var(--chrome-height) + 7px) 2px 10px;
+  background: transparent;
+  border-right: 0;
+}
+/* The rail's surface, with the open panel's tab cut out (NativeRailSurface). */
+.global-navigation::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: '';
+  background: var(--glass-rail);
+}
+.global-navigation[data-tab]::before {
+  -webkit-mask: linear-gradient(#000 0 0), var(--rail-tab-mask) 0 var(--rail-tab-top) / 48px 76px no-repeat;
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) exclude, var(--rail-tab-mask) 0 var(--rail-tab-top) / 48px 76px no-repeat;
+}
+.global-navigation__tab {
+  position: absolute;
+  top: var(--rail-tab-top);
+  left: 0;
+  z-index: -1;
+  width: 48px;
+  height: 76px;
+  background: var(--glass-panel);
+  -webkit-mask: var(--rail-tab-mask) 0 0 / 48px 76px no-repeat;
+  mask: var(--rail-tab-mask) 0 0 / 48px 76px no-repeat;
+  opacity: 0;
+  transition: top var(--rail-dur) var(--rail-ease), opacity 120ms ease-out;
+}
+.global-navigation {
+  /* 48 × 76: the middle 52 px is the tab; two concave 12 px corners meet the panel. */
+  --rail-tab-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 76'%3E%3Cpath d='M0 12H36C44 12 48 8 48 0V76C48 68 44 64 36 64H0Z'/%3E%3C/svg%3E");
+  /* Button n's centre: the rail's top padding + 22 + n × 48; the tab box is centred on it. */
+  --rail-tab-top: calc(var(--chrome-height) + 7px + 22px - 38px);
+}
+.global-navigation[data-tab='home'] .global-navigation__tab,
+.global-navigation[data-tab='ai'] .global-navigation__tab { opacity: 1; }
+.global-navigation[data-tab='plugins']::before { -webkit-mask: none; mask: none; }
+
+.global-navigation .rail-nav__item {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+  color: var(--glass-icon);
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.global-navigation .rail-nav__item:hover { background: var(--glass-selection); color: var(--glass-icon); }
+.global-navigation .rail-nav__item:active { transform: none; }
+/* A lit button with no panel beside it (NativeChromeButton, selected). */
+.global-navigation .rail-nav__item[data-active] {
+  color: var(--glass-icon);
+  background: var(--glass-lit);
+  background-clip: content-box;
+  padding: 3px;
+  border-radius: 11px;
+}
+.global-navigation .rail-nav__item[data-active]:hover { background: var(--glass-lit); background-clip: content-box; }
+/* The open panel's button sits in its tab; no chip of its own. */
+.global-navigation .rail-nav__item[data-open],
+.global-navigation .rail-nav__item[data-open]:hover { background: transparent; color: var(--glass-icon); }
+.global-navigation .rail-nav__item[data-rail='home'] { margin-bottom: 3px; }
+.global-navigation[data-tab='ai'] { --rail-tab-top: calc(var(--chrome-height) + 7px + 44px + 3px + 4px + 22px - 38px); }
+.global-navigation__bottom { gap: 4px; }
+.app-shell[data-left-rail='closed'] > .global-navigation { transform: translateX(-100%); }
+
+/* ── Floating glass (bandalGlass) ─────────────────────────────────────── */
+.glass-popover {
+  color: var(--text-primary);
+  background: var(--glass-popup);
+  border: 0.5px solid var(--glass-rim);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.context-menu, .help-menu, .workspace-chrome-menu, .tooltip, [role='menu'].context-menu {
+  background: var(--glass-popup);
+  border: 0.5px solid var(--glass-rim);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.context-menu, .help-menu { border-radius: 14px; padding: 6px; }
+.workspace-chrome-menu { border-radius: 14px; }
+.workspace-controls {
+  height: 36px;
+  border-color: var(--glass-field-stroke);
+  border-radius: 11px;
+  background: var(--glass-selection);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.workspace-controls .titlebar-button[aria-pressed='true'], .workspace-controls .titlebar-button[aria-expanded='true'] { background: var(--glass-selection); border-radius: 8px; }
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-popover, .context-menu, .help-menu, .workspace-chrome-menu, .workspace-controls { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --rail-dur: 0ms; }
+}
+
+/* ── AI panel on glass (NativeAssistantWorkspace, panel layout) ───────── */
+.shell-ai-rail .workspace-assistant,
+.shell-ai-rail .workspace-assistant > .chat-tab,
+.shell-ai-rail .workspace-assistant .chat-composer-zone,
+.shell-ai-rail .chat-material-picker-footer { background: transparent; }
+.shell-ai-rail .workspace-assistant__modes { background: var(--glass-selection); }
+.shell-ai-rail .workspace-assistant__modes button[aria-selected=true] { background: var(--paper); }
+
+/* The materials panel also runs up behind the window controls. */
+.app-shell { grid-template-areas: 'navigation left ai center right' 'navigation left ai center right'; }
+.shell-materials-rail { grid-row: 1 / -1; padding-top: var(--chrome-height); background: var(--glass-panel); }
+.app-shell[data-right-rail='closed'] .shell-materials-rail { background: transparent; }
+.right-sidebar { background: transparent; }
+
+/* ── 학업 보드 (NativePlannerWorkspace): a glass sheet, radius 28, over a blurred workspace ── */
+.app-shell .board-overlay__backdrop { background: rgb(0 0 0 / 0.22); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+:root[data-theme='dark'] .app-shell .board-overlay__backdrop { background: rgb(0 0 0 / 0.45); }
+.app-shell .board-overlay__surface {
+  width: min(calc(100vw - 84px), 1200px);
+  height: min(calc(100vh - 144px), 1180px);
+  background: var(--glass-sheet);
+  border: 0.5px solid var(--glass-rim);
+  border-radius: 28px;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.app-shell .board-overlay__surface .board-panel, .app-shell .board-overlay__surface .board { background: transparent; }
+.app-shell .board-overlay__surface .board-toolbar { min-height: 0; padding: 22px 96px 14px 28px; background: transparent; border-bottom: 0; }
+.app-shell .board-overlay__surface .board-toolbar__title h2 { font-size: 26px; font-weight: 700; }
+.app-shell .board-overlay__close {
+  top: 18px;
+  right: 22px;
+  width: 52px;
+  height: 52px;
+  font-size: 20px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border-radius: 50%;
+}
+.app-shell .board-overlay__close:hover { background: var(--bg-raised); }
+.app-shell .board-view-switch { padding: 3px; background: rgb(0 0 0 / 0.06); border-radius: 10px; }
+:root[data-theme='dark'] .app-shell .board-view-switch { background: rgb(255 255 255 / 0.08); }
+.app-shell .board-view-switch button { min-height: 34px; font-size: 14px; color: var(--text-secondary); border-radius: 8px; }
+.app-shell .board-view-switch button[aria-pressed='true'] { color: var(--text-primary); font-weight: 600; background: var(--paper); box-shadow: 0 1px 3px rgb(0 0 0 / 0.1); }
+.app-shell .board-filter-chip { min-height: 36px; padding-inline: 14px; font-size: 14px; font-weight: 500; color: var(--text-primary); background: var(--paper); border: 1px solid var(--border-subtle); }
+.app-shell .board-filter-chip[aria-pressed='true'] { color: var(--paper); background: var(--text-secondary); border-color: transparent; }
+.app-shell .board-columns { gap: 14px; padding: 8px 24px 20px; }
+.app-shell .board-column { background: var(--glass-panel); border: 1px solid rgb(0 0 0 / 0.07); border-radius: 20px; }
+:root[data-theme='dark'] .app-shell .board-column { border-color: rgb(255 255 255 / 0.07); }
+.app-shell .board-column__heading h3 { font-size: 15px; font-weight: 600; }
+.app-shell .board-card {
+  padding: 13px 15px;
+  background: var(--paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.05);
+}
+.app-shell .board-card:hover { box-shadow: 0 10px 30px rgb(0 0 0 / 0.1); }
+/* 달력: day cells on paper with hairline grid; today is a filled disc. */
+.app-shell .board-overlay__surface .calendar, .app-shell .board-overlay__surface .calendar-month, .app-shell .board-overlay__surface .calendar-agenda { background: transparent; }
+.app-shell .board-overlay__surface .calendar-month { padding-inline: 24px; }
+.app-shell .board-overlay__surface .calendar-grid { background: var(--paper); border-radius: 16px; overflow: hidden; }
+.app-shell .board-overlay__surface .calendar-day { background: var(--paper); border-color: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.app-shell .board-overlay__surface .calendar-day[data-selected='true'] { background: var(--glass-selection); }
+.app-shell .board-overlay__surface .calendar-day[data-today='true'] .calendar-day__number { color: var(--paper); background: var(--text-primary); }
+.app-shell .board-overlay__surface .calendar-entry { min-height: 23px; background: var(--paper); border-radius: 6px; font-size: 12px; font-weight: 500; }
+.app-shell .board-overlay__surface .calendar-empty-state { background: var(--glass-selection); border-radius: 16px; }
+.app-shell .board-overlay__surface .calendar-agenda { border-left: 1px solid var(--glass-hairline); }
+.app-shell .board-overlay__surface .calendar-weekdays { background: var(--paper); }
+
+/* ── Tab strip (NativeDockWorkspace): a paper strip, tab pills 31 high, radius 9 ── */
+.app-shell .bandal-dockview {
+  --dv-tabs-and-actions-container-background-color: var(--paper);
+  --dv-group-view-background-color: var(--paper);
+}
+.app-shell .bandal-dockview .dv-tabs-and-actions-container { border-bottom: 1px solid var(--glass-hairline); }
+.app-shell .bandal-dockview .dv-tab { margin-block: calc((var(--workspace-tab-height) - 31px) / 2); border-radius: 9px; }
+.app-shell .workspace-tab { height: 31px; padding-inline: 12px 8px; font-size: 14px; }
+.app-shell .bandal-dockview .dv-tab:not(.dv-active-tab):hover { background: var(--glass-tool); }
+.app-shell .bandal-dockview .dv-groupview > .dv-tabs-and-actions-container .dv-tab.dv-active-tab { background: var(--glass-tool); font-weight: 600; }
+:root[data-theme='light'] .app-shell .bandal-dockview .dv-groupview > .dv-tabs-and-actions-container .dv-tab.dv-active-tab { background: #efeff1; }
+.app-shell .bandal-dockview .dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab { box-shadow: inset 0 -2px 0 var(--decor-accent); }
+.app-shell .bandal-dockview:not(:has(.dv-groupview ~ .dv-groupview)) .dv-active-group > .dv-tabs-and-actions-container .dv-tab.dv-active-tab { box-shadow: none; }
+
+/* ── Chat (NativeAssistantParts): paper input, accent user bubble, plain answers ── */
+.app-shell .chat-tab[data-variant] { --chat-paper: var(--paper); --chat-raised: var(--paper); --chat-ink: var(--text-primary); --chat-muted: var(--text-secondary); --chat-line: var(--border-subtle); }
+.app-shell .shell-ai-rail .chat-tab[data-variant] { background: transparent; }
+.app-shell .chat-tab[data-variant] .chat-bubble { color: var(--on-accent); background: var(--accent); border: 0; border-radius: 18px 18px 6px 18px; padding: 10px 14px; line-height: 1.45; font-size: 15px; }
+.app-shell .chat-tab[data-variant] .chat-composer { border-radius: 26.5px; padding: 6px 8px 6px 10px; box-shadow: none; }
+.app-shell .chat-tab[data-variant] .chat-composer__input { font-size: 15px; }
+.app-shell .chat-tab[data-variant] .chat-composer__action { background: var(--accent); color: var(--on-accent); }
+.app-shell .chat-tab[data-variant] .chat-empty__chip { border-radius: 999px; border-width: 0.7px; background: var(--paper); }
+:root:root .chat-composer-popover { background: var(--glass-popup); color: var(--text-primary); border: 0.5px solid var(--glass-rim); border-radius: 18px; box-shadow: var(--glass-shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
+
+/* ── 설정 (NativeSettingsWorkspace): a centred glass sheet over the dimmed, blurred workspace ── */
+.app-shell .shell-settings-overlay {
+  inset: 0 0 0 var(--shell-navigation-width);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 0.18);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.app-shell .settings-app--embedded {
+  width: min(940px, 100%);
+  height: min(760px, 100%);
+  background: var(--glass-sheet);
+  border: 0.5px solid var(--glass-rim);
+  border-radius: 20px;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.app-shell:not([data-left-rail='closed']) .settings-app--embedded .settings-layout { grid-template-columns: 250px minmax(0, 1fr); }
+:root:root .app-shell .settings-app--embedded .settings-sidebar {
+  width: 250px;
+  padding: 20px 12px 12px;
+  background: rgb(0 0 0 / 0.04);
+  border-right: 0;
+}
+:root[data-theme='dark'] .app-shell .settings-app--embedded .settings-sidebar { background: rgb(255 255 255 / 0.05); }
+.app-shell .settings-app--embedded .settings-content, .app-shell .settings-app--embedded .settings-main { background: transparent; }
+.app-shell .settings-app--embedded .settings-content__back { margin-top: 0; }
+.app-shell .settings-nav__item { min-height: 42px; border-radius: 10px; font-size: 15px; }
+.app-shell .settings-nav__item--active { background: var(--bg-raised); font-weight: 600; }
+.app-shell .settings-app--embedded .settings-search { background: var(--glass-field); border: 1px solid var(--glass-field-stroke); border-radius: 10px; }
+@starting-style { .app-shell .shell-settings-overlay[data-open='true'] .settings-app--embedded { opacity: 0; transform: scale(0.985); } }
+.app-shell .settings-app--embedded { transition: opacity 200ms ease-out, transform 200ms ease-out; }

@@ -28,7 +28,7 @@ test('material toolbars export current Markdown, annotated PDF and original file
     await expect(page.locator('.tab-assistant-launchbar:visible')).toHaveCount(0)
     await expect(toolbar.getByRole('button', { name: '내보내기', exact: true })).toBeVisible()
     await expect(toolbar.locator('.tab-assistant-toggle')).toHaveCount(0)
-    await expect(page.locator('.ai-rail-handle')).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: 'AI', exact: true })).toBeVisible()
     expect(await toolbar.evaluate(element => {
       const document = element.closest('.tab-document')!
       return Math.abs(element.getBoundingClientRect().top - document.getBoundingClientRect().top)

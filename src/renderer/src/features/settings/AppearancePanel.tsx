@@ -10,6 +10,7 @@ import { useT } from '../../i18n'
 import { cn } from '../../lib/utils'
 import { SettingsGroup, SettingsSegmentedRow, SettingsStack } from './kit/SettingsKit'
 import { useIsSettingsSearching } from './kit/SettingsSearchContext'
+import { DecorPicker } from '../decor/DecorPicker'
 
 const THEME_OPTIONS: readonly ThemePreference[] = ['system', 'light', 'dark']
 
@@ -259,6 +260,10 @@ export function AppearancePanel({
             {t('settings.appearance.theme.note')}
           </p>
         </div>
+      </SettingsGroup>
+
+      <SettingsGroup searchId="appearance.decor">
+        <DecorPicker />
       </SettingsGroup>
 
       <SettingsGroup searchId="appearance.text">

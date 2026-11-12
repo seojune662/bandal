@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 
 const WORD_COUNT_PLUGIN = resolve(
   __dirname,
@@ -91,7 +92,7 @@ test.describe('third-party plugins', () => {
     await expect(menu.getByRole('option')).toHaveCount(5)
     await expect(menu.locator('.new-tab-menu__label')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     await page.keyboard.press('Escape')
-    await page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '더보기', exact: true }).click()
+    await openProfileItem(page, '플러그인')
     const launcher = page.getByRole('complementary', { name: '앱 더보기' })
     await expect(launcher).toBeVisible()
     await launcher.getByLabel('기능 검색').fill('단어 수')
