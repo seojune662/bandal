@@ -860,6 +860,10 @@
   outline: none;
   user-select: text;
   overflow-wrap: anywhere;
+  /* ProseMirror requires preserved whitespace: with the browser default a
+     typed tab collapses and the next keystroke's DOM read drops it. */
+  white-space: pre-wrap;
+  tab-size: 4;
 }
 
 .note-tab .milkdown .editor > *:first-child {

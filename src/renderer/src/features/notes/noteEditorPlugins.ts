@@ -12,6 +12,7 @@ import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import { calloutEditor } from './callout'
 import { NOTE_MARKDOWN_EXTENSIONS } from './noteMarkdownExtensions'
+import { noteTabKeymap } from './noteTabKeymap'
 import { slashMenu } from './slashMenuPlugin'
 import { wikilinkEditor } from './wikilink'
 
@@ -25,6 +26,8 @@ export const NOTE_EDITOR_PLUGINS: readonly (MilkdownPlugin | MilkdownPlugin[])[]
   wikilinkEditor,
   // Direct ProseMirror plugin: placeholder and slash-triggered block menu.
   slashMenu,
+  // Tab indents (literal tab) instead of moving focus out of the note.
+  noteTabKeymap,
   // undo/redo — also supplies the Mod-z / Shift-Mod-z / Mod-y keymap.
   history
 ]
