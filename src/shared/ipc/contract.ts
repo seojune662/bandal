@@ -185,6 +185,12 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
   followUpOf?: string
 }
 
+/** What the corner share button hands to `shell:shareTab`. */
+export type ShareTabTarget =
+  | { kind: 'file'; courseId: string; relPath: string; annotatedPdf?: boolean }
+  | { kind: 'url'; url: string }
+export type ShareTabOutcome = 'menu' | 'copied' | 'revealed'
+
 export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcContract, ProjectNavigationContract, CommunityIpcContract, StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
   'share:list': { req: Record<string, never>; res: SharedMaterialRequest[] }
   'share:import': { req: { id: string; courseId: string; dirRelPath: string }; res: { relPaths: string[] } }
@@ -321,6 +327,16 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
   'shell:openExternal': {
     req: { url: string }
     res: { ok: true }
+  }
+  /**
+   * Shares the open tab from the corner controls: the file for a material
+   * (a PDF with its ink and highlights burned in), the page link for a browser
+   * tab. macOS shows the native share menu at `anchor` (window coordinates);
+   * elsewhere a link is copied and a file is revealed in the file manager.
+   */
+  'shell:shareTab': {
+    req: { target: ShareTabTarget; anchor: { x: number; y: number } }
+    res: { outcome: ShareTabOutcome }
   }
 
   // -- materials ------------------------------------------------------------
@@ -1751,6 +1767,7 @@ export const IPC_CHANNELS = [
   'courseLinks:update',
   'courseLinks:delete',
   'shell:openExternal',
+  'shell:shareTab',
   'externalSources:pickFolder',
   'externalSources:pickPhotos',
   'externalSources:list',
