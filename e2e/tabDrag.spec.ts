@@ -99,14 +99,18 @@ for (const theme of ['light', 'dark'] as const) {
       try {
         const page = bandal.page
         const zoomFactor = viewport.width === 1024 ? 1.25 : 1
-        await bandal.app.evaluate(({ BrowserWindow }, { size, zoom }) => {
+        // CI displays can be shorter than 900 (macos-15 runners): the window is clamped to the work area.
+        const applied = await bandal.app.evaluate(({ BrowserWindow }, { size, zoom }) => {
           const window = BrowserWindow.getAllWindows().find(candidate => candidate.webContents.getURL().includes('index.html'))!
           window.setContentSize(size.width, size.height)
           window.webContents.setZoomFactor(zoom)
+          const [width, height] = window.getContentSize()
+          return { width: width!, height: height! }
         }, { size: viewport, zoom: zoomFactor })
+        expect(applied.width).toBe(viewport.width)
         await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({
           width: Math.round(viewport.width / zoomFactor),
-          height: Math.round(viewport.height / zoomFactor)
+          height: Math.round(Math.min(viewport.height, applied.height) / zoomFactor)
         })
         await createCourse(page, '탭 동작 검사')
         const folder = readdirSync(bandal.dataRoot, { withFileTypes: true }).find(entry => entry.isDirectory())!

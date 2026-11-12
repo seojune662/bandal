@@ -317,3 +317,6 @@
 .app-shell .settings-app--embedded .settings-search { background: var(--glass-field); border: 1px solid var(--glass-field-stroke); border-radius: 10px; }
 @starting-style { .app-shell .shell-settings-overlay[data-open='true'] .settings-app--embedded { opacity: 0; transform: scale(0.985); } }
 .app-shell .settings-app--embedded { transition: opacity 200ms ease-out, transform 200ms ease-out; }
+/* The rail runs up behind the corner controls; over the board it is raised, so lift the controls above it
+   (on Windows the sidebar toggle sits over the rail itself). */
+.app-shell[data-board='open']:not([data-settings='open']) > .shell-chrome { z-index: 85; }
