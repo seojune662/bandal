@@ -148,7 +148,8 @@ export function SaleDialog({ universityId, universityName, marketCourses, intent
 
   return <MarketDialog title={draft?.status === 'published' ? '판매 자료 수정하기' : draft?.status === 'withdrawn' ? '판매 재개' : draft ? '판매 자료 이어서 만들기' : '내 공부 판매하기'} busy={busy} onClose={onClose} wide>
     <ol className="study-market__steps" aria-label="판매 등록 단계">{['자료 선택', '판매 정보', '공개 전 확인'].map((label, index) => <li key={label} aria-current={step === index ? 'step' : undefined} data-active={step === index}><span>{index + 1}</span>{label}</li>)}</ol>
-    <fieldset className="study-market__dialog-body study-market__fieldset" disabled={busy}>
+    {/* The div scrolls: Chromium cannot scroll a fieldset to reveal what is inside it. */}
+    <div className="study-market__dialog-body"><fieldset className="study-market__fieldset" disabled={busy}>
       <MarketError message={error} />
       {step === 0 && <div className="study-market__form">
         {draft?.status === 'published' && <p className="study-market__notice">수정할 자료를 새로 선택해 주세요. 이전 구매자는 구매 당시의 자료를 그대로 받아요.</p>}
@@ -186,7 +187,7 @@ export function SaleDialog({ universityId, universityName, marketCourses, intent
         {!canPublish && <p className="study-market__notice">임시 저장할 수 있어요. 판매자 등록과 거래 준비가 완료되면 공개할 수 있어요.</p>}
       </div>}
       {busy && <p className="study-market__hint" role="status">{busyLabel}…</p>}
-    </fieldset>
+    </fieldset></div>
     <footer className="study-market__dialog-footer">
       <button type="button" className="button button--secondary" disabled={busy} onClick={step > (reusingDraft ? 1 : 0) ? () => { setStep(step - 1); setError(null) } : onClose}>{step > (reusingDraft ? 1 : 0) ? '이전' : '취소'}</button>
       <div className="study-market__actions">{step > 0 && <button type="button" className="button button--secondary" disabled={busy || !metadataValid} onClick={() => void save(false)}>임시 저장</button>}{step === 0 ? <button type="button" className="button button--primary" disabled={busy || loadingFiles || selected.length === 0 || selected.length > STUDY_MARKET_LIMITS.files || selectedBytes > STUDY_MARKET_LIMITS.bundleBytes || !courseName.trim()} onClick={() => void prepare()}>다음</button> : step === 1 ? <button type="button" className="button button--primary" disabled={busy || !metadataValid} onClick={() => setStep(2)}>공개 전 확인</button> : <button type="button" className="button button--primary" disabled={busy || !rightsConfirmed || !canPublish} onClick={() => void save(true)}>판매 시작</button>}</div>
