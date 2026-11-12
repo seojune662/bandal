@@ -6,6 +6,7 @@ import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { toggleWindowOverview } from '../features/workspace/windowOverviewController'
 import { Icon } from './icons'
+import { ShareTabButton } from './ShareTabButton'
 
 const chromeModes = [
   ['all', '모두 표시'],
@@ -60,6 +61,7 @@ export function WorkspaceControls(): JSX.Element {
   }
 
   return <div className="workspace-controls" role="group" aria-label="작업 공간 보기">
+    <ShareTabButton />
     <Tooltip label="탭 바와 도구 모음 표시" placement="bottom"><button ref={triggerRef} type="button" className="titlebar-button" aria-label="탭 바와 도구 모음 표시" aria-haspopup="menu" aria-expanded={menuOpen} aria-controls="workspace-chrome-menu" disabled={workspace === null} onClick={() => setMenuOpen(value => !value)}><TabsIcon /></button></Tooltip>
     <Tooltip label={overview ? '윈도우 관리 닫기' : '윈도우 관리'} placement="bottom"><button type="button" className="titlebar-button" aria-label="윈도우 관리" data-workspace-control="windows" aria-pressed={overview} disabled={workspace === null} onClick={() => { closeMenu(); void toggleWindowOverview() }}><WindowsIcon /></button></Tooltip>
     <Tooltip label={rightVisible ? '오른쪽 사이드바 접기' : '오른쪽 사이드바 펼치기'} placement="bottom"><button type="button" className="titlebar-button" aria-label={rightVisible ? '오른쪽 사이드바 접기' : '오른쪽 사이드바 펼치기'} aria-expanded={rightVisible} aria-controls="right-sidebar" onClick={toggleRight}><Icon name="layoutRight" /></button></Tooltip>

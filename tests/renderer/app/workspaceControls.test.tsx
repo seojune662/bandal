@@ -8,8 +8,8 @@ vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve()
 const state = vi.hoisted(() => ({
   workspace: {
     activeWorkspace: { kind: 'course', courseId: 'course-1' } as { kind: string; courseId: string } | null,
-    surface: 'course', workspaceChromeMode: 'all', windowsOverviewOpen: false,
-    setWorkspaceChromeMode: vi.fn(), showWorkspace: vi.fn()
+    surface: 'course', workspaceChromeMode: 'all', windowsOverviewOpen: false, activePanelId: null,
+    setWorkspaceChromeMode: vi.fn(), showWorkspace: vi.fn(), activeTabDescriptor: () => null
   },
   ui: {
     rightRailOpen: true, isSettingsOpen: false,
@@ -47,9 +47,9 @@ function click(label: string): void {
   expect(button).not.toBeNull()
   act(() => button!.click())
 }
-test('keeps the three controls in the requested order and offers all chrome modes', () => {
+test('keeps the controls in the requested order, share first, and offers all chrome modes', () => {
   act(() => root.render(<WorkspaceControls />))
-  expect([...container.querySelectorAll('.workspace-controls > button')].map(button => button.getAttribute('aria-label'))).toEqual(['탭 바와 도구 모음 표시', '윈도우 관리', '오른쪽 사이드바 접기'])
+  expect([...container.querySelectorAll('.workspace-controls > button')].map(button => button.getAttribute('aria-label'))).toEqual(['이 탭은 공유할 수 없어요', '탭 바와 도구 모음 표시', '윈도우 관리', '오른쪽 사이드바 접기'])
   click('탭 바와 도구 모음 표시')
   const options = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
   expect(options.map(button => button.textContent?.replace('✓', ''))).toEqual(['모두 표시', '탭 바만 숨기기', '탭 바와 도구 모음 숨기기'])
@@ -74,8 +74,8 @@ test('empty workspaces retain all control buttons and keep the sidebar usable', 
   state.workspace.activeWorkspace = null
   act(() => root.render(<WorkspaceControls />))
   const buttons = [...container.querySelectorAll<HTMLButtonElement>('.workspace-controls > button')]
-  expect(buttons).toHaveLength(3)
-  expect(buttons.map(button => button.disabled)).toEqual([true, true, false])
+  expect(buttons).toHaveLength(4)
+  expect(buttons.map(button => button.disabled)).toEqual([true, true, true, false])
   click('오른쪽 사이드바 접기')
   expect(state.ui.toggleRightRail).toHaveBeenCalledOnce()
 })

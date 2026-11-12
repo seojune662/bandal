@@ -9,6 +9,7 @@ import { registerAnnotationHandlers } from './annotationHandlers'
 import { registerWorkspacePreviewHandlers } from './workspacePreviewHandlers'
 import { exportMaterial, shareGeneratedMaterial } from '../features/materials/exportMaterial'
 import { createShareRootResolver } from '../features/share/shareRuntime'
+import { createShareSheet } from '../features/share/shareSheet'
 import { createMainWindow, revealMainWindow } from '../windows/mainWindow'
 import { createExternalSourceLibrary } from '../features/externalSources/library'
 import { createPhotoPicker } from '../features/externalSources/photoPicker'
@@ -97,6 +98,7 @@ import { basename, extname, join } from 'node:path'
 import {
   app,
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   ipcMain,
@@ -105,6 +107,7 @@ import {
   Notification,
   powerMonitor,
   session,
+  ShareMenu,
   shell,
   systemPreferences,
   webContents
@@ -1174,6 +1177,24 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('window:getState', (_req, event) => ({ fullscreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false }))
+
+  const shareTab = createShareSheet({
+    hasShareMenu: process.platform === 'darwin',
+    resolvePath: (courseId, relPath) => materialsRepo.absolutePathForAsync(courseId, relPath),
+    exportAnnotatedPdf: (input, path) => pdfExporter.exportAnnotated(input, path),
+    tempRoot: join(app.getPath('temp'), 'bandal-share'),
+    copyText: (text) => clipboard.writeText(text),
+    reveal: (path) => shell.showItemInFolder(path)
+  })
+  handle('shell:shareTab', async (req, event) => {
+    const window = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const outcome = await shareTab(req.target, (item) => new ShareMenu(item).popup({
+      ...(window ? { window } : {}),
+      x: Math.round(Number(req.anchor?.x) || 0),
+      y: Math.round(Number(req.anchor?.y) || 0)
+    }))
+    return { outcome }
+  })
 
   handle('pdf:exportAnnotated', async (req) => {
     const baseName = req.relPath.split('/').pop() ?? 'document.pdf'

@@ -141,7 +141,7 @@ test('fixed workspace controls collapse pane chrome, preserve live pages, and ke
         const bounds = (await controls.boundingBox())!
         return Math.max(...(['x', 'y', 'width', 'height'] as const).map(key => Math.abs(bounds[key] - fixed[key])))
       }).toBeLessThanOrEqual(1)
-      expect(await controls.getByRole('button').count()).toBe(3)
+      expect(await controls.getByRole('button').count()).toBe(4)
     }
     await expectFlushHeaders(page)
     const rightResize = page.locator('.rail-resizer--right')
