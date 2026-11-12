@@ -8,6 +8,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { shouldShowOnboarding } from '../onboarding/onboardingModel'
 import { useTourStore } from '../onboarding/tour/tourStore'
 import { Announcement } from './Announcement'
+import { DESIGN_REFRESH_ID } from './DesignRefreshAnnouncement'
 import screenshot from './assets/ipad-screenshot.webp?inline'
 import qrCode from './assets/ipad-app-store-qr.svg?inline'
 
@@ -39,7 +40,8 @@ export function IpadAnnouncement({ mainScreenVisible }: IpadAnnouncementProps): 
     let active = true
     void ensureSettingsLoaded().then((settings) => {
       // First-run users meet onboarding this launch; existing users (updates) get the news.
-      if (active && !shouldShowOnboarding(settings.onboarding) && !settings.dismissedAnnouncements.includes(IPAD_ANNOUNCEMENT_ID)) setPending(true)
+      // After the design greeting, never stacked on it in the same launch.
+      if (active && !shouldShowOnboarding(settings.onboarding) && settings.dismissedAnnouncements.includes(DESIGN_REFRESH_ID) && !settings.dismissedAnnouncements.includes(IPAD_ANNOUNCEMENT_ID)) setPending(true)
     }).catch((error: unknown) => console.error('[Bandal] 공지 상태를 불러오지 못했습니다.', error))
     const reopen = (): void => setOpen(true)
     window.addEventListener(OPEN_IPAD_ANNOUNCEMENT_EVENT, reopen)

@@ -32,18 +32,13 @@ vi.mock('../../../src/renderer/src/stores/authStore', () => ({
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: Object.assign((selector: (state: typeof workspaceState) => unknown) => selector(workspaceState), { getState: () => workspaceState, subscribe: () => () => {} })
 }))
-vi.mock('../../../src/renderer/src/features/account/SidebarAccountEntry', () => ({
-  SidebarAccountEntry: () => (
-    <button type="button" className="rail-nav__item" aria-label="내 프로필" />
+vi.mock('../../../src/renderer/src/features/account/ProfileMenu', () => ({
+  ProfileMenu: () => (
+    <button type="button" className="rail-nav__item" aria-label="프로필" />
   )
 }))
 vi.mock('../../../src/renderer/src/features/help/HelpHub', () => ({
-  HelpHub: () => (
-    <button type="button" className="rail-nav__item" aria-label="도움말" />
-  )
-}))
-vi.mock('../../../src/renderer/src/features/university/UniversityShortcuts', () => ({
-  UniversityShortcuts: () => null
+  HelpHub: () => null
 }))
 vi.mock('../../../src/renderer/src/features/workspace/workspaceIcons', () => ({
   TabKindIcon: () => null
@@ -148,11 +143,8 @@ describe('CourseSidebar course menu', () => {
       container.querySelectorAll<HTMLElement>('.global-navigation .rail-nav__item')
     ).map((item) => item.getAttribute('aria-label'))
 
-    expect(invokeMock).toHaveBeenCalledWith('update:status', {})
-    expect(container.querySelector('.rail-update-button')).toBeNull()
-    expect(labels).toEqual([
-      '홈', '학업 보드 열기', '더보기', '커뮤니티', '도움말', '내 프로필', '설정'
-    ])
+    // The rail keeps five items (iPad): help, community, plugins and updates live in the profile menu.
+    expect(labels).toEqual(['홈', 'AI', '학업 보드 열기', '프로필', '설정'])
   })
 
   test('opens from the ellipsis button and changes the course color', async () => {

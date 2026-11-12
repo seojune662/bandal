@@ -9,7 +9,6 @@ import {
   SHORTCUT_HELP_EVENT
 } from '../../app/shortcuts'
 import { showToast } from '../../app/toast'
-import { Tooltip } from '../../components/Tooltip'
 import { useLocale, useT } from '../../i18n'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -91,10 +90,16 @@ function defaultShortcutLabel(platform: string): string {
   return parsed === null ? '—' : formatChord(parsed, platform)
 }
 
+/** The profile menu's 도움말 row opens the help menu beside it. */
+export const OPEN_HELP_MENU_EVENT = 'bandal:open-help-menu'
+export function openHelpMenu(position: MenuPosition): void {
+  window.dispatchEvent(new CustomEvent<MenuPosition>(OPEN_HELP_MENU_EVENT, { detail: position }))
+}
+
+/** Headless: the help menu, milestones and feedback dialogs, opened from the profile menu. */
 export function HelpHub(): JSX.Element {
   const t = useT()
   const locale = useLocale()
-  const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   useViewportBounds(menuRef)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
@@ -118,10 +123,7 @@ export function HelpHub(): JSX.Element {
       menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
     })
     const onPointerDown = (event: PointerEvent): void => {
-      if (
-        !menuRef.current?.contains(event.target as Node) &&
-        !triggerRef.current?.contains(event.target as Node)
-      ) {
+      if (!menuRef.current?.contains(event.target as Node)) {
         closeMenu()
       }
     }
@@ -138,6 +140,15 @@ export function HelpHub(): JSX.Element {
       window.removeEventListener('blur', closeMenu)
     }
   }, [closeMenu, menu])
+
+  useEffect(() => {
+    const open = (event: Event): void => {
+      setMenu((event as CustomEvent<MenuPosition>).detail)
+      void refreshMilestones(selectedCourseId)
+    }
+    window.addEventListener(OPEN_HELP_MENU_EVENT, open)
+    return () => window.removeEventListener(OPEN_HELP_MENU_EVENT, open)
+  }, [refreshMilestones, selectedCourseId])
 
   useEffect(() => {
     const openShortcuts = (): void => {
@@ -229,27 +240,6 @@ export function HelpHub(): JSX.Element {
 
   return (
     <>
-      <Tooltip label="도움말" placement="top">
-        <button
-          ref={triggerRef}
-          type="button"
-          className="rail-nav__item"
-          aria-haspopup="menu"
-          aria-expanded={menu !== null}
-          aria-label="도움말"
-          onClick={(event) => {
-            if (menu !== null) {
-              closeMenu()
-              return
-            }
-            const rect = event.currentTarget.getBoundingClientRect()
-            setMenu({ left: rect.right + 8, top: rect.top })
-            void refreshMilestones(selectedCourseId)
-          }}
-        >
-          <Icon name="help" />
-        </button>
-      </Tooltip>
 
       {menu !== null && (
         <div

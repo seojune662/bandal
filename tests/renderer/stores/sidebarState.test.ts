@@ -50,14 +50,20 @@ test.each(['ai', 'hide', 'settings', 'board', 'graph', 'scope'] as const)('mater
   expect(persisted[`expansion-${transition}`]).not.toHaveProperty('materialsExpanded')
 })
 
-test.each([[1024, false], [1440, true]])('opening AI in a %ipx window leaves the course sidebar open: %s', (width, courseOpen) => {
+test.each([1024, 1440])('home and AI share one slot beside the rail at %ipx', (width) => {
   const original = window.innerWidth
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
   try {
     useUiStore.setState({ aiRailOpen: false, courseRailOpen: true })
     useUiStore.getState().showAssistant()
-    expect(useUiStore.getState()).toMatchObject({ aiRailOpen: true, courseRailOpen: courseOpen })
+    expect(useUiStore.getState()).toMatchObject({ aiRailOpen: true, courseRailOpen: false })
+    // Opening home from anywhere (rail, navigation helpers) folds AI away.
+    useUiStore.setState({ courseRailOpen: true })
+    expect(useUiStore.getState()).toMatchObject({ aiRailOpen: false, courseRailOpen: true })
     useUiStore.getState().toggleAiRail()
-    expect(useUiStore.getState().aiRailOpen).toBe(false)
+    expect(useUiStore.getState()).toMatchObject({ aiRailOpen: true, courseRailOpen: false })
+    // Pressing the open one folds it, leaving the slot empty.
+    useUiStore.getState().toggleAiRail()
+    expect(useUiStore.getState()).toMatchObject({ aiRailOpen: false, courseRailOpen: false })
   } finally { Object.defineProperty(window, 'innerWidth', { configurable: true, value: original }) }
 })

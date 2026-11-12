@@ -7,6 +7,7 @@ const ko = {
   tour: '핵심 기능 5개 보기',
   direct: '바로 시작하기',
   close: '안내 닫기',
+  decor: '반달의 색을 골라 주세요',
   tourDescription: '예시 과목으로 실제 화면을 보여드리며, 질문 전송이나 AI 생성은 실행하지 않아요. 끝내거나 건너뛰면 예시 자료는 모두 정리됩니다.',
   offer: '핵심 기능 5개를 살펴보세요',
   preparing: '예시 자료를 준비하는 중…',
@@ -34,6 +35,7 @@ const ko = {
 const en: typeof ko = {
   welcome: 'Welcome to Bandal', description: 'A study space to read, ask questions, and review.',
   tour: 'Explore 5 key features', direct: 'Start using Bandal', close: 'Close introduction',
+  decor: 'Pick Bandal\'s color',
   tourDescription: 'Explore the real interface with a sample course without sending questions or running AI generation. Its sample files are removed when you finish or skip.',
   offer: 'Explore 5 key features', preparing: 'Preparing sample files…', cleaning: 'Removing sample files…',
   next: 'Next', previous: 'Back', skip: 'Skip tour', finish: 'Finish', later: 'Later', moving: 'Opening the view…',

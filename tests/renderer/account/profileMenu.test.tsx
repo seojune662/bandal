@@ -7,8 +7,8 @@ import type { AuthState } from '../../../src/shared/types/auth'
 vi.hoisted(() => {
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) })
 })
-vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: vi.fn(), onPush: () => () => {} }))
-import { SidebarAccountEntry } from '../../../src/renderer/src/features/account/SidebarAccountEntry'
+vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: vi.fn(async () => null), onPush: () => () => {} }))
+import { ProfileMenu } from '../../../src/renderer/src/features/account/ProfileMenu'
 import { useAuthStore } from '../../../src/renderer/src/stores/authStore'
 import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 
@@ -29,7 +29,7 @@ beforeEach(async () => {
   useAuthStore.setState({ auth: signedIn, signOut })
   useUiStore.setState({ leftRailOpen: true, isSettingsOpen: false, settingsCategory: null })
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
-  await act(async () => root.render(<SidebarAccountEntry />))
+  await act(async () => root.render(<ProfileMenu />))
 })
 afterEach(async () => {
   await act(async () => root.unmount())
@@ -40,7 +40,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers()
 })
 
-const trigger = () => host.querySelector<HTMLButtonElement>('.sidebar-account__trigger')!
+const trigger = () => host.querySelector<HTMLButtonElement>('.profile-menu__trigger')!
 const menu = () => host.querySelector<HTMLDivElement>('[role="menu"]')
 const items = () => [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
 async function open() { await act(async () => trigger().click()); await act(async () => vi.advanceTimersByTimeAsync(20)) }
@@ -53,20 +53,22 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
-test('profile menu has a clean identity and only real account and app actions', async () => {
+test('profile menu has a clean identity, account and app actions, and what left the rail', async () => {
   await open()
   expect(trigger().getAttribute('aria-haspopup')).toBe('menu')
-  expect(menu()?.getAttribute('aria-label')).toBe('계정 관리')
-  expect(host.querySelector('.sidebar-account__profile strong')?.textContent).toBe('이서준')
-  expect(host.querySelector('.sidebar-account__email')?.textContent).toBe('learner@example.test')
-  expect(items().map(item => item.textContent)).toEqual(['계정 설정', '앱 설정', '로그아웃'])
+  expect(menu()?.getAttribute('aria-label')).toBe('프로필')
+  expect(host.querySelector('.profile-menu__header strong')?.textContent).toBe('이서준')
+  expect(host.querySelector('.profile-menu__email')?.textContent).toBe('learner@example.test')
+  expect(items().map(item => item.textContent)).toEqual(['계정', '설정', '플러그인', '커뮤니티', '도움말›', '둘러보기', '로그아웃'])
   expect(menu()?.querySelectorAll('[role="separator"]')).toHaveLength(2)
-  expect(host.textContent).not.toMatch(/구독|업그레이드|사용량|닉네임 설정 전/)
   await act(async () => useAuthStore.setState({ auth: { ...signedIn, profile: { ...signedIn.profile!, nickname: null } } }))
-  expect(host.querySelector('.sidebar-account__profile strong')?.textContent).toBe('learner')
+  expect(host.querySelector('.profile-menu__header strong')?.textContent).toBe('learner')
   await act(async () => useAuthStore.setState({ auth: { ...signedIn, phase: 'signed-out', profile: null } }))
-  expect(trigger()).toBeNull()
+  // Signed out, the button stays and offers sign-in instead.
+  expect(trigger()).not.toBeNull()
   expect(menu()).toBeNull()
+  await open()
+  expect(items().map(item => item.textContent)).toEqual(['로그인', '설정', '플러그인', '커뮤니티', '도움말›', '둘러보기'])
 })
 
 test('account and app settings use their actual destinations and dismiss the menu', async () => {
@@ -86,17 +88,15 @@ test('keyboard entry, wrapping, Home/End, Escape and Tab keep predictable focus'
   await act(async () => vi.advanceTimersByTimeAsync(20))
   expect(document.activeElement).toBe(items()[0])
   await key('ArrowDown'); expect(document.activeElement).toBe(items()[1])
-  await key('ArrowDown'); expect(document.activeElement).toBe(items()[2])
+  await key('End'); expect(document.activeElement).toBe(items().at(-1))
   await key('ArrowDown'); expect(document.activeElement).toBe(items()[0])
-  await key('ArrowUp'); expect(document.activeElement).toBe(items()[2])
+  await key('ArrowUp'); expect(document.activeElement).toBe(items().at(-1))
   await key('Home'); expect(document.activeElement).toBe(items()[0])
-  await key('End'); expect(document.activeElement).toBe(items()[2])
   await key('Escape')
   expect(menu()).toBeNull(); expect(document.activeElement).toBe(trigger())
   await key('ArrowUp', trigger())
   await act(async () => vi.advanceTimersByTimeAsync(20))
-  expect(document.activeElement).toBe(items()[2])
-  expect(items().map(item => item.tabIndex)).toEqual([-1, -1, 0])
+  expect(document.activeElement).toBe(items().at(-1))
   await key('Tab')
   expect(menu()).toBeNull(); expect(document.activeElement).toBe(trigger())
 })
@@ -123,37 +123,37 @@ test('one pending signout survives dismissal, keeps its error on reopen and allo
   const first = deferred(), retry = deferred()
   signOut.mockReturnValueOnce(first.promise).mockReturnValueOnce(retry.promise)
   await open()
-  await act(async () => { items()[2]!.focus(); items()[2]!.click(); items()[2]!.click() })
+  await act(async () => { items().at(-1)!.focus(); items().at(-1)!.click(); items().at(-1)!.click() })
   expect(signOut).toHaveBeenCalledTimes(1)
   expect(menu()?.getAttribute('aria-busy')).toBe('true')
-  expect(items()[2]!.getAttribute('aria-disabled')).toBe('true')
+  expect(items().at(-1)!.getAttribute('aria-disabled')).toBe('true')
   await key('End')
-  expect(document.activeElement).toBe(items()[1])
+  expect(document.activeElement).toBe(items().at(-2))
   await key('Escape')
   await act(async () => first.reject(new Error('fixture network failure')))
   await open()
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('다시 시도해 주세요')
-  expect(items()[2]!.getAttribute('aria-disabled')).toBeNull()
-  await act(async () => items()[2]!.click())
+  expect(items().at(-1)!.getAttribute('aria-disabled')).toBeNull()
+  await act(async () => items().at(-1)!.click())
   expect(signOut).toHaveBeenCalledTimes(2)
   expect(host.querySelector('[role="alert"]')).toBeNull()
   await act(async () => retry.resolve())
   expect(menu()).toBeNull()
   await open()
-  expect(items()[2]!.getAttribute('aria-disabled')).toBeNull()
+  expect(items().at(-1)!.getAttribute('aria-disabled')).toBeNull()
 })
 
 test('late failure from a previous account cannot alter the new account menu', async () => {
   const pending = deferred()
   signOut.mockReturnValueOnce(pending.promise)
-  await open(); await act(async () => items()[2]!.click())
+  await open(); await act(async () => items().at(-1)!.click())
   await act(async () => useAuthStore.setState({ auth: { ...signedIn, profile: { ...signedIn.profile!, id: 'learner-two', nickname: '다른 계정' } } }))
   expect(menu()).toBeNull()
   await open()
   await act(async () => pending.reject(new Error('previous account failure')))
-  expect(host.querySelector('.sidebar-account__profile strong')?.textContent).toBe('다른 계정')
+  expect(host.querySelector('.profile-menu__header strong')?.textContent).toBe('다른 계정')
   expect(host.querySelector('[role="alert"]')).toBeNull()
-  expect(items()[2]!.getAttribute('aria-disabled')).toBeNull()
+  expect(items().at(-1)!.getAttribute('aria-disabled')).toBeNull()
 })
 
 test('shared viewport bounds cap and translate the menu in a small viewport and after resizing', async () => {
@@ -161,7 +161,7 @@ test('shared viewport bounds cap and translate the menu in a small viewport and 
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 170 })
   const original = HTMLElement.prototype.getBoundingClientRect
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-    if (!this.classList.contains('sidebar-account__popover')) return original.call(this)
+    if (!this.classList.contains('profile-menu__popover')) return original.call(this)
     const width = Math.min(272, parseFloat(this.style.maxWidth) || 272), height = Math.min(220, parseFloat(this.style.maxHeight) || 220)
     return { x: 280, y: -60, left: 280, top: -60, width, height, right: 280 + width, bottom: -60 + height, toJSON: () => ({}) }
   })

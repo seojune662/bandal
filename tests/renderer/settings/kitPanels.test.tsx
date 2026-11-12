@@ -46,7 +46,9 @@ describe('AppearancePanel', () => {
     expect(html).toContain('aria-label="테마 선택"')
     expect(html).toContain('aria-label="밀도 선택"')
     expect(html).toContain('120%')
-    expect(html).toContain('플러그인 테마는 적용되지 않습니다.')
+    expect(html).toContain('창의 색은 아래 꾸미기에서 고를 수 있어요.')
+    expect(html).toContain('aria-label="색 선택"')
+    expect(html).toContain('은은하게')
   })
 })
 

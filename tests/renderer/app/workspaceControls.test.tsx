@@ -23,12 +23,11 @@ vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({ useWorkspace
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({ useUiStore: Object.assign((select: (value: typeof state.ui) => unknown) => select(state.ui), { getState: () => state.ui }) }))
 vi.mock('../../../src/renderer/src/features/workspace/windowOverviewController', () => ({ toggleWindowOverview: state.overview }))
 vi.mock('../../../src/renderer/src/components/Tooltip', () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => children }))
-vi.mock('../../../src/renderer/src/features/university/UniversityShortcuts', () => ({ UniversityShortcuts: () => <div aria-label="학교 바로가기">학교</div> }))
-vi.mock('../../../src/renderer/src/features/ai/AiShortcuts', async () => {
+vi.mock('../../../src/renderer/src/features/homeSites/HomeSiteTiles', async () => {
   const { useState } = await import('react')
-  return { AiShortcuts: () => {
+  return { HomeSiteTiles: () => {
     const [expanded, setExpanded] = useState(() => { state.shortcutMounts++; return false })
-    return <button aria-label="AI 바로가기" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>AI</button>
+    return <button aria-label="사이트 추가" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>+</button>
   } }
 })
 import { WorkspaceControls } from '../../../src/renderer/src/app/WorkspaceControls'
@@ -80,16 +79,15 @@ test('empty workspaces retain all control buttons and keep the sidebar usable', 
   click('오른쪽 사이드바 접기')
   expect(state.ui.toggleRightRail).toHaveBeenCalledOnce()
 })
-test('school and AI remain mounted and retain expansion while switching course and project lists', () => {
+test('site tiles remain mounted and keep their state while switching course and project lists', () => {
   const render = (project: boolean): void => {
     act(() => root.render(<HomeSidebar hidden={false}><aside hidden={project}>과목 목록</aside><aside hidden={!project}>프로젝트 목록</aside></HomeSidebar>))
   }
   render(false)
-  click('AI 바로가기')
+  click('사이트 추가')
   const shortcuts = container.querySelector('.shell-home-sidebar__shortcuts')
   render(true)
   expect(container.querySelector('.shell-home-sidebar__shortcuts')).toBe(shortcuts)
-  expect(container.querySelector('[aria-label="학교 바로가기"]')).not.toBeNull()
-  expect(container.querySelector('[aria-label="AI 바로가기"]')?.getAttribute('aria-expanded')).toBe('true')
+  expect(container.querySelector('[aria-label="사이트 추가"]')?.getAttribute('aria-expanded')).toBe('true')
   expect(state.shortcutMounts).toBe(1)
 })

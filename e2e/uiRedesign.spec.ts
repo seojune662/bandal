@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 
 // Real Electron surfaces with synthetic documents; never opens personal data.
 test('neutral appearance preserves document geometry, navigation and settings', async ({}, info) => {
@@ -249,7 +250,7 @@ test('global menus, course drag, resizing and enlarged text remain reachable', a
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     await expect(page.locator('.global-navigation')).toBeHidden()
     await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
-    await page.getByRole('button', { name: '도움말', exact: true }).click()
+    await openProfileItem(page, /도움말/)
     await expect(
       page.getByRole('menuitem', { name: '연결 그래프', exact: true })
     ).toBeVisible()
@@ -293,7 +294,6 @@ test('library surfaces keep course colors quiet and document actions reachable',
     writeFileSync(join(course.folderPath, '날개 단면.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC3sAAAAASUVORK5CYII=', 'base64'))
     mkdirSync(join(course.folderPath, '참고 자료'))
     await page.reload()
-    await page.locator('.university-section__heading[aria-expanded="true"]').click()
     await page.locator('.course-row__select').filter({ hasText: '항공역학' }).click()
     for (const other of courses.slice(0, -1)) {
       const toggle = page.getByRole('button', { name: `${other.name} 접기`, exact: true })

@@ -43,7 +43,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     name: '다크',
     description: '차분한 어두운 화면',
     base: 'dark',
-    windowBackground: '#212121'
+    windowBackground: '#18181a'
   }
 ]
 export const DEFAULT_THEME_ID = 'system' as const

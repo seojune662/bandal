@@ -1,13 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { resolve } from 'node:path'
 import { createCourse, launchBandal } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 
 const rail = (page: Page) => page.getByRole('navigation', { name: '앱 메뉴' })
 const launcher = (page: Page) => page.getByRole('complementary', { name: '앱 더보기' })
 const feature = (page: Page, label: string) => launcher(page).locator('.launcher-feature').filter({ has: page.locator('strong').filter({ hasText: new RegExp(`^${label}$`) }) })
 async function openLauncher(page: Page): Promise<void> {
   const opening = !await launcher(page).isVisible()
-  if (opening) await rail(page).getByRole('button', { name: '더보기', exact: true }).click()
+  if (opening) await openProfileItem(page, '플러그인')
   await expect(launcher(page)).toBeVisible()
   if (opening) await expect(launcher(page).getByLabel('기능 검색')).toBeFocused()
 }

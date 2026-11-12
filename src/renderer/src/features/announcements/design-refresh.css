@@ -1,0 +1,78 @@
+/* Design refresh greeting: onboarding's surface (NativeOnboarding) as a centred glass sheet. */
+.design-refresh-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: flex;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgb(0 0 0 / 0.18);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  animation: design-refresh-fade 250ms ease-out;
+}
+@keyframes design-refresh-fade { from { opacity: 0; } }
+.design-refresh {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(560px, 100%);
+  margin: auto;
+  padding: 28px 28px 24px;
+  color: var(--text-primary);
+  background: var(--glass-sheet);
+  border: 0.5px solid var(--glass-rim);
+  border-radius: 28px;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  animation: design-refresh-rise 250ms ease-out;
+}
+@keyframes design-refresh-rise { from { opacity: 0; transform: translateY(8px) scale(0.985); } }
+.design-refresh__header { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.design-refresh__mark {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  background: linear-gradient(135deg, var(--decor-mark-from), var(--decor-mark-to));
+  /* The Bandal half-moon, cut from a disc. */
+  -webkit-mask: radial-gradient(circle at 68% 38%, transparent 0 34%, #000 35%) , radial-gradient(circle, #000 0 70%, transparent 71%);
+  -webkit-mask-composite: source-in;
+  mask: radial-gradient(circle at 68% 38%, transparent 0 34%, #000 35%) intersect, radial-gradient(circle, #000 0 70%, transparent 71%);
+  animation: design-refresh-spin 2s cubic-bezier(0.3, 0.9, 0.3, 1);
+}
+@keyframes design-refresh-spin { from { transform: rotate(-200deg); } }
+.design-refresh__header h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.design-refresh__header p { margin: 0; color: var(--text-secondary); font-size: 15px; }
+.design-refresh__card { overflow: hidden; background: var(--paper); border: 1px solid var(--border-subtle); border-radius: 16px; }
+.design-refresh__theme { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; padding: 8px 14px; border-bottom: 1px solid var(--border-subtle); font-size: 15px; }
+.design-refresh__segmented { display: flex; padding: 2px; background: var(--bg-surface); border-radius: 9px; }
+.design-refresh__segmented button { min-width: 64px; height: 29px; padding: 0 14px; color: var(--text-secondary); font-size: 14px; border-radius: 7px; }
+.design-refresh__segmented button[aria-checked='true'] { color: var(--text-primary); font-weight: 600; background: var(--paper); box-shadow: 0 1px 3px rgb(0 0 0 / 0.1); }
+.design-refresh__changes { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0 4px; list-style: none; color: var(--text-secondary); font-size: 14px; }
+.design-refresh__changes li { display: flex; align-items: center; gap: 10px; }
+.design-refresh__changes span { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: var(--decor-accent); background: var(--glass-selection); border-radius: 8px; }
+.design-refresh__actions { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 4px; }
+.design-refresh__primary {
+  position: relative;
+  min-width: 220px;
+  height: 48px;
+  padding: 0 28px;
+  overflow: hidden;
+  color: var(--on-accent);
+  font-size: 16px;
+  font-weight: 800;
+  background: var(--accent);
+  border-radius: 999px;
+  box-shadow: inset 0 0 4px 4px rgb(40 40 40 / 0.9), 0 8px 24px rgb(0 0 0 / 0.12);
+}
+:root[data-theme='dark'] .design-refresh__primary { box-shadow: inset 0 0 4px 4px rgb(40 40 40 / 0.12), 0 8px 24px rgb(0 0 0 / 0.3); }
+/* Gloss from the trailing edge and a gradient rim (the onboarding primary button). */
+.design-refresh__primary::before { position: absolute; inset: 0; content: ''; background: linear-gradient(270deg, rgb(255 255 255 / 0.4), rgb(255 255 255 / 0.1) 14%, transparent 30%); opacity: 0.5; pointer-events: none; }
+.design-refresh__primary::after { position: absolute; inset: 0; content: ''; border: 1px solid transparent; border-radius: inherit; background: linear-gradient(180deg, rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.1)) border-box; -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0.5; pointer-events: none; }
+.design-refresh__primary:active { transform: scale(0.98); }
+.design-refresh__primary:focus-visible { outline: 2px solid color-mix(in srgb, var(--focus-ring) 70%, transparent); outline-offset: 2px; }
+.design-refresh__later { padding: 8px 12px; color: var(--text-secondary); font-size: 14px; border-radius: 8px; }
+.design-refresh__later:hover { color: var(--text-primary); }
+@media (max-height: 820px) { .design-refresh .decor-preview { height: 120px; } .design-refresh { gap: 12px; padding-top: 20px; } .design-refresh__header h2 { font-size: 22px; } .design-refresh__mark { width: 34px; height: 34px; } }
+@media (max-height: 700px) { .design-refresh .decor-preview { display: none; } }

@@ -11,7 +11,7 @@ async function expectTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
           .trim()
       )
     )
-    .toBe(theme === 'light' ? '#ffffff' : '#212121')
+    .toBe(theme === 'light' ? '#ffffff' : '#18181a')
   expect(await page.locator('html').getAttribute('data-palette')).toBeNull()
 }
 
@@ -40,7 +40,7 @@ test('system is the installation default and synchronizes the main window', asyn
           .map((win) => win.getBackgroundColor().toLowerCase())
       )
       expect(backgrounds).toEqual([
-        theme === 'light' ? '#ffffff' : '#212121'
+        theme === 'light' ? '#ffffff' : '#18181a'
       ])
     }
     await page.evaluate(() =>

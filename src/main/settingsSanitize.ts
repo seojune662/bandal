@@ -5,6 +5,8 @@
  */
 
 import { sanitizeTabPreferences } from '../shared/tabPreferences'
+import { sanitizeDecor } from '../shared/decor'
+import { sanitizeHomeSites } from '../shared/homeSites'
 import { isPaletteId, normalizeThemePreference } from '../shared/theme'
 import { isSearchEngineId } from '../shared/search'
 import { parseChord, SHORTCUT_SPECS } from '../shared/keymap'
@@ -316,6 +318,8 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       ? record.editorFont
       : defaults.editorFont,
     density: isDensity(record.density) ? record.density : defaults.density,
+    decor: sanitizeDecor(record.decor),
+    homeSites: sanitizeHomeSites(record.homeSites),
     browserSearchEngine: isSearchEngineId(record.browserSearchEngine)
       ? record.browserSearchEngine
       : defaults.browserSearchEngine,

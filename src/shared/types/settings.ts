@@ -5,6 +5,8 @@
 import { DEFAULT_TAB_PREFERENCES, type TabPreferences } from '../tabPreferences'
 import type { AgentProvider } from './agent-events'
 import { DEFAULT_PALETTE_ID, DEFAULT_THEME_ID } from '../theme'
+import { DEFAULT_DECOR, type DecorSettings } from '../decor'
+import { DEFAULT_HOME_SITES, type HomeSitePreferences } from '../homeSites'
 import { DEFAULT_SEARCH_ENGINE, type SearchEngineId } from '../search'
 import type { PaletteId, ThemeId } from '../theme'
 import { DEFAULT_UNIVERSITY_SETTINGS } from './university'
@@ -278,6 +280,10 @@ export interface Settings {
   editorFont: EditorFont
   /** Spacing/radius/chrome tightness. */
   density: Density
+  /** 꾸미기: the palette and strength of the window's glass (src/shared/decor.ts). */
+  decor: DecorSettings
+  /** Home sidebar site tiles: pins, removals and added sites (src/shared/homeSites.ts). */
+  homeSites: HomeSitePreferences
   /** Preferred AI agent provider. */
   agentProvider: AgentProvider
   /** Where the assistant is presented. */
@@ -337,6 +343,8 @@ export const DEFAULT_SETTINGS: Settings = {
   fontScale: DEFAULT_FONT_SCALE,
   editorFont: DEFAULT_EDITOR_FONT,
   density: DEFAULT_DENSITY,
+  decor: DEFAULT_DECOR,
+  homeSites: DEFAULT_HOME_SITES,
   agentProvider: 'claude-code',
   dataRoot: '',
   locale: 'ko-KR',

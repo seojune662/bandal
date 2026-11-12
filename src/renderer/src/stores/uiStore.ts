@@ -10,6 +10,7 @@ import type { AppearanceSettings } from '../../../shared/appearance'
 import { applyTheme, resolveRendererTheme } from '../features/settings/settingsTheme'
 import type { ResolvedTheme } from '../../../shared/theme'
 import { DEFAULT_SETTINGS } from '../../../shared/types/settings'
+import { DEFAULT_DECOR, type DecorSettings } from '../../../shared/decor'
 import type { ThemePreference } from '../../../shared/types/settings'
 import { invoke, onPush } from '../lib/ipc'
 import { ensureSettingsLoaded } from './settingsSnapshot'
@@ -17,6 +18,10 @@ import { ensureSettingsLoaded } from './settingsSnapshot'
 interface UiState {
   themePreference: ThemePreference
   resolvedTheme: ResolvedTheme
+  /** 꾸미기: the glass palette and strength in force. */
+  decor: DecorSettings
+  /** Paint at once; persist after the dial settles (a slider drag sends one write). */
+  setDecor: (patch: Partial<DecorSettings>) => void
   leftRailOpen: boolean
   courseRailOpen: boolean
   leftRailPanel: 'courses' | 'learning' | 'plugins'
@@ -87,24 +92,35 @@ function saveRightRail(scope: string | null, preference: RightRailPreference): v
   try { localStorage.setItem(RIGHT_RAIL_KEY, JSON.stringify(rightRails)) } catch { /* In-memory restoration remains available. */ }
 }
 
-// ponytail: fixed breakpoint; below it nav + course + AI + materials leave the workspace under ~400px.
-const NARROW_WINDOW_WIDTH = 1280
-/** Opening AI in a narrow window gives the course sidebar's width to the workspace. */
-const openAiRail = (): Partial<UiState> => ({ aiRailOpen: true, ...(globalThis.innerWidth < NARROW_WINDOW_WIDTH ? { courseRailOpen: false } : {}) })
+/** Home and AI share the left slot beside the rail (as on iPad): opening AI folds home away. */
+const openAiRail = (): Partial<UiState> => ({ aiRailOpen: true, courseRailOpen: false })
 
 let themeInitialization: Promise<void> | null = null
 
 /** The last appearance painted, so a single-axis change can re-apply the rest. */
 let currentAppearance: AppearanceSettings = pickAppearance(DEFAULT_SETTINGS)
 
-function applyToDocument(appearance: AppearanceSettings): ResolvedTheme {
+let currentDecor: DecorSettings = DEFAULT_DECOR
+
+function applyToDocument(appearance: AppearanceSettings & { decor?: DecorSettings }): ResolvedTheme {
   currentAppearance = pickAppearance(appearance)
-  return applyTheme(appearance)
+  if (appearance.decor) currentDecor = appearance.decor
+  return applyTheme({ ...currentAppearance, decor: currentDecor })
 }
+
+let decorSave: ReturnType<typeof setTimeout> | null = null
 
 export const useUiStore = create<UiState>()((set, get) => ({
   themePreference: DEFAULT_SETTINGS.theme,
   resolvedTheme: resolveRendererTheme(DEFAULT_SETTINGS.theme),
+  decor: DEFAULT_DECOR,
+  setDecor: patch => {
+    const decor = { ...get().decor, ...patch }
+    applyToDocument({ ...currentAppearance, decor })
+    set({ decor })
+    if (decorSave) clearTimeout(decorSave)
+    decorSave = setTimeout(() => { decorSave = null; void invoke('settings:set', { decor: get().decor }) }, 250)
+  },
   leftRailOpen: true,
   courseRailOpen: true,
   leftRailPanel: (() => { try { return localStorage.getItem('bandal:home-tab') === 'learning' ? 'learning' : 'courses' } catch { return 'courses' } })(),
@@ -175,13 +191,17 @@ export const useUiStore = create<UiState>()((set, get) => ({
         set({
           themePreference: settings.theme,
           resolvedTheme: resolved,
+          decor: settings.decor,
         })
 
         onPush('settings:changed', ({ settings: next }) => {
-          const nextResolved = applyToDocument(next)
+          // A pending dial write wins over the echo of the one before it.
+          const decor = decorSave ? get().decor : next.decor
+          const nextResolved = applyToDocument({ ...next, decor })
           set({
             themePreference: next.theme,
             resolvedTheme: nextResolved,
+            decor,
           })
         })
 
@@ -213,8 +233,9 @@ export const useUiStore = create<UiState>()((set, get) => ({
 
 
   toggleLeftRail: () => {
+    // Reopening restores the slot as it was: AI stays if it held it, else home.
     set((state) => ({ leftRailOpen: !state.leftRailOpen,
-      ...(!state.leftRailOpen ? { courseRailOpen: true } : {}) }))
+      ...(!state.leftRailOpen && !state.aiRailOpen ? { courseRailOpen: true } : {}) }))
   },
 
   toggleCourseRail: () => set(state => ({ courseRailOpen: !state.courseRailOpen })),
@@ -249,3 +270,16 @@ export const useUiStore = create<UiState>()((set, get) => ({
     set({ isBoardOverlayOpen: false })
   }
 }))
+
+/**
+ * One left slot: whichever of home and AI opened last owns it. Enforced on
+ * every state change, so a direct `setState({ courseRailOpen: true })` from a
+ * navigation helper folds AI away just like the rail buttons do.
+ */
+useUiStore.subscribe((state, previous) => {
+  const homeOpened = state.courseRailOpen && !previous.courseRailOpen
+  const aiOpened = state.aiRailOpen && !previous.aiRailOpen
+  if (homeOpened && state.aiRailOpen) useUiStore.setState({ aiRailOpen: false })
+  else if (aiOpened && state.courseRailOpen) useUiStore.setState({ courseRailOpen: false })
+  else if (state.courseRailOpen && state.aiRailOpen) useUiStore.setState({ aiRailOpen: false })
+})

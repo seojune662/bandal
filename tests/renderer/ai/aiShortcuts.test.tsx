@@ -2,8 +2,8 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { AiShortcuts, openAiShortcut } from '../../../src/renderer/src/features/ai/AiShortcuts'
-import { AI_SHORTCUTS_COLLAPSED_KEY, findAiShortcutPanel } from '../../../src/renderer/src/features/ai/aiShortcutModel'
+import { openAiShortcut } from '../../../src/renderer/src/features/ai/openAiShortcut'
+import { findAiShortcutPanel } from '../../../src/renderer/src/features/ai/aiShortcutModel'
 import { useBrowserGuests, resetBrowserGuestsForTests } from '../../../src/renderer/src/features/browser/browserGuestsStore'
 import { useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 import type { TabDescriptor } from '../../../src/shared/tabs'
@@ -53,17 +53,4 @@ test('reuses a temporary null-course tab and does not search other courses', () 
   useBrowserGuests.setState({ nav: { otherCourse: { url: 'https://chatgpt.com/c/456', title: '', loading: false, canGoBack: false, canGoForward: false } } })
   openAiShortcut('chatgpt')
   expect(openTab).toHaveBeenCalledTimes(1)
-})
-test('shows three links in the AI section and persists collapse across remounts', async () => {
-  const container = document.createElement('div')
-  root = createRoot(container)
-  await act(async () => root!.render(<AiShortcuts />))
-  expect([...container.querySelectorAll('.ai-shortcut')].map(button => button.textContent)).toEqual(['ChatGPT', 'Gemini', 'Claude'])
-  await act(async () => (container.querySelector('.ai-shortcuts-section__heading') as HTMLButtonElement).click())
-  expect(window.localStorage.getItem(AI_SHORTCUTS_COLLAPSED_KEY)).toBe('true')
-  expect(container.querySelector('.ai-shortcut')).toBeNull()
-  await act(async () => root!.unmount())
-  root = createRoot(container)
-  await act(async () => root!.render(<AiShortcuts />))
-  expect(container.querySelector('.ai-shortcuts-section__heading')?.getAttribute('aria-expanded')).toBe('false')
 })

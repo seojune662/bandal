@@ -21,13 +21,13 @@ import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { LearningDialogsHost } from '../features/learning/LearningDialogsHost'
 import { LearningSpacesPanel } from '../features/learning/LearningSpacesPanel'
 import { FeatureLauncherPanel } from '../features/launcher/FeatureLauncherPanel'
-import { AiRailHandle } from './AiRailHandle'
 import { WorkspaceAssistantPanel } from '../features/assistantPanel/WorkspaceAssistantPanel'
 import { RightSidebar } from './RightSidebar'
 import { WorkspaceControls } from './WorkspaceControls'
 import { HomeSidebar } from './HomeSidebar'
 import { AnnotationOverlay } from '../features/annotation/AnnotationOverlay'
 import { IpadAnnouncement } from '../features/announcements/IpadAnnouncement'
+import { DesignRefreshAnnouncement } from '../features/announcements/DesignRefreshAnnouncement'
 import { SyncMoveNotice } from '../features/settings/sync/SyncMoveNotice'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
@@ -56,10 +56,12 @@ import { usePluginsStore } from '../stores/pluginsStore'
 import { subscribePluginEditor } from '../features/plugins/pluginEditor'
 import { ShellChrome } from './ShellChrome'
 import { GlobalNavigation } from './GlobalNavigation'
+import { WorkspaceBackdrop } from './decor/WorkspaceBackdrop'
 import { useWindowState } from './useWindowState'
 import { usePresence } from '../components/usePresence'
 import { acquirePointerPassthrough } from '../features/browser/webviewPassthrough'
 import './app-shell.css'
+import './decor/glass.css'
 
 const BoardOverlay = lazy(() =>
   import('../features/board/BoardPanel').then((module) => ({
@@ -459,6 +461,7 @@ export function AppShell(): JSX.Element {
       data-right-rail={materialsRailVisible ? 'open' : 'closed'}
       data-ai-rail={aiRailVisible ? 'open' : 'closed'}
     >
+      <WorkspaceBackdrop />
       <GlobalNavigation />
       <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailVisible || settingsPresent || materialsExpanded}
         {...{ inert: !leftRailOpen || !courseRailVisible || settingsPresent || materialsExpanded ? '' : undefined }}>
@@ -474,8 +477,6 @@ export function AppShell(): JSX.Element {
         {...{ inert: !aiRailVisible || settingsPresent || materialsExpanded ? '' : undefined }}>
         <WorkspaceAssistantPanel />
       </div>
-      {workspaceSurfaceHasRails && !settingsPresent && !materialsExpanded && !isBoardOverlayOpen && !isLinkGraphOpen && !windowsOverviewOpen &&
-        <AiRailHandle open={aiRailVisible} />}
 
       <main className="app-workspace" aria-label="작업 공간" aria-hidden={settingsPresent || materialsExpanded || undefined} {...{ inert: settingsPresent || materialsExpanded ? '' : undefined }}>
         <WorkspaceHost />
@@ -505,6 +506,7 @@ export function AppShell(): JSX.Element {
       <ToastHost />
       <ShareImportDialog />
       {!isOnboardingVisible && !settingsPresent && <CommunityPromotion />}
+      <DesignRefreshAnnouncement mainScreenVisible={!isOnboardingVisible && !settingsPresent} />
       <IpadAnnouncement mainScreenVisible={!isOnboardingVisible && !settingsPresent} />
       <SyncMoveNotice />
       <LearningDialogsHost />

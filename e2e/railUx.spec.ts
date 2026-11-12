@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 import type { UpdateStatus } from '../src/shared/types/update'
 
 const currentVersion = '0.0.0'
@@ -65,14 +66,14 @@ async function signInFixture(bandal: BandalApp): Promise<void> {
       return { ok: true }
     })
   })
-  await bandal.page.locator('.global-navigation').getByRole('button', { name: '계정', exact: true }).click()
+  await bandal.page.locator('.global-navigation').getByRole('button', { name: '프로필', exact: true }).click()
   await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents.send('auth:changed', (globalThis as any).__railAuth))
-  await expect(bandal.page.getByRole('button', { name: '계정: 서준', exact: true })).toBeVisible()
+  await expect(bandal.page.getByRole('button', { name: '프로필: 서준', exact: true })).toBeVisible()
   await bandal.page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
 }
 
 async function assertMenuBounds(page: Page): Promise<void> {
-  expect(await page.getByRole('menu', { name: '계정 관리' }).evaluate(element => {
+  expect(await page.getByRole('menu', { name: '프로필' }).evaluate(element => {
     const b = element.getBoundingClientRect()
     return b.left >= 7 && b.top >= 7 && b.right <= innerWidth - 7 && b.bottom <= innerHeight - 7
   })).toBe(true)
@@ -92,7 +93,7 @@ test('rail update downloads once, tracks progress, and waits for saved notes and
     const download = page.getByRole('button', { name: `새 버전 ${version} 다운로드`, exact: true })
     await expect(download).toBeVisible()
     expect(await download.evaluate(button => {
-      const update = button.getBoundingClientRect(), account = document.querySelector('.global-navigation__bottom .sidebar-account, .global-navigation__bottom [aria-label="계정"]')!.getBoundingClientRect()
+      const update = button.getBoundingClientRect(), account = document.querySelector('.global-navigation__bottom .profile-menu')!.getBoundingClientRect()
       return update.bottom <= account.top && getComputedStyle(button).borderRadius !== '0px'
     })).toBe(true)
     await page.screenshot({ path: info.outputPath('rail-update-light.png') })
@@ -146,8 +147,8 @@ test('profile and more menus remain compact and reachable across themes, zoom, k
   try {
     const { page, app } = bandal
     await updateFixture(bandal); await signInFixture(bandal)
-    const trigger = page.getByRole('button', { name: '계정: 서준', exact: true })
-    const menu = page.getByRole('menu', { name: '계정 관리' })
+    const trigger = page.getByRole('button', { name: '프로필: 서준', exact: true })
+    const menu = page.getByRole('menu', { name: '프로필' })
     for (const theme of ['light', 'dark'] as const) {
       await page.evaluate(theme => window.bandal.invoke('settings:set', { theme }), theme)
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
@@ -159,19 +160,19 @@ test('profile and more menus remain compact and reachable across themes, zoom, k
         }, compact)
         await trigger.click(); await expect(menu).toBeVisible(); await assertMenuBounds(page)
         await expect(menu).toContainText('student@example.test')
-        expect(await menu.getByRole('menuitem').allTextContents()).toEqual(['계정 설정', '앱 설정', '로그아웃'])
+        expect(await menu.getByRole('menuitem').allTextContents()).toEqual(['계정', '설정', '플러그인', '커뮤니티', '도움말›', '둘러보기', '로그아웃'])
         await captureWindow(bandal, info.outputPath(`profile-${theme}-${compact ? 'compact' : 'wide'}.png`))
         await page.keyboard.press('End'); await expect(menu.getByRole('menuitem', { name: '로그아웃', exact: true })).toBeFocused()
-        await page.keyboard.press('Home'); await expect(menu.getByRole('menuitem', { name: '계정 설정', exact: true })).toBeFocused()
-        await page.keyboard.press('ArrowDown'); await expect(menu.getByRole('menuitem', { name: '앱 설정', exact: true })).toBeFocused()
+        await page.keyboard.press('Home'); await expect(menu.getByRole('menuitem', { name: '계정', exact: true })).toBeFocused()
+        await page.keyboard.press('ArrowDown'); await expect(menu.getByRole('menuitem', { name: '설정', exact: true })).toBeFocused()
         await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0); await expect(trigger).toBeFocused()
-        await page.locator('.global-navigation').getByRole('button', { name: '도움말', exact: true }).click()
+        await openProfileItem(page, /도움말/)
         await expect(page.locator('.help-menu')).toBeVisible()
         await captureWindow(bandal, info.outputPath(`more-${theme}-${compact ? 'compact' : 'wide'}.png`))
         await page.keyboard.press('Escape')
       }
     }
-    await trigger.click(); await menu.getByRole('menuitem', { name: '앱 설정', exact: true }).click()
+    await trigger.click(); await menu.getByRole('menuitem', { name: '설정', exact: true }).click()
     await expect(page.locator('.shell-settings-overlay')).toBeVisible()
     await page.locator('.global-navigation').getByRole('button', { name: '홈', exact: true }).click()
     await trigger.click(); await menu.getByRole('menuitem', { name: '로그아웃', exact: true }).click()

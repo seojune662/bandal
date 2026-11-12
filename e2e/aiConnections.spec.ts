@@ -3,7 +3,8 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createCourse, launchBandal } from './helpers/launch'
 
-test('AI web shortcuts reuse the current conversation and survive layout restoration', async ({}, info) => {
+// AI sites are home site tiles now (iPad NativeHomeSiteTiles); the launch helper seeds the three.
+test('AI site tiles reuse the current conversation and survive layout restoration', async ({}, info) => {
   let bandal = await launchBandal({ keepProfileOnClose: true, extraSettings: { theme: 'light' } })
   const installSites = async () => bandal.app.evaluate(({ session }) => {
     session.fromPartition('persist:browsing').protocol.handle('https', request => {
@@ -15,7 +16,7 @@ test('AI web shortcuts reuse the current conversation and survive layout restora
   try {
     await installSites()
     const { page } = bandal
-    const shortcuts = page.getByRole('region', { name: 'AI 웹 바로가기' })
+    const shortcuts = page.getByRole('region', { name: '사이트' })
     // A browser is available before the user creates their first course.
     await shortcuts.getByRole('button', { name: 'Gemini', exact: true }).click()
     await expect(page.locator('.dv-tab:visible')).toHaveCount(1)
@@ -48,17 +49,13 @@ test('AI web shortcuts reuse the current conversation and survive layout restora
     await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1024)
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
     await page.screenshot({ path: info.outputPath('ai-shortcuts-narrow.png') })
-    expect(await shortcuts.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
-    await shortcuts.getByRole('button', { name: 'AI 바로가기 접기' }).click()
-    await expect(shortcuts.getByRole('button', { name: 'Gemini', exact: true })).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect.poll(async () => Object.values((await page.evaluate(id => window.bandal.invoke('layout:get', { courseId: id }), courseId)).layout?.panels ?? {}).filter((panel: any) => panel.params.descriptor.kind === 'browser').length).toBe(3)
     const profile = bandal.profileDir
     await bandal.close()
     bandal = await launchBandal({ reuseProfileDir: profile })
     await installSites()
-    const restored = bandal.page.getByRole('region', { name: 'AI 웹 바로가기' })
-    await expect(restored.getByRole('button', { name: 'AI 바로가기 펼치기' })).toBeVisible()
-    await restored.getByRole('button', { name: 'AI 바로가기 펼치기' }).click()
+    const restored = bandal.page.getByRole('region', { name: '사이트' })
     await restored.getByRole('button', { name: 'Gemini', exact: true }).click()
     await expect(bandal.page.locator('.dv-tab:visible')).toHaveCount(3)
   } finally { await bandal.close() }

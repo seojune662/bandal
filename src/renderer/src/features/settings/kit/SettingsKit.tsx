@@ -78,7 +78,7 @@ export function SettingsGroup({
         {bare ? (
           children
         ) : (
-          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card/60">
+          <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-(--paper)">
             {children}
           </div>
         )}

@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { openProfileItem } from './helpers/aiRail'
 
 const rail = (page: Page) => page.getByRole('navigation', { name: '앱 메뉴' })
 async function service(bandal: BandalApp, open = false): Promise<void> {
@@ -54,7 +55,7 @@ test('community replaces marketplace and preserves the live course editor while 
     await page.locator('[data-material-path="기록.md"]').click({ button: 'right' })
     await expect(page.getByRole('menuitem', { name: '자료 판매하기' })).toHaveCount(0)
     await page.keyboard.press('Escape')
-    await rail(page).getByRole('button', { name: '커뮤니티', exact: true }).click()
+    await openProfileItem(page, '커뮤니티')
     await expect(page.locator('.community h1')).toBeVisible()
     await expect(page.locator('.app-shell')).toHaveAttribute('data-course-rail', 'closed')
     await expect(page.locator('.app-shell')).toHaveAttribute('data-right-rail', 'closed')
@@ -80,7 +81,7 @@ test('open contest promotion is dismissible once and submission retry preserves 
     await promotion.getByRole('button', { name: '닫기', exact: true }).click()
     await page.reload()
     await expect(promotion).toHaveCount(0)
-    await rail(page).getByRole('button', { name: '커뮤니티', exact: true }).click()
+    await openProfileItem(page, '커뮤니티')
     await page.getByRole('button', { name: '공모 참여하기', exact: true }).click()
     const compose = page.getByRole('dialog', { name: '공모 참여', exact: true })
     await compose.getByLabel('제목', { exact: true }).fill('설명하면서 찾는 개념의 빈틈')

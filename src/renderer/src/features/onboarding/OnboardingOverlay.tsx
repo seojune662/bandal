@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Icon } from '../../app/icons'
 import { BandalMark } from '../../components/BandalMark'
+import { DecorPicker } from '../decor/DecorPicker'
 import { useFocusTrap } from '../../components/useFocusTrap'
 import { useLocale } from '../../i18n'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
@@ -31,6 +32,8 @@ export function OnboardingOverlay(): JSX.Element {
       </header>
       <div className="onboarding-body"><h2 id={titleId} className="onboarding-title">{copy.welcome}</h2>
         <p className="onboarding-desc">{copy.description}</p><p className="onboarding-tour-note">{copy.tourDescription}</p>
+        {/* The decor step (iPad onboarding: 반달의 색을 골라 주세요); the window behind repaints as it is chosen. */}
+        <div className="onboarding-decor"><p className="onboarding-decor__title">{copy.decor}</p><DecorPicker compact /></div>
       </div>
       <footer className="onboarding-footer">
         <button type="button" className="button button--secondary" disabled={pending} onClick={() => { void direct() }}>{copy.direct}</button>

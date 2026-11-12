@@ -118,7 +118,13 @@ export function seedSettings(userDataDir: string, dataRoot: string, extraSetting
         // pops mid-test and steals clicks. Mark the tour as already seen.
         tutorial: { seenVersion: 1, activeCourseId: null },
         // The launch announcement is a modal too; its own spec opts back in.
-        dismissedAnnouncements: ['ipad-launch-2026-10'],
+        dismissedAnnouncements: ['ipad-launch-2026-10', 'design-refresh-0-96'],
+        // The AI sites as home tiles, so browser specs can open them without typing an address.
+        homeSites: { pinned: [], hidden: [], custom: [
+          { id: 'custom:chatgpt.com', title: 'ChatGPT', url: 'https://chatgpt.com/' },
+          { id: 'custom:gemini.google.com', title: 'Gemini', url: 'https://gemini.google.com/app' },
+          { id: 'custom:claude.ai', title: 'Claude', url: 'https://claude.ai/new' }
+        ] },
         ...extraSettings
       },
       null,
