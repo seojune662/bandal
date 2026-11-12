@@ -186,7 +186,7 @@ jobs:
       matrix:
         include:
           - name: macOS
-            os: macos-14
+            os: macos-15
             # MAC_IDENTITY is resolved to a SHA-1 hash by the step below, and
             # expanded by the shell (not `${{ }}`) so it picks up the value the
             # earlier step wrote to GITHUB_ENV.
@@ -293,7 +293,7 @@ jobs:
       # the build is unsigned, and an unsigned macOS app can neither pass
       # Gatekeeper nor auto-update (Squirrel.Mac verifies the signature).
       - name: Import Developer ID certificate
-        if: matrix.os == 'macos-14'
+        if: matrix.os == 'macos-15'
         uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.MAC_CERT_P12 }}
@@ -314,7 +314,7 @@ jobs:
       # notarizes fine (same team, both valid), so keeping the first is
       # arbitrary but deterministic.
       - name: Deduplicate signing identity
-        if: matrix.os == 'macos-14'
+        if: matrix.os == 'macos-15'
         run: |
           list_hashes() {
             security find-identity -v -p codesigning signing_temp.keychain \
@@ -349,7 +349,7 @@ jobs:
       # does not expire — the one idea worth borrowing from the
       # ios-app-store-submit playbook.
       - name: Stage App Store Connect API key
-        if: matrix.os == 'macos-14'
+        if: matrix.os == 'macos-15'
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -382,11 +382,11 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Verify calendar access in signed macOS apps
-        if: matrix.os == 'macos-14'
+        if: matrix.os == 'macos-15'
         run: node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app
 
       - name: Verify bundled photo picker and share extension
-        if: matrix.os == 'macos-14'
+        if: matrix.os == 'macos-15'
         run: |
           node scripts/verify-photo-picker.mjs release/mac*/Bandal.app
           node scripts/verify-share-extension.mjs release/mac*/Bandal.app
