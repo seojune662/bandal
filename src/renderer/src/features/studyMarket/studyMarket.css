@@ -89,7 +89,7 @@
 .study-market__dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 26px; border-top: 1px solid var(--border-subtle); background: var(--bg-overlay); flex-shrink: 0; }
 .study-market__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .study-market__form { display: flex; flex-direction: column; gap: 18px; }
-.study-market__fieldset { border: 0; margin: 0; }
+.study-market__fieldset { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
 .study-market__field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .study-market__field > span { font-size: var(--text-sm); font-weight: 550; }
 .study-market__field input, .study-market__field select, .study-market__field textarea { width: 100%; box-sizing: border-box; color: var(--text-primary); background: var(--bg-app); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 10px 11px; font: inherit; min-height: 38px; }
