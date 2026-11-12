@@ -73,7 +73,10 @@ test.describe('note toolbar commands', () => {
     }).toPass({ timeout: 30_000 })
     await noteRow.click()
 
-    const editor = page.locator('[aria-label="마크다운 필기 편집기"]')
+    // The previous test's note stays open in another tab — scope to this one.
+    const editor = page
+      .locator('[aria-label="마크다운 필기 편집기"]')
+      .filter({ has: page.getByRole('heading', { name: '탭검증' }) })
     const surface = editor.locator('[contenteditable="true"]')
     const paragraph = editor.locator('p', { hasText: '탭문단' })
     await expect(paragraph).toBeVisible()
