@@ -43,6 +43,12 @@
   - SQL 함수 `bandal_admin_overview`도 같은 확인을 다시 한다.
   - 함수 실행 권한은 service_role에만 있다. anon과 authenticated는 테이블도 함수도 쓸 수 없다.
 - **감사 기록**: 성공한 조회마다 `admin_audit`에 남긴다. 남기지 못하면 데이터를 돌려주지 않는다.
+- **App Store 숫자의 출처**(2026-11-16, `20261116000000_admin_dashboard_ipad_store.sql`)
+  - iPad 앱이 실제로 쓰는 `ipad_entitlements`, `ipad_store_events`, `ai_credit_grants`(source `pack`)를 읽는다. 이 테이블들은 bandal-iPad의 `backend/supabase/migrations/202611060002_ipad_store.sql`이 만든다.
+  - `apple_billing_*` 테이블과 `apple-billing`, `apple-notifications` 함수에는 출시된 클라이언트가 쓰지 않는다. App Store Connect의 알림 URL은 `ipad-store-notifications`를 가리킨다.
+  - 활성은 `ai_status`와 같은 기준이다: production, 미철회, `expires_at > now()`.
+  - 새 구독과 갱신은 Apple 알림 개수다. 알림 URL을 지정하기 전에 시작한 구독은 세지 않는다.
+  - 금액은 App Store Connect에서만 본다.
 - **집계 범위**: 개수와 합계만 낸다. 예외는 최근 피드백 본문 10개(280자까지)다. 이메일, 사용자 id, 결제 키는 나가지 않는다. 날짜는 한국 시간 기준이다.
 - **검증**
   - `tests/backend/admin/service.test.ts`
