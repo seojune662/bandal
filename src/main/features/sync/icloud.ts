@@ -6,7 +6,7 @@
  */
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, watch } from 'node:fs'
+import { existsSync, statSync, watch } from 'node:fs'
 import { mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
@@ -29,6 +29,9 @@ export interface SyncProvider {
 /** `~/Library/Mobile Documents/iCloud~app~bandal/Documents`. */
 export const icloudRoot = (home = homedir()): string => join(home, 'Library', 'Mobile Documents', 'iCloud~app~bandal', 'Documents')
 
+/** Shown as the sync error when macOS refuses this app the iCloud Drive folders. */
+export const ICLOUD_ACCESS_DENIED = 'macOS가 반달의 iCloud Drive 접근을 막고 있어요. 시스템 설정 › 개인정보 보호 및 보안 › 파일 및 폴더에서 반달의 iCloud Drive를 켜 주세요.'
+
 /** A read past this waits for the next pass: the file is still downloading, or the Mac is offline. */
 const READ_TIMEOUT_MS = 60_000
 
@@ -38,12 +41,29 @@ export function createICloudProvider(options: { root: string; tmpDir: string; re
     if (!isSpecPath(placeholderTarget(path) ?? path)) throw new Error(`${path} is not a sync path`)
     return join(root, ...path.split('/'))
   }
-  const read = async (path: string): Promise<Uint8Array> =>
-    readFile(inside(path), { signal: AbortSignal.timeout(options.readTimeoutMs ?? READ_TIMEOUT_MS) })
+  const read = async (path: string): Promise<Uint8Array> => {
+    try {
+      return await readFile(inside(path), { signal: AbortSignal.timeout(options.readTimeoutMs ?? READ_TIMEOUT_MS) })
+    } catch (error) {
+      // Still not here (a dataless file iCloud has not fetched): ask for it again, so the next pass finds it.
+      execFile('/usr/bin/brctl', ['download', inside(path)], () => {})
+      throw error
+    }
+  }
   const requested = new Set<string>()
 
   return {
     async status() {
+      // macOS can refuse this app the iCloud Drive folders (Privacy & Security › Files and Folders). existsSync
+      // reads a refusal as "missing", which would say iCloud Drive is off or the iPad has not synced yet.
+      for (const path of [dirname(dirname(root)), root]) {
+        try {
+          statSync(path)
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (code === 'EPERM' || code === 'EACCES') throw new Error(ICLOUD_ACCESS_DENIED)
+        }
+      }
       // Mobile Documents/com~apple~CloudDocs exists exactly while iCloud Drive is on.
       if (!existsSync(join(dirname(dirname(root)), 'com~apple~CloudDocs'))) return 'unavailable'
       return existsSync(root) ? 'ready' : 'needs-ipad'
