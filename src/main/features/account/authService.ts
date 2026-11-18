@@ -152,7 +152,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         session.access_token,
         session.user.id,
         session.user.email ?? null,
-        session.user.user_metadata
+        session.user.user_metadata,
+        session.user.app_metadata
       )
     })
     unsubscribe = () => {
@@ -177,10 +178,12 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     accessToken: string,
     userId: string,
     userEmail: string | null,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    appMetadata?: Record<string, unknown>
   ): Promise<AuthState> {
     const version = ++sessionVersion
     const avatarUrl = accountAvatarUrl(metadata)
+    const providers = linkedProviders(appMetadata)
     token = accessToken
     uid = userId
     try {
@@ -192,7 +195,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         email: userEmail,
         avatarUrl,
         online: true,
-        errorCode: null
+        errorCode: null,
+        providers
       })
     } catch (error) {
       // Signed in but the profile row is unreachable (offline right after a
@@ -206,9 +210,16 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         email: userEmail,
         avatarUrl,
         online: false,
-        errorCode: null
+        errorCode: null,
+        providers
       })
     }
+  }
+
+  /** The Apple and Google sign-ins linked to the account, from the session's app_metadata. */
+  function linkedProviders(appMetadata?: Record<string, unknown>): AuthProvider[] {
+    const listed = Array.isArray(appMetadata?.['providers']) ? appMetadata['providers'] : [appMetadata?.['provider']]
+    return (['apple', 'google'] as const).filter(provider => listed.includes(provider))
   }
 
   function clearSession(): void {
@@ -300,7 +311,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           data.session.access_token,
           data.session.user.id,
           data.session.user.email ?? null,
-          data.session.user.user_metadata
+          data.session.user.user_metadata,
+          data.session.user.app_metadata
         )
       } catch (error) {
         if (version !== sessionVersion || signingOut) return state
@@ -404,7 +416,17 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         return
       }
 
-      if (linking && (parsed.kind === 'cancelled' || parsed.kind === 'failed')) { linking = false; return }
+      // A link that failed comes back here after the browser: say so (the account stays signed in as it was).
+      // Supabase answers `identity_already_exists` both when the provider's account is already this one's and
+      // when it belongs to another Bandal account.
+      if (linking && (parsed.kind === 'cancelled' || parsed.kind === 'failed')) {
+        linking = false
+        if (parsed.kind === 'failed') {
+          console.info(`[account] link refused: ${parsed.detail ?? parsed.reason}`)
+          publish({ ...state, errorCode: parsed.detail === 'identity_already_exists' ? 'identity-already-linked' : 'identity-link-failed' })
+        }
+        return
+      }
       if (parsed.kind === 'cancelled') {
         console.info('[account] sign-in cancelled by the user')
         clearSession()
@@ -450,7 +472,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           data.session.access_token,
           data.session.user.id,
           data.session.user.email ?? null,
-          data.session.user.user_metadata
+          data.session.user.user_metadata,
+          data.session.user.app_metadata
         )
       } catch (error) {
         if (version !== sessionVersion || signingOut) return
