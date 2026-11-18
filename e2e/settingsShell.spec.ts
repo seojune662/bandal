@@ -111,6 +111,8 @@ test.describe('settings shell', () => {
   test('keeps selectable content and footer actions inset from card outlines', async () => {
     const { page } = bandal
     const nav = page.locator('.settings-nav')
+    // Settings is open from the test before; a fresh worker (after a failure there) opens it here.
+    if ((await nav.count()) === 0) await page.keyboard.press('ControlOrMeta+,')
 
     // 학교 is shown in 계정.
     await nav.locator('[data-category="account"]').click()

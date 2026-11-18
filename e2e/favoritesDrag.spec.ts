@@ -199,9 +199,11 @@ test('drags a real dockview tab into course favorites', async () => {
     const noteTitle = await noteTab.locator('.workspace-tab__title').textContent()
     const noteBox = await noteTab.boundingBox()
     expect(noteBox).not.toBeNull()
+    // The right half of a tab drops after it. Not its very edge: in a narrow window
+    // the tab bar's right-hand buttons cover the end of the last tab.
     await tab.dragTo(noteTab, {
       targetPosition: {
-        x: Math.max(1, noteBox!.width - 2),
+        x: Math.max(1, noteBox!.width * 0.75),
         y: noteBox!.height / 2
       }
     })
