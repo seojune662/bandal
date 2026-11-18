@@ -280,7 +280,9 @@ test(`tab menu order, all shortcuts and tab defaults work together with ${agentC
     await expect(page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: 'AI', exact: true })).toHaveAttribute('aria-expanded', 'true')
     const assistant = page.getByRole('region', { name: '공간 AI', exact: true })
     await expect(assistant).toBeVisible()
-    await expect(assistant.getByText('탭 설정 검증', { exact: true })).toBeVisible()
+    // The panel header names the course. A connected AI also shows it in the
+    // auto-attached context chip, once that loads; check the header alone.
+    await expect(assistant.getByTitle('탭 설정 검증', { exact: true })).toBeVisible()
     await expect(page.locator('.dv-tab.dv-active-tab')).toContainText('example.invalid')
     if (agentConnected) {
       await expect(assistant.getByRole('textbox', { name: '메시지 입력', exact: true })).toBeVisible()
