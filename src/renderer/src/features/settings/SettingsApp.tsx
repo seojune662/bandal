@@ -270,10 +270,32 @@ export function SettingsApp({
     if (sectionId !== undefined) return revealSettingsTarget(root, sectionId);
     const panel = normalizeSettingsCategoryId(pendingTarget.category);
     if (SETTINGS_SECTIONS.some((section) => section.panels[0] === panel)) return;
+    // The panels above may still be loading and grow after the first scroll, which
+    // pushed the target out of view on a slow machine. Keep it at the top while
+    // they settle, until the person scrolls or a moment has passed.
+    let observer: ResizeObserver | null = null;
+    let timer = 0;
+    const release = (): void => {
+      observer?.disconnect();
+      observer = null;
+      window.clearTimeout(timer);
+      for (const type of ["wheel", "touchmove", "keydown", "pointerdown"] as const) root.removeEventListener(type, release);
+    };
     const frame = window.requestAnimationFrame(() => {
-      root.querySelector(`[data-settings-panel="${panel}"]`)?.scrollIntoView({ block: "start" });
+      const target = root.querySelector<HTMLElement>(`[data-settings-panel="${panel}"]`);
+      if (target === null) return;
+      target.scrollIntoView({ block: "start" });
+      if (typeof ResizeObserver === "function") {
+        observer = new ResizeObserver(() => target.scrollIntoView({ block: "start" }));
+        for (const section of root.querySelectorAll("[data-settings-panel]")) observer.observe(section);
+      }
+      for (const type of ["wheel", "touchmove", "keydown", "pointerdown"] as const) root.addEventListener(type, release, { passive: true });
+      timer = window.setTimeout(release, 2000);
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      release();
+    };
   }, [activeCategory, pendingTarget]);
 
   const loadAvailability = useCallback((target?: AgentProvider): void => {
