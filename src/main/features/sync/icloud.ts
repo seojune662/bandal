@@ -64,6 +64,9 @@ export function createICloudProvider(options: { root: string; tmpDir: string; re
         const info = await stat(abs)
         entries.push({ path, version: `${Math.round(info.mtimeMs)}:${info.size}` })
       }
+      // Nothing listed: the folder may be empty, or this Mac may not have been told yet what the iPad put there
+      // (a Mac just signed in, or iCloud Drive just turned on). Ask iCloud for it; the connect screen says to check.
+      if (entries.length === 0) execFile('/usr/bin/brctl', ['download', root], () => {})
       return { entries, read }
     },
     async write(path, bytes) {

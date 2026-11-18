@@ -44,6 +44,7 @@ function stateLine(t: Translate, locale: Locale, view: SyncView, provider: SyncP
     case 'needs-ipad': return { text: t('settings.sync.state.needsIpad'), tone: 'warn' }
     case 'unavailable': return { text: t('settings.sync.state.unavailable'), tone: 'warn' }
     case 'update-required': return { text: t('settings.sync.state.updateRequired'), tone: 'warn' }
+    case 'root-reset': return { text: t('settings.sync.state.rootReset', { storage: NAME[provider] }), tone: 'warn' }
     case 'error': return { text: t('settings.sync.state.error', { message: state.message }), tone: 'warn' }
     default: return { text: t('settings.sync.state.starting'), tone: 'busy' }
   }
@@ -259,6 +260,9 @@ function ConnectGroup({ view, onView }: { view: SyncView; onView: (view: SyncVie
       {plan !== null && (
         <Block>
           <p className="text-sm text-foreground select-text" role="status">{planText(t, plan, provider)}</p>
+          {provider === 'icloud' && plan.kind === 'upload' && (
+            <p className={note} role="note">{t('settings.sync.connect.icloudEmpty')}</p>
+          )}
           {plan.interrupted !== undefined && (
             <p id="sync-interrupted" className={note} role="note">
               {t('settings.sync.connect.interrupted', { device: plan.interrupted })}
@@ -301,6 +305,9 @@ function ConnectGroup({ view, onView }: { view: SyncView; onView: (view: SyncVie
           )}
           <Actions>
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => setPrepared(null)}>{t('common.cancel')}</Button>
+            {provider === 'icloud' && plan.kind === 'upload' && (
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => void prepare()}>{t('settings.sync.connect.recheck')}</Button>
+            )}
             <Button size="sm" disabled={busy} onClick={() => void start(plan)}>{busy ? t('settings.sync.connect.connecting') : t('settings.sync.connect.begin')}</Button>
           </Actions>
         </Block>
@@ -575,6 +582,14 @@ function BoundGroups({ view, onView }: { view: SyncView; onView: (view: SyncView
           {...(statusNotes.length > 0 ? { description: statusNotes.map(text => <span key={text} className="block">{text}</span>) } : {})}
           control={view.state.state === 'needs-auth'
             ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => void run(() => invoke('sync:signIn', {}))}>{t('settings.sync.status.reconnect')}</Button>
+            : view.state.state === 'root-reset'
+            ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => void (async () => {
+                if (await confirm({
+                  title: t('settings.sync.confirm.reupload.title'),
+                  description: t('settings.sync.confirm.reupload.description', { storage }),
+                  confirmLabel: t('settings.sync.confirm.reupload.action')
+                })) await run(() => invoke('sync:reupload', {}))
+              })()}>{t('settings.sync.status.reupload')}</Button>
             : <Button variant="secondary" size="sm" disabled={busy || view.state.state === 'syncing'} onClick={() => void run(() => invoke('sync:now', {}))}>{t('settings.sync.status.now')}</Button>}
         />
       </SettingsGroup>

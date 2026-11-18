@@ -1641,6 +1641,8 @@ export interface IpcContract extends WorkspacePreviewIpcContract, AnnotationIpcC
   'sync:signIn': { req: { follow?: boolean }; res: SyncView }
   'sync:disconnect': { req: Record<string, never>; res: SyncView }
   'sync:now': { req: Record<string, never>; res: SyncView }
+  /** After `root-reset`: forget what went up to this root and send everything again. */
+  'sync:reupload': { req: Record<string, never>; res: SyncView }
   'sync:rename': { req: { name: string }; res: SyncView }
   /** What moving to the other storage would do (spec v2.7), or why it cannot start now. */
   'sync:prepareMove': { req: { provider: SyncProviderKind }; res: ConnectPrepare }
@@ -1967,6 +1969,7 @@ export const IPC_CHANNELS = [
   'sync:connect',
   'sync:disconnect',
   'sync:now',
+  'sync:reupload',
   'sync:rename',
   'sync:signIn',
   'sync:prepareMove',

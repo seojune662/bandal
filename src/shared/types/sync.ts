@@ -3,8 +3,12 @@
 export type SyncProviderKind = 'icloud' | 'gdrive'
 
 export type SyncState =
-  /** `needs-auth`: Google Drive's sign-in stopped working. */
-  | { state: 'off' | 'syncing' | 'update-required' | 'needs-ipad' | 'unavailable' | 'needs-auth' }
+  /**
+   * `needs-auth`: Google Drive's sign-in stopped working. `root-reset`: this device's file was in the root and is
+   * gone (the root was emptied, or made again on another device): paused until the user re-uploads, since writing
+   * on would start a new root over whatever is there or is still arriving.
+   */
+  | { state: 'off' | 'syncing' | 'update-required' | 'needs-ipad' | 'unavailable' | 'needs-auth' | 'root-reset' }
   | { state: 'synced'; at: number }
   /** Root files are still downloading, or the Mac is offline: nothing was applied. */
   | { state: 'waiting'; pending: number }
