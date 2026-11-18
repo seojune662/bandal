@@ -1169,7 +1169,7 @@ export const enUS: Record<MessageKey, string> = {
   'settings.sync.google.waiting': 'Waiting for the browser',
   'settings.sync.google.connect': 'Connect Google account',
   'settings.sync.google.switch': 'Use another account',
-  'settings.sync.connect.title': 'Sync',
+  'settings.sync.connect.title': 'Connect storage',
   'settings.sync.connect.description': 'Your iPad and this device sync courses, PDFs, ink and notes through your own iCloud or Google Drive. Nothing is uploaded to Bandal\'s servers.',
   'settings.sync.connect.unavailable': 'Sync isn\'t available on this device.',
   'settings.sync.connect.storage': 'Storage',

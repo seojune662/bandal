@@ -1167,7 +1167,7 @@ export const koKR = {
   'settings.sync.google.waiting': '브라우저에서 기다리는 중',
   'settings.sync.google.connect': 'Google 계정 연결',
   'settings.sync.google.switch': '다른 계정',
-  'settings.sync.connect.title': '동기화',
+  'settings.sync.connect.title': '저장소 연결',
   'settings.sync.connect.description': 'iPad와 이 기기가 사용자의 iCloud나 Google Drive에서 과목·PDF·필기·노트를 맞춥니다. 반달 서버에는 아무것도 올리지 않아요.',
   'settings.sync.connect.unavailable': '이 기기에서는 동기화를 쓸 수 없어요.',
   'settings.sync.connect.storage': '저장소',
