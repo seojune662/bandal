@@ -91,3 +91,18 @@ test('course and document fields map to the spec', () => {
   expect(docLocation('1주차/실습/과제.pdf'.normalize('NFD'))).toEqual({ rel_path: '1주차/실습', name: '과제.pdf' })
   expect(docLocation('요약.md')).toEqual({ rel_path: '', name: '요약.md' })
 })
+
+test("an iPad shape's descriptor survives import and export; a malformed one is dropped, never the ink", () => {
+  const points = [{ x: 0.1, y: 0.1, p: 0.5 }, { x: 0.3, y: 0.1, p: 0.5 }, { x: 0.3, y: 0.3, p: 0.5 }, { x: 0.1, y: 0.3, p: 0.5 }]
+  const shaped: InkObject = { ...rect, kind: 'ink', data: { inkVersion: 5, points, shape: { type: 'polygon', corners: [0, 1, 2, 3] } }, style: { color: 'blue', width: 0.003, opacity: 1 } }
+  const imported = importInkObject(shaped)
+  expect(imported.action === 'upsert' && imported.fields.data.shape).toEqual({ type: 'polygon', corners: [0, 1, 2, 3] })
+  // Back out as the desktop would write it after moving the ink: the descriptor goes with it.
+  const out = toInkObject(row({ data_json: JSON.stringify(imported.action === 'upsert' ? imported.fields.data : {}) }))
+  expect(out.data?.['shape']).toEqual({ type: 'polygon', corners: [0, 1, 2, 3] })
+  // Corners past the points, or an unknown type: the shape goes, the ink stays.
+  for (const shape of [{ type: 'polygon', corners: [0, 9] }, { type: 'star' }]) {
+    const result = importInkObject({ ...shaped, data: { inkVersion: 5, points, shape } })
+    expect(result.action === 'upsert' && result.fields.data).toEqual({ inkVersion: 5, points })
+  }
+})

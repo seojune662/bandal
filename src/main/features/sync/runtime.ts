@@ -12,7 +12,7 @@ import { promisify } from 'node:util'
 import type { ConnectMode, ConnectPlan, ConnectPrepare, SyncProviderKind, SyncView } from '../../../shared/types/sync'
 import { googleClient } from '../google/oauth'
 import type { ApplyContext, ApplyResult } from './apply'
-import { forgetRoot, joinRoot, movePlan, overwriteRoot, planConnect, rebase } from './connect'
+import { forgetRoot, forgetSent, joinRoot, movePlan, overwriteRoot, planConnect, rebase } from './connect'
 import { createDriveProvider, DRIVE_TOKEN_FILE, type DriveProvider } from './drive'
 import { createSyncEngine, type SyncEngine } from './engine'
 import { isAccountHint, parseFile, placeholderTarget, type ParsedFile } from './format'
@@ -298,7 +298,7 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
     const state = readState(stateFile), old = engine, kind = kindOf(state.provider), moving = movingOf(state), left = moving?.provider
     engine = null
     // A move not finished yet ends here too: the old root is not told. Before its first pass the base still describes the root it left.
-    patchState(stateFile, { provider: null, moving: null, ...(moving?.rebase ? { root: moving.root } : {}) })
+    patchState(stateFile, { provider: null, moving: null, own_seen: false, ...(moving?.rebase ? { root: moving.root } : {}) })
     const done = (async () => {
       await old?.stop()
       // Nothing exports while unbound: keep no outbox. A later connect compares everything with the base again.
@@ -448,7 +448,7 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       if (kindOf(readState(stateFile).provider) !== from) throw new Error('동기화 연결이 해제돼 옮기지 않았어요.')
       // The new root's first pull rebases the base onto what it reads, then applies. A first upload into an empty root is stamped from `clock`.
       const moving: Moving = { provider: from, root: rootOf(state), at: Date.now(), clock: old.clock(), rebase: true }
-      patchState(stateFile, { provider: kind, root: read.key, moving })
+      patchState(stateFile, { provider: kind, root: read.key, moving, own_seen: false })
       start(kind)
       if (kind === 'gdrive' && providers.gdrive?.lookup()?.made) log('move', kind, 'made a new root folder')
     } catch (error) {
@@ -513,7 +513,7 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
         forgetRoot(db)
         throw error
       }
-      patchState(stateFile, { provider: kind, root: read.key })
+      patchState(stateFile, { provider: kind, root: read.key, own_seen: false })
       start(kind)
       // Finding no folder and making one is how two devices end up apart: that is logged too.
       if (kind === 'gdrive' && providers.gdrive?.lookup()?.made) log('connect', kind, 'made a new root folder')
@@ -575,6 +575,20 @@ export function createSyncRuntime(deps: SyncRuntimeDeps) {
       await engine?.syncNow()
       // A move's last step a pass started (spec v2.7).
       await finishing
+      publish()
+    },
+    /**
+     * After `root-reset` (this device's file left the root): forget what went up, keep the course aliases, and pass
+     * again, which sends everything here to the root as it is now (starting it again when it is empty).
+     */
+    reupload: async () => {
+      if (engine === null) return
+      await engine.pause()
+      patchState(stateFile, { own_seen: false })
+      forgetSent(db)
+      engine.resend()
+      engine.resume()
+      await engine.syncNow()
       publish()
     },
     rename,

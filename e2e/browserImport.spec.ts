@@ -56,7 +56,8 @@ test('imports Safari export through the real dialog with scoped bookmarks and id
       })
     }, file)
     await page.keyboard.press('ControlOrMeta+,')
-    await page.locator('.settings-nav [data-category="browser"]').click()
+    // 브라우저 is shown in 통합.
+    await page.locator('.settings-nav [data-category="integrations"]').click()
     await page
       .locator('[data-settings-target="browser.import.open"]')
       .getByRole('button', { name: '가져오기…' })

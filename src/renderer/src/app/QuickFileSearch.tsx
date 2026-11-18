@@ -123,7 +123,7 @@ export function QuickFileSearch(): JSX.Element | null {
   // Category panes first, then individual rows; plugin rows stay in settings.
   const settingsCandidates = useMemo(() => {
     const index = buildSettingsSearchIndex(locale)
-    const panes = SETTINGS_CATEGORIES.filter(({ id }) => id !== 'sync' || window.bandal?.syncUi === true).map(({ id }) => ({
+    const panes = SETTINGS_CATEGORIES.map(({ id }) => ({
       hit: { id: `pane:${id}`, title: index.panes.get(id)?.title ?? id, category: id } satisfies SettingsHit,
       entry: index.panes.get(id)!
     }))

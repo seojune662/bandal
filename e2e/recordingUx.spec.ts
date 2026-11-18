@@ -143,20 +143,20 @@ test('saved WAV opens its own tab; folding, scrolling and playback are independe
         .evaluate((audio: HTMLAudioElement) => audio.playbackRate)
     ).toBe(1.5)
     await page.screenshot({ path: 'e2e/test-results/recording-ux-review.png' })
-    // The default material list enters a folder instead of expanding a tree.
-    await page.getByRole('button', { name: '상위 폴더로', exact: true }).click()
-    await page
-      .locator(`[data-material-path="${second.audioRelPath.slice(0, -10)}"]`)
-      .click()
-    await page.locator(`[data-material-path="${second.audioRelPath}"]`).click()
+    // Folders in the material list expand in place (v0.95), so a recording's
+    // folder opens only when its audio row is not already showing.
+    const openRecording = async (audioRelPath: string) => {
+      const row = page.locator(`[data-material-path="${audioRelPath}"]`)
+      if (!(await row.isVisible())) await page.locator(`[data-material-path="${audioRelPath.slice(0, -10)}"]`).click()
+      await row.click()
+    }
+    await openRecording(second.audioRelPath)
     await expect(
       page
         .locator('.recording:visible')
         .getByRole('heading', { name: second.title, exact: true })
     ).toBeVisible()
-    await page.getByRole('button', { name: '상위 폴더로', exact: true }).click()
-    await page.locator(`[data-material-path="${first.audioRelPath.slice(0, -10)}"]`).click()
-    await page.locator(`[data-material-path="${first.audioRelPath}"]`).click()
+    await openRecording(first.audioRelPath)
     await expect(
       page
         .locator('.recording:visible')
@@ -218,7 +218,8 @@ test(`tab menu order, all shortcuts and tab defaults work together with ${agentC
       await expect(options.nth(index)).toContainText(process.platform === 'darwin' ? '⌘' : 'Ctrl')
     await page.keyboard.press('Escape')
     await page.keyboard.press(`${mod}+,`)
-    await page.locator('.settings-nav [data-category="tabs"]').click()
+    // 탭 is shown in 화면, under the theme.
+    await page.locator('.settings-nav [data-category="appearance"]').click()
     const prefs = page.locator('.tab-settings')
     await expect(prefs.getByRole('tablist', { name: '탭 종류' }).getByRole('tab')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     await prefs.getByRole('tab', { name: '녹음', exact: true }).click()
@@ -275,8 +276,8 @@ test(`tab menu order, all shortcuts and tab defaults work together with ${agentC
     await page.keyboard.press(`${mod}+Shift+b`)
     await expect(page.locator('.browser-toolbar:visible')).toBeVisible()
     await page.keyboard.press(`${mod}+Shift+a`)
-    // AI opens beside the active document in the workspace sidebar.
-    await expect(page.getByRole('button', { name: 'AI 닫기', exact: true })).toBeVisible()
+    // AI opens in the slot beside the rail (v0.96); the rail's AI button shows it open.
+    await expect(page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: 'AI', exact: true })).toHaveAttribute('aria-expanded', 'true')
     const assistant = page.getByRole('region', { name: '공간 AI', exact: true })
     await expect(assistant).toBeVisible()
     await expect(assistant.getByText('탭 설정 검증', { exact: true })).toBeVisible()

@@ -29,7 +29,7 @@ test.describe('settings search and deep links', () => {
     await expect(nav.locator('[data-category="appearance"]')).toHaveAttribute('aria-current', 'page')
     // English aliases reach Korean rows.
     await search.fill('search engine')
-    await expect(nav.locator('[data-category="browser"]')).toBeVisible()
+    await expect(nav.locator('[data-category="integrations"]')).toBeVisible()
     await search.fill('존재하지않는설정')
     await expect(page.getByText('“존재하지않는설정”에 맞는 설정이 없습니다.')).toBeVisible()
     await search.press('Escape')
@@ -48,7 +48,7 @@ test.describe('settings search and deep links', () => {
     const option = page.getByRole('option').filter({ hasText: '설정 · 브라우저' }).first()
     await expect(option).toBeVisible()
     await option.click()
-    await expect(page.locator('.settings-nav [data-category="browser"]')).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('.settings-nav [data-category="integrations"]')).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('.settings-panel [data-highlighted="true"]')).toContainText('검색 엔진')
   })
 

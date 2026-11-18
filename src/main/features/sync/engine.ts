@@ -9,9 +9,9 @@ import type { Database } from 'better-sqlite3'
 import type { SyncDevice, SyncState } from '../../../shared/types/sync'
 import type { ApplyResult } from './apply'
 import { createExportSession, exportChanges } from './export'
-import { parseFile, SYNC_FORMAT } from './format'
+import { parseFile, placeholderTarget, SYNC_FORMAT } from './format'
 import type { SyncProvider } from './icloud'
-import { loadIdentity, takeSeq, type SyncIdentity } from './identity'
+import { loadIdentity, patchState, readState, takeSeq, type SyncIdentity } from './identity'
 import type { Scan } from './localDocs'
 import type { PullResult, RootSnapshot } from './pull'
 
@@ -62,6 +62,8 @@ export interface SyncEngine {
   clock(): number
   /** This device's file is written again on the next pass (a new name). */
   deviceChanged(): void
+  /** What went up was forgotten (sync:reupload): the next pass compares everything here again. */
+  resend(): void
   /** Runs a pass now, after any running one; resolves when it is done. */
   syncNow(): Promise<void>
   /** No pass starts until resume; resolves once a running one has finished (backups). */
@@ -160,6 +162,18 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     const own = identity
     let root = await provider.list()
     if (stopped) return
+    // This device's file was in the root and is gone (spec 원칙, as the iPad does): the root was emptied or made again
+    // elsewhere, or this computer has not been told yet what it holds (iCloud right after a restart). Writing now
+    // would start a new root over it, and what went up before would never go again: pause until the user re-uploads
+    // (sync:reupload), or until the file shows again.
+    const ownFile = `devices/${own.device_id}.json`
+    const ownListed = root.entries.some(entry => (placeholderTarget(entry.path) ?? entry.path) === ownFile)
+    const ownSeen = readState(deps.stateFile)['own_seen'] === true
+    if (!ownListed && ownSeen) {
+      set({ state: 'root-reset' })
+      return schedule(timing.waitingMs)
+    }
+    if (ownListed && !ownSeen) patchState(deps.stateFile, { own_seen: true })
     if (root.entries.length === 0) {
       // An empty root: this device starts it, and everything here goes up (spec 초기 연결). Marked as its first
       // upload until all of it has, so another device does not connect to half a root (v2.6). Its device file,
@@ -276,6 +290,11 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     deviceChanged() {
       deviceAt = 0
       void run('ask')
+    },
+    /** What went up was forgotten (a re-upload): the next pass compares everything here again. */
+    resend() {
+      rescanAt = 0
+      deviceAt = 0
     },
     async pause() {
       paused = true

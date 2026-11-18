@@ -27,7 +27,8 @@ test.describe('Apple Calendar settings and calendar entry points', () => {
     await page.getByRole('button', { name: '달력', exact: true }).click()
     await page.getByLabel('달력 더 보기').click()
     await page.getByRole('button', { name: '달력 설정 · Apple 캘린더' }).click()
-    await expect(page.locator('[data-category="calendar"]')).toHaveAttribute('aria-current', 'page')
+    // 달력 is shown in 통합.
+    await expect(page.locator('[data-category="integrations"]')).toHaveAttribute('aria-current', 'page')
     await page.getByRole('button', { name: 'Apple 캘린더 연결', exact: true }).click()
     await expect(page.getByRole('checkbox', { name: /공부 일정/ })).toBeChecked()
     await page.getByRole('checkbox', { name: /공휴일/ }).click()
@@ -44,8 +45,10 @@ test.describe('Apple Calendar settings and calendar entry points', () => {
   test('settings search discovers Calendar, and an edited task can be saved and exported', async () => {
     const page = bandal.page
     await page.locator('.settings-search input').fill('iCloud')
-    await expect(page.locator('[data-category="calendar"]')).toBeVisible()
+    await expect(page.locator('[data-category="integrations"]')).toBeVisible()
     await page.locator('.settings-search input').fill('')
+    // 동기화 also answers to iCloud: go back to 통합 for the calendar row.
+    await page.locator('.settings-nav [data-category="integrations"]').click()
     await page.getByRole('button', { name: 'Apple 캘린더 연결', exact: true }).click()
     await page.getByRole('button', { name: '앱으로 돌아가기' }).click()
     const dateKey = await page.evaluate(async () => {

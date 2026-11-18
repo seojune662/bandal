@@ -148,6 +148,18 @@ export interface DrawingData {
   clip?: DrawingClipSource
   /** image only — course-relative path of the picture to draw in `box`. */
   image?: DrawingImageSource
+  /**
+   * ink/highlighter only: the iPad's recognized shape over these points (NativePDFShapeFigure). Its corners are
+   * indices into `points`, so moving or recoloring the ink keeps it right; this app does not draw it, only keeps it,
+   * so a shape edited here is still a shape on the iPad.
+   */
+  shape?: DrawingShapeDescriptor
+}
+
+export interface DrawingShapeDescriptor {
+  type: 'line' | 'arrow' | 'polyline' | 'polygon' | 'ellipse'
+  corners?: number[]
+  segments?: number
 }
 
 export interface DrawingInlineStyle {

@@ -3871,6 +3871,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return sync.view()
   })
   // The pass reports through sync:changed; waiting for it here would hold the settings buttons through a whole upload.
+  handle('sync:reupload', async () => {
+    await sync.reupload()
+    return sync.view()
+  })
   handle('sync:now', () => {
     void sync.syncNow()
     return sync.view()

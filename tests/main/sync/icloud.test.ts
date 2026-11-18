@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { createICloudProvider, icloudRoot } from '../../../src/main/features/sync/icloud'
+import { createICloudProvider, ICLOUD_ACCESS_DENIED, icloudRoot } from '../../../src/main/features/sync/icloud'
 
 const LOG = 'log/aaaaaaaa-0000-4000-8000-000000000001'
 let home: string, root: string, tmpDir: string
@@ -25,6 +25,17 @@ test('status follows iCloud Drive and the container the iPad app makes', async (
   expect(await provider().status()).toBe('needs-ipad')
   mkdirSync(root, { recursive: true })
   expect(await provider().status()).toBe('ready')
+})
+
+test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('a Mobile Documents folder macOS refuses this app is reported as such, not as iCloud Drive off', async () => {
+  ready()
+  const documents = join(home, 'Library', 'Mobile Documents')
+  chmodSync(documents, 0o000)
+  try {
+    await expect(provider().status()).rejects.toThrow(ICLOUD_ACCESS_DENIED)
+  } finally {
+    chmodSync(documents, 0o755)
+  }
 })
 
 test('a write lands whole through a temporary file outside the root, and only at sync paths', async () => {

@@ -4,7 +4,7 @@ import { LogIn } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { useConfirm } from '../../components/ui/confirm-dialog-context'
 import { isValidNickname } from '../../../../shared/account/nickname'
-import type { AuthState } from '../../../../shared/types/auth'
+import type { AuthProvider, AuthState } from '../../../../shared/types/auth'
 import { AccountAvatar } from '../account/AccountAvatar'
 import { prepareUpdateInstall } from '../updates/prepareUpdateInstall'
 import { useT } from '../../i18n'
@@ -84,6 +84,18 @@ export function AccountPanel(): JSX.Element {
 
   const profile = auth?.phase === 'signed-in' ? auth.profile : null
   const email = auth?.email ?? null
+  const linked: readonly AuthProvider[] = auth?.phase === 'signed-in' ? auth.providers ?? [] : []
+
+  // A link finishes in the browser and comes back as an auth change: say how it went.
+  const linkedBefore = useRef<readonly AuthProvider[] | null>(null)
+  useEffect(() => {
+    if (auth?.phase !== 'signed-in') { linkedBefore.current = null; return }
+    const before = linkedBefore.current, now = auth.providers ?? []
+    linkedBefore.current = now
+    if (auth.errorCode === 'identity-already-linked') setFeedback({ tone: 'error', message: t('settings.account.link.otherAccount') })
+    else if (auth.errorCode === 'identity-link-failed') setFeedback({ tone: 'error', message: t('settings.account.link.refused') })
+    else if (before !== null && now.some(provider => !before.includes(provider))) setFeedback({ tone: 'success', message: t('settings.account.link.done') })
+  }, [auth, t])
 
   /**
    * Runs one account mutation at a time. Resolves true on success. With
@@ -380,11 +392,15 @@ export function AccountPanel(): JSX.Element {
       <SettingsGroup searchId="account.link">
         <SettingsRow
           searchId="account.link.providers"
-          control={PROVIDERS.map(provider => (
-            <Button key={provider} variant="secondary" size="sm" disabled={busy} onClick={() => linkProvider(provider)}>
-              {t('settings.account.link.with', { provider: PROVIDER_NAME[provider] })}
-            </Button>
-          ))}
+          {...(PROVIDERS.every(provider => linked.includes(provider)) ? { description: t('settings.account.link.allLinked') } : {})}
+          control={PROVIDERS.map(provider => linked.includes(provider)
+            // Already a way into this account: nothing to link (Supabase would refuse it as already linked).
+            ? <span key={provider} className="text-xs text-muted-foreground" data-linked-provider={provider}>{t('settings.account.link.linked', { provider: PROVIDER_NAME[provider] })}</span>
+            : (
+              <Button key={provider} variant="secondary" size="sm" disabled={busy} onClick={() => linkProvider(provider)}>
+                {t('settings.account.link.with', { provider: PROVIDER_NAME[provider] })}
+              </Button>
+            ))}
         />
       </SettingsGroup>
 

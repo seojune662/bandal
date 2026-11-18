@@ -125,6 +125,17 @@ export function rebase(db: Database, merged: MergedState): void {
   })()
 }
 
+/**
+ * What this profile sent to its root, dropped so the next pass sends everything again, as after the root was
+ * emptied or made again. Course aliases stay: courses merged at connect go up under the ids the root knows.
+ */
+export function forgetSent(db: Database): void {
+  db.transaction(() => {
+    for (const table of ['sync_meta', 'sync_ink', 'sync_outbox']) db.prepare(`DELETE FROM ${table}`).run()
+    db.prepare('UPDATE sync_docs SET synced_hash = NULL').run()
+  })()
+}
+
 /** What this profile synced with another root: dropped, so the first pass compares everything as new. */
 export function forgetRoot(db: Database): void {
   db.transaction(() => {

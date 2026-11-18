@@ -6,6 +6,7 @@ import type {
   DrawingImageSource,
   DrawingKind,
   DrawingPoint,
+  DrawingShapeDescriptor,
   DrawingStyle,
   DrawingTextRun,
   TextAlign
@@ -300,7 +301,34 @@ export function assertDrawingData(
   if (textRuns !== undefined && textRuns.length > 0) result.textRuns = textRuns
   if (image !== undefined) result.image = image
   if (clip !== undefined) result.clip = clip
+  // The iPad's recognized shape rides along with its ink; a malformed one is dropped, never the ink (as on the iPad).
+  if ((kind === 'ink' || kind === 'highlighter') && candidate.shape !== undefined) {
+    const shape = shapeDescriptor(candidate.shape, points?.length ?? 0)
+    if (shape !== undefined) result.shape = shape
+  }
   return result
+}
+
+const SHAPE_TYPES: ReadonlySet<string> = new Set(['line', 'arrow', 'polyline', 'polygon', 'ellipse'])
+
+/** `data.shape` as NativePDFRepositoryValidation.shapeDescriptor accepts it: a known type, corners within the points. */
+function shapeDescriptor(value: unknown, pointCount: number): DrawingShapeDescriptor | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const source = value as Record<string, unknown>
+  if (typeof source['type'] !== 'string' || !SHAPE_TYPES.has(source['type'])) return undefined
+  const shape: DrawingShapeDescriptor = { type: source['type'] as DrawingShapeDescriptor['type'] }
+  const corners = source['corners']
+  if (corners !== undefined) {
+    if (!Array.isArray(corners) || corners.length > pointCount ||
+      !corners.every(index => Number.isInteger(index) && index >= 0 && index < pointCount)) return undefined
+    shape.corners = corners as number[]
+  }
+  const segments = source['segments']
+  if (segments !== undefined) {
+    if (!Number.isInteger(segments) || (segments as number) < 1 || (segments as number) > 10_000) return undefined
+    shape.segments = segments as number
+  }
+  return shape
 }
 
 export function assertDrawingStyle(value: unknown): DrawingStyle {

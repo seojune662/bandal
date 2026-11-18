@@ -6,7 +6,8 @@ import { createCoursesRepo } from '../../../src/main/features/courses/coursesRep
 import { createMaterialsRepo } from '../../../src/main/features/materials/materialsRepo'
 import { createSyncEngine, type SyncEngine } from '../../../src/main/features/sync/engine'
 import { createICloudProvider, icloudRoot, type SyncProvider } from '../../../src/main/features/sync/icloud'
-import { readState } from '../../../src/main/features/sync/identity'
+import { patchState, readState } from '../../../src/main/features/sync/identity'
+import { forgetSent } from '../../../src/main/features/sync/connect'
 import { repointSyncDocs } from '../../../src/main/features/sync/localDocs'
 import { createPull } from '../../../src/main/features/sync/pull'
 import { createTestDb, type TestDb } from '../helpers/testDb'
@@ -368,7 +369,7 @@ test('a mark another device put over this one while it uploaded is left for that
   expect(rootFile('bandal.json')).toBe(theirs)
 })
 
-test('a root emptied under a syncing device is marked again, its device file next (v2.6)', async () => {
+test('a root emptied under a syncing device pauses; re-uploaded, it is marked again, its device file next (v2.6)', async () => {
   mkdirSync(root, { recursive: true })
   const writes: string[] = []
   const a = device('mac-a', {
@@ -385,6 +386,53 @@ test('a root emptied under a syncing device is marked again, its device file nex
   rmSync(root, { recursive: true, force: true })
   mkdirSync(root)
   writes.length = 0
+  // Emptied under it: paused, nothing written (its own file is gone, so it is not started over on its own).
+  await a.engine.syncNow()
+  expect(a.engine.state()).toEqual({ state: 'root-reset' })
+  expect(writes).toEqual([])
+  // Re-uploaded (sync:reupload): marked as a first upload again, its device file next.
+  await a.engine.pause()
+  patchState(a.stateFile, { own_seen: false })
+  forgetSent(a.db)
+  a.engine.resend()
+  a.engine.resume()
   await a.engine.syncNow()
   expect(writes.slice(0, 2)).toEqual(['bandal.json', `devices/${id}.json`])
+})
+
+test('a root emptied after this device synced pauses instead of starting over; re-uploading sends everything again', async () => {
+  const a = device('mac-a')
+  const { id: course } = a.courses.create({ name: '확률론', color: 'blue' })
+  writeFileSync(join(a.courses.getFolder(course), '노트.md'), '# 노트\n')
+  mkdirSync(root, { recursive: true })
+  a.engine.start()
+  await a.engine.syncNow()
+  expect(a.engine.state()).toMatchObject({ state: 'synced' })
+  expect(readState(a.stateFile)['own_seen']).toBe(true)
+
+  // The folder is emptied (or not listed yet, or made again elsewhere): nothing is written over it.
+  for (const name of readdirSync(root)) rmSync(join(root, name), { recursive: true, force: true })
+  await a.engine.syncNow()
+  expect(a.engine.state()).toEqual({ state: 'root-reset' })
+  expect(readdirSync(root)).toEqual([])
+
+  // Its file shows again (iCloud caught up): sync goes on as before.
+  await a.engine.syncNow()
+  expect(a.engine.state()).toEqual({ state: 'root-reset' })
+
+  // The user re-uploads: what went up is forgotten, and all of it goes up to the empty root again.
+  await a.engine.pause()
+  patchState(a.stateFile, { own_seen: false })
+  forgetSent(a.db)
+  a.engine.resend()
+  a.engine.resume()
+  await a.engine.syncNow()
+  expect(a.engine.state()).toMatchObject({ state: 'synced' })
+  expect(readFileSync(join(root, 'bandal.json'), 'utf8')).toBe('{"format":2}')
+  expect(readdirSync(join(root, 'devices'))).toHaveLength(1)
+  const b = device('mac-b')
+  b.engine.start()
+  await b.engine.syncNow()
+  expect(b.db.prepare('SELECT name FROM courses WHERE id = ?').get(course)).toEqual({ name: '확률론' })
+  expect(readFileSync(join(b.courses.getFolder(course), '노트.md'), 'utf8')).toBe('# 노트\n')
 })

@@ -13,6 +13,10 @@ export type AuthErrorCode =
   | 'storage'
   /** The build has no MAIN_VITE_SUPABASE_* keys, or OAuth is not wired yet. */
   | 'not-configured'
+  /** Linking: the provider's account is already linked, to this Bandal account or to another one. */
+  | 'identity-already-linked'
+  /** Linking: the provider or Supabase refused for another reason. */
+  | 'identity-link-failed'
 
 export type AuthProvider = 'google' | 'apple'
 
@@ -37,6 +41,11 @@ export interface AuthState {
   avatarUrl: string | null
   online: boolean
   errorCode: AuthErrorCode | null
+  /**
+   * Sign-in methods linked to this account (Supabase app_metadata.providers), so Settings › 계정 offers
+   * only the ones still missing. Absent while signed out or before a session is read.
+   */
+  providers?: readonly AuthProvider[]
 }
 
 /**

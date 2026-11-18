@@ -120,7 +120,8 @@ test('offline profile creates a ruled PDF note and edits its pages', async ({}, 
     await expect(page.locator('.pdf-preview__header')).toContainText('3쪽')
     await page.screenshot({ path: testInfo.outputPath('notes-pages.png') })
     await page.keyboard.press('ControlOrMeta+,')
-    await page.locator('.settings-nav [data-category="tabs"]').click()
+    // 탭 is shown in 화면, under the theme.
+    await page.locator('.settings-nav [data-category="appearance"]').click()
     await expect(page.getByRole('tablist', { name: '탭 종류', exact: true }).getByRole('tab')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
   } catch (error) {
     failed = true
