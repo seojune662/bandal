@@ -6,9 +6,14 @@ import { SettingsApp } from '../../../src/renderer/src/features/settings/Setting
 import { resetAgentConnectionsForTests } from '../../../src/renderer/src/features/chat/agentConnectionStore'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
 import { DEFAULT_SETTINGS } from '../../../src/shared/types/settings'
+import { ConfirmDialogProvider } from '../../../src/renderer/src/components/ui/confirm-dialog'
+import { TooltipProvider } from '../../../src/renderer/src/components/ui/tooltip'
 
 vi.hoisted(() => { Object.defineProperty(window, 'bandal', { configurable: true, value: { on: () => () => undefined, invoke: async () => ({ locale: 'ko-KR' }) } }) })
 vi.mock('../../../src/renderer/src/components/BandalMark', () => ({ BandalMark: () => null }))
+// 계정 shows the account and school panels above 과목; these tests are about the panels below them.
+vi.mock('../../../src/renderer/src/features/settings/AccountPanel', () => ({ AccountPanel: () => null }))
+vi.mock('../../../src/renderer/src/features/settings/UniversitySettingsPanel', () => ({ UniversitySettingsPanel: () => null }))
 vi.mock('../../../src/renderer/src/i18n', () => ({ LOCALES: ['ko-KR', 'en-US'], setLocale: vi.fn(), useLocale: () => 'ko-KR', useT: () => (key: string) => key }))
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 let root: Root | undefined
@@ -21,11 +26,14 @@ function deferred<T>() {
 }
 async function mount(category: string, override: (channel: string, input: any) => Promise<unknown> | undefined) {
   const listeners = new Map<string, (value: any) => void>()
-  const invoke = vi.fn((channel: string, input: any) => override(channel, input) ?? Promise.resolve(
-    channel === 'settings:get' ? DEFAULT_SETTINGS : channel === 'agent:availability' ? { installed: false, loggedIn: false } : []))
+  const invoke = vi.fn((channel: string, input: any) => override(channel, input) ?? (
+    // A section shows several panels; 사용 통계 stays loading here.
+    channel === 'usage:summary' ? new Promise(() => undefined) : Promise.resolve(
+    channel === 'settings:get' ? DEFAULT_SETTINGS : channel === 'agent:availability' ? { installed: false, loggedIn: false } : [])))
   setIpcAdapter({ invoke, on: (channel: string, listener: (value: any) => void) => { listeners.set(channel, listener); return () => listeners.delete(channel) } } as unknown as IpcAdapter)
   const container = document.createElement('div'); root = createRoot(container)
-  await act(async () => root!.render(<SettingsApp embedded initialCategory={category} />))
+  // The app's root providers: a section shows several panels, some with tooltips and confirmations.
+  await act(async () => root!.render(<TooltipProvider><ConfirmDialogProvider><SettingsApp embedded initialCategory={category} /></ConfirmDialogProvider></TooltipProvider>))
   return { container, push: (value: unknown) => listeners.get('settings:changed')!({ settings: value }) }
 }
 
@@ -49,16 +57,12 @@ test('a slower course listing cannot undo the current archived-course filter', a
   expect(container.textContent).toContain('보관한 과목')
 })
 
-test('Settings › 동기화 is listed only when launched with BANDAL_SYNC_UI=1', async () => {
-  const bandal = (window as unknown as { bandal: Record<string, unknown> }).bandal
-  const { container } = await mount('about', () => undefined)
-  expect(container.querySelector('[data-category="sync"]')).toBeNull()
-  act(() => root!.unmount())
-  Object.defineProperty(window, 'bandal', { configurable: true, value: { ...bandal, syncUi: true } })
-  try {
-    const shown = await mount('about', () => undefined)
-    expect(shown.container.querySelector('[data-category="sync"]')).not.toBeNull()
-  } finally {
-    Object.defineProperty(window, 'bandal', { configurable: true, value: bandal })
-  }
+test('Settings lists the iPad-style sections, 동기화 among them, and a panel deep link opens its section', async () => {
+  const { container } = await mount('tabs', () => undefined)
+  const items = [...container.querySelectorAll<HTMLElement>('.settings-nav [data-category]')].map((item) => item.dataset['category'])
+  expect(items).toEqual(['general', 'appearance', 'account', 'ai', 'sync', 'integrations', 'packs', 'privacy', 'about'])
+  // `tabs` lives in 화면: that section is the current one, and the panel is rendered in it.
+  expect(container.querySelector('[data-category="appearance"]')?.getAttribute('aria-current')).toBe('page')
+  expect(container.querySelector('[data-settings-panel="tabs"]')).not.toBeNull()
+  expect(container.querySelector('[data-settings-panel="appearance"]')).not.toBeNull()
 })

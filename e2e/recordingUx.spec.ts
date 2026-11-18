@@ -218,7 +218,8 @@ test(`tab menu order, all shortcuts and tab defaults work together with ${agentC
       await expect(options.nth(index)).toContainText(process.platform === 'darwin' ? '⌘' : 'Ctrl')
     await page.keyboard.press('Escape')
     await page.keyboard.press(`${mod}+,`)
-    await page.locator('.settings-nav [data-category="tabs"]').click()
+    // 탭 is shown in 화면, under the theme.
+    await page.locator('.settings-nav [data-category="appearance"]').click()
     const prefs = page.locator('.tab-settings')
     await expect(prefs.getByRole('tablist', { name: '탭 종류' }).getByRole('tab')).toHaveText(['브라우저', '마크다운', '노트', 'AI', '녹음'])
     await prefs.getByRole('tab', { name: '녹음', exact: true }).click()

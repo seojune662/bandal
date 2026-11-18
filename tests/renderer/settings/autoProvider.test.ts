@@ -6,6 +6,8 @@ import { SettingsApp } from '../../../src/renderer/src/features/settings/Setting
 import { refreshAgentConnection, resetAgentConnectionsForTests } from '../../../src/renderer/src/features/chat/agentConnectionStore'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
 import { DEFAULT_SETTINGS } from '../../../src/shared/types/settings'
+import { ConfirmDialogProvider } from '../../../src/renderer/src/components/ui/confirm-dialog'
+import { TooltipProvider } from '../../../src/renderer/src/components/ui/tooltip'
 
 vi.hoisted(() => { Object.defineProperty(window, 'bandal', { configurable: true, value: { on: () => () => undefined, invoke: async () => ({ locale: 'ko-KR' }) } }) })
 vi.mock('../../../src/renderer/src/components/BandalMark', () => ({ BandalMark: () => null }))
@@ -22,12 +24,16 @@ async function mountSettings() {
     if (channel === 'settings:set') return { ...saved, ...req }
     if (channel === 'agent:availability') return { installed: true, loggedIn: req.provider === 'codex' && codexReady }
     if (channel === 'agent:geminiApiKey') return { configured: false, hint: null, storageAvailable: false }
+    // AI shows 사용 통계 below the engines: it stays loading here.
+    if (channel === 'usage:summary') return new Promise(() => undefined)
     return []
   })
   setIpcAdapter({ invoke, on: () => () => undefined } as unknown as IpcAdapter)
   const container = document.createElement('div')
   root = createRoot(container)
-  await act(async () => { root!.render(React.createElement(SettingsApp, { embedded: true, initialCategory: 'ai' })); for (let i = 0; i < 12; i++) await Promise.resolve() })
+  // The app's root providers: a section shows several panels, some with tooltips and confirmations.
+  const app = React.createElement(TooltipProvider, null, React.createElement(ConfirmDialogProvider, null, React.createElement(SettingsApp, { embedded: true, initialCategory: 'ai' })))
+  await act(async () => { root!.render(app); for (let i = 0; i < 12; i++) await Promise.resolve() })
   return { container, invoke, setCodexReady: (ready: boolean) => { codexReady = ready } }
 }
 

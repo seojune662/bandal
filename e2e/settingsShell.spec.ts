@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { SETTINGS_CATEGORIES, SETTINGS_GROUPS } from '../src/shared/settingsCategories'
+import { SETTINGS_SECTIONS } from '../src/shared/settingsCategories'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 /**
@@ -42,18 +42,18 @@ test.describe('settings shell', () => {
     await page.keyboard.press('ControlOrMeta+,')
     const nav = page.locator('.settings-nav')
     await expect(nav).toBeVisible()
-    await expect(nav.locator('.settings-nav__group-label')).toHaveCount(SETTINGS_GROUPS.length)
-
-    // 동기화 ships with the iPad app: listed only under BANDAL_SYNC_UI=1.
-    await expect(nav.locator('[data-category="sync"]')).toHaveCount(process.env['BANDAL_SYNC_UI'] === '1' ? 1 : 0)
+    // One plain list of sections, as on the iPad: no group headings outside a search.
+    await expect(nav.locator('.settings-nav__group-label')).toHaveCount(0)
+    await expect(nav.locator('[data-category]')).toHaveCount(SETTINGS_SECTIONS.length)
     // The launcher disables safeStorage, so the encrypted registry (mcp) and
     // saved logins (university) render without a keychain prompt.
-    for (const { id } of SETTINGS_CATEGORIES.filter(({ id }) => id !== 'sync' || process.env['BANDAL_SYNC_UI'] === '1')) {
+    for (const { id, panels } of SETTINGS_SECTIONS) {
       const item = nav.locator(`[data-category="${id}"]`)
       await expect(item).toBeVisible()
       await item.click()
       await expect(item).toHaveAttribute('aria-current', 'page')
       await expect(page.locator('.settings-panel')).toBeVisible()
+      for (const panel of panels) await expect(page.locator(`.settings-panel [data-settings-panel="${panel}"]`)).toHaveCount(1)
 
       const clippedCards = await page.locator('.settings-panel [data-settings-group] > div.rounded-lg').evaluateAll(
         (cards) =>
@@ -80,7 +80,7 @@ test.describe('settings shell', () => {
     const search = page.locator('.settings-search input')
     await search.fill('기본 줌')
     const nav = page.locator('.settings-nav')
-    await expect(nav.locator('[data-category="browser"]')).toBeVisible()
+    await expect(nav.locator('[data-category="integrations"]')).toBeVisible()
     await expect(nav.locator('[data-category="about"]')).toHaveCount(0)
     // Matching rows are listed under their category; unrelated rows are filtered out.
     await expect(nav.locator('.settings-search-hit', { hasText: '기본 줌' })).toBeVisible()
@@ -102,15 +102,18 @@ test.describe('settings shell', () => {
     await expect(page.locator('.settings-nav')).toHaveCount(0)
     await page.keyboard.press('ControlOrMeta+/')
     await expect(
-      page.locator('.settings-nav [data-category="shortcuts"]')
+      page.locator('.settings-nav [data-category="general"]')
     ).toHaveAttribute('aria-current', 'page')
+    // 단축키 is shown in 일반, below the first panel: the window scrolls to it.
+    await expect(page.locator('.settings-panel [data-settings-panel="shortcuts"]')).toBeInViewport()
   })
 
   test('keeps selectable content and footer actions inset from card outlines', async () => {
     const { page } = bandal
     const nav = page.locator('.settings-nav')
 
-    await nav.locator('[data-category="university"]').click()
+    // 학교 is shown in 계정.
+    await nav.locator('[data-category="account"]').click()
     await page.getByRole('option', { name: /^서울대학교/ }).click()
     const universityCard = page.locator('[data-settings-group="university.school"]')
     const clearUniversity = universityCard.getByRole('button', {

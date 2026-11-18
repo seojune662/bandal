@@ -391,6 +391,26 @@
   animation: panel-enter var(--dur-base) var(--ease-out) both;
 }
 
+/* A section shows its panels one under another (the iPad's sidebar); each after the first opens with its name. */
+.settings-section-panel + .settings-section-panel {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-section-panel {
+  scroll-margin-top: var(--space-6);
+}
+
+.settings-section-panel__title {
+  margin: 0 0 var(--space-4);
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
 @keyframes panel-enter {
   from {
     opacity: 0;

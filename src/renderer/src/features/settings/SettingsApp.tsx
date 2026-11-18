@@ -28,11 +28,11 @@ import type { AppearanceSettings } from "../../../../shared/appearance";
 import {
   isSettingsCategoryId,
   normalizeSettingsCategoryId,
-  SETTINGS_CATEGORIES,
-  SETTINGS_GROUPS,
+  SETTINGS_SECTIONS,
+  settingsSectionOf,
   type SettingsNavigationTarget,
   type SettingsPanelId,
-  type SettingsGroupId,
+  type SettingsSectionId,
 } from "../../../../shared/settingsCategories";
 import {
   DEFAULT_SETTINGS,
@@ -90,16 +90,17 @@ import "../help/help.css";
 import "./settings-app.css";
 import "./settings-panels.css";
 
+/** A sidebar section (as on the iPad): its panels show one under another. */
 interface Category {
-  id: SettingsPanelId;
-  group: SettingsGroupId;
+  id: SettingsSectionId;
+  panels: readonly SettingsPanelId[];
   label: string;
   description: string;
 }
 
 interface SettingsAppProps {
   onClose: () => void;
-  /** Category to open on; unknown/null falls back to General. */
+  /** Panel to open on (its section opens); unknown/null falls back to General. */
   initialCategory?: string | null;
 }
 
@@ -118,11 +119,11 @@ export function SettingsApp({
   const leftRailOpen = useUiStore((state) => state.leftRailOpen);
   const isSettingsOpen = useUiStore((state) => state.isSettingsOpen);
   const locale = useLocale();
-  const [activeCategory, setActiveCategory] = useState<SettingsPanelId>(() =>
-    isSettingsCategoryId(initialCategory) ? normalizeSettingsCategoryId(initialCategory) : "general",
+  const [activeCategory, setActiveCategory] = useState<SettingsSectionId>(() =>
+    isSettingsCategoryId(initialCategory) ? settingsSectionOf(normalizeSettingsCategoryId(initialCategory)) : "general",
   );
   useEffect(() => {
-    if (isSettingsCategoryId(initialCategory)) setActiveCategory(normalizeSettingsCategoryId(initialCategory));
+    if (isSettingsCategoryId(initialCategory)) setActiveCategory(settingsSectionOf(normalizeSettingsCategoryId(initialCategory)));
   }, [initialCategory]);
   const [searchInput, setSearchInput] = useState("");
   const query = useUiStore((state) => state.settingsSearchQuery);
@@ -163,11 +164,11 @@ export function SettingsApp({
 
   const categories = useMemo<readonly Category[]>(
     () =>
-      SETTINGS_CATEGORIES.filter(({ id }) => id !== "sync" || window.bandal?.syncUi === true).map(({ id, group }) => ({
+      SETTINGS_SECTIONS.map(({ id, panels }) => ({
         id,
-        group,
-        label: t(`settings.category.${id}.label`),
-        description: t(`settings.category.${id}.description`),
+        panels,
+        label: t(`settings.section.${id}.label`),
+        description: t(`settings.section.${id}.description`),
       })),
     [t],
   );
@@ -192,16 +193,19 @@ export function SettingsApp({
 
   const searching = hasSettingsSearchQuery(query);
   const rankedCategories = useMemo(
-    () => rankSettingsSearchItems(query, categories, (category) => paneSearchEntries(searchIndex, category.id)),
+    () => rankSettingsSearchItems(query, categories, (category) => [
+      { title: category.label, description: category.description },
+      ...category.panels.flatMap((panel) => paneSearchEntries(searchIndex, panel)),
+    ]),
     [categories, query, searchIndex],
   );
   const filteredCategories = useMemo(() => rankedCategories.map(({ item }) => item), [rankedCategories]);
   /** Up to three matching rows per category, shown under it in the sidebar. */
   const hitsByCategory = useMemo(() => {
-    const hits = new Map<SettingsPanelId, ResolvedSettingsEntry[]>();
+    const hits = new Map<SettingsSectionId, ResolvedSettingsEntry[]>();
     if (!searching) return hits;
     for (const { item } of rankedCategories) {
-      const rows = rankSettingsSearchItems(query, searchIndex.byCategory.get(item.id) ?? [], (entry) => entry)
+      const rows = rankSettingsSearchItems(query, item.panels.flatMap((panel) => searchIndex.byCategory.get(panel) ?? []), (entry) => entry)
         .map(({ item: entry }) => entry)
         // Plugin rows only identify the pack; they have no row to scroll to.
         .filter((entry) => !entry.id.startsWith("packs.plugin."));
@@ -240,23 +244,36 @@ export function SettingsApp({
     }
   }, [activeCategory, filteredCategories, searching]);
 
+  /** A deep link names a panel: its section opens and, below the section's first panel, scrolls to it. */
   const navigateTo = useCallback((target: SettingsNavigationTarget): void => {
     if (!isSettingsCategoryId(target.category)) return;
-    setActiveCategory(normalizeSettingsCategoryId(target.category));
+    setActiveCategory(settingsSectionOf(normalizeSettingsCategoryId(target.category)));
     setPendingTarget(target);
   }, []);
+  const openSection = (section: SettingsSectionId): void => {
+    setActiveCategory(section);
+    setPendingTarget(null);
+    contentRef.current?.scrollTo({ top: 0 });
+  };
 
   // Deep links from anywhere in the app (uiStore.openSettings(target)).
   useEffect(() => {
     if (settingsTarget !== null) navigateTo(settingsTarget);
   }, [navigateTo, settingsTarget]);
 
-  // Scroll to + highlight the requested row once its panel has rendered.
+  // Scroll to + highlight the requested row once its panel has rendered; a panel
+  // named without a row, below its section's first, is scrolled to.
   useEffect(() => {
-    const sectionId = pendingTarget?.sectionId;
     const root = contentRef.current;
-    if (sectionId === undefined || root === null) return;
-    return revealSettingsTarget(root, sectionId);
+    if (pendingTarget === null || root === null) return;
+    const sectionId = pendingTarget.sectionId;
+    if (sectionId !== undefined) return revealSettingsTarget(root, sectionId);
+    const panel = normalizeSettingsCategoryId(pendingTarget.category);
+    if (SETTINGS_SECTIONS.some((section) => section.panels[0] === panel)) return;
+    const frame = window.requestAnimationFrame(() => {
+      root.querySelector(`[data-settings-panel="${panel}"]`)?.scrollIntoView({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [activeCategory, pendingTarget]);
 
   const loadAvailability = useCallback((target?: AgentProvider): void => {
@@ -443,9 +460,7 @@ export function SettingsApp({
     setMilestonesOpen(false);
     const destination = milestoneDestination(id);
     if (destination === "settings-university" || destination === "settings-ai") {
-      setActiveCategory(
-        destination === "settings-university" ? "university" : "ai",
-      );
+      navigateTo({ category: destination === "settings-university" ? "university" : "ai" });
       return;
     }
 
@@ -632,18 +647,10 @@ export function SettingsApp({
                 </div>
               )
             ) : (
-              SETTINGS_GROUPS.map((group) => {
-                const groupCategories = categories.filter((category) => category.group === group);
-                if (groupCategories.length === 0) return null;
-                return (
-                  <div className="settings-nav__group" key={group}>
-                    <span className="settings-nav__group-label">
-                      {t(`settings.group.${group}`)}
-                    </span>
-                    {groupCategories.map((category) => renderNavItem(category, []))}
-                  </div>
-                );
-              })
+              // One plain list, as on the iPad.
+              <div className="settings-nav__group">
+                {categories.map((category) => renderNavItem(category, []))}
+              </div>
             )}
             {searching && filteredCategories.length === 0 && (
               <div className="settings-nav__empty">
@@ -682,11 +689,23 @@ export function SettingsApp({
                   <h1>{active.label}</h1>
                   <p>{active.description}</p>
                 </header>
-                <SettingsSearchProvider index={searchIndex} paneMatches={paneMatches}>
-                  <div className="settings-panel" key={active.id}>
-                    {panel[active.id]}
-                  </div>
-                </SettingsSearchProvider>
+                <div className="settings-panel" key={active.id}>
+                  {active.panels.map((id, index) => {
+                    const label = t(`settings.category.${id}.label`);
+                    // A panel's own name reveals all its rows, as the section's does for every panel.
+                    const matches = paneMatches || matchesSettingsSearch(query, { title: label });
+                    // While searching, a panel with no matching row stays out (its heading too).
+                    if (searching && !matches && !(searchIndex.byCategory.get(id) ?? []).some((entry) => matchesSettingsSearch(query, entry))) return null;
+                    return (
+                      <section key={id} className="settings-section-panel" data-settings-panel={id} aria-label={label}>
+                        {index > 0 && <h2 className="settings-section-panel__title">{label}</h2>}
+                        <SettingsSearchProvider index={searchIndex} paneMatches={matches}>
+                          {panel[id]}
+                        </SettingsSearchProvider>
+                      </section>
+                    );
+                  })}
+                </div>
               </>
             )}
           </div>
@@ -711,7 +730,7 @@ export function SettingsApp({
           data-category={category.id}
           className={`settings-nav__item${current ? " settings-nav__item--active" : ""}`}
           aria-current={current ? "page" : undefined}
-          onClick={() => navigateTo({ category: category.id })}
+          onClick={() => openSection(category.id)}
         >
           <Icon name={category.id} />
           <span className="settings-nav__copy">
@@ -725,7 +744,7 @@ export function SettingsApp({
             type="button"
             onClick={() =>
               navigateTo({
-                category: category.id,
+                category: hit.category,
                 sectionId: hit.id,
                 ...(hit.subTab !== undefined ? { subTab: hit.subTab } : {}),
               })

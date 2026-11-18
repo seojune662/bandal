@@ -38,6 +38,36 @@ export const SETTINGS_CATEGORIES = [
 ] as const satisfies readonly { id: string; group: SettingsGroupId }[]
 
 export type SettingsPanelId = (typeof SETTINGS_CATEGORIES)[number]['id']
+
+/**
+ * The sidebar, as the iPad app has it: a short list of sections, each showing
+ * its panels one under another. Panels keep their ids, so search rows, deep
+ * links (`openSettings('tabs')`) and the app menu still name a panel; the
+ * section that holds it opens and scrolls to it. Order is the sidebar order.
+ */
+export const SETTINGS_SECTIONS = [
+  { id: 'general', panels: ['general', 'notifications', 'shortcuts', 'advanced', 'experimental'] },
+  { id: 'appearance', panels: ['appearance', 'tabs', 'widgets'] },
+  { id: 'account', panels: ['account', 'university', 'courses'] },
+  { id: 'ai', panels: ['ai', 'assistant', 'usage'] },
+  { id: 'sync', panels: ['sync'] },
+  { id: 'integrations', panels: ['calendar', 'browser'] },
+  { id: 'packs', panels: ['packs'] },
+  { id: 'privacy', panels: ['permissions', 'privacy'] },
+  { id: 'about', panels: ['about'] }
+] as const satisfies readonly { id: string; panels: readonly SettingsPanelId[] }[]
+
+export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]['id']
+
+/** The section that shows `panel`. */
+export function settingsSectionOf(panel: SettingsPanelId): SettingsSectionId {
+  return SETTINGS_SECTIONS.find(section => (section.panels as readonly SettingsPanelId[]).includes(panel))?.id ?? 'general'
+}
+
+/** A section's panels, in the order they show. */
+export function settingsSectionPanels(section: SettingsSectionId): readonly SettingsPanelId[] {
+  return SETTINGS_SECTIONS.find(item => item.id === section)?.panels ?? []
+}
 /** Accept the former Connections destination for older IPC callers. */
 export type SettingsCategoryId = SettingsPanelId | 'mcp'
 
