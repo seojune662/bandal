@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const context = vi.hoisted(() => ({ directory: '', client: null as any }))
-vi.mock('electron', () => ({ app: { getPath: () => context.directory }, shell: { openExternal: vi.fn() } }))
+vi.mock('electron', () => ({ app: { getPath: () => context.directory, getVersion: () => '0.98.1' }, shell: { openExternal: vi.fn() } }))
 vi.mock('../../../src/main/lib/safeStorageGate', () => ({ runtimeSafeStorage: () => ({ isEncryptionAvailable: () => false }) }))
-vi.mock('../../../src/main/features/account/supabaseClient', () => ({ createSupabaseClient: () => context.client }))
+vi.mock('../../../src/main/features/account/supabaseClient', () => ({ createSupabaseClient: () => context.client, desktopUserAgent: (version: string) => `Bandal-Desktop/${version}` }))
 import { createAccountRuntime } from '../../../src/main/features/account/accountRuntime'
 
 const roots: string[] = []

@@ -8,13 +8,45 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * Actions (POST JSON):
  * - `config`: the public Supabase URL and anon key the page signs in with.
  * - `me`: 200 for an operator, 403 for anyone else.
- * - `overview` `{from, to}`: dashboard aggregates; each read is audited.
+ * - `overview` `{from, to}`: dashboard aggregates, AI usage and cost, apps and
+ *   versions in use, and server state; each read is audited.
+ * - `lookup` `{query}`: one user by id, or the users whose email or nickname
+ *   contains the query; audited with the user shown.
  */
 export class AdminError extends Error {
   constructor(public readonly code: string, public readonly status = 400) { super(code) }
 }
 
-export interface AdminConfig { supabaseUrl: string; supabaseAnonKey: string; origins: string[] }
+export interface AdminConfig {
+  supabaseUrl: string
+  supabaseAnonKey: string
+  origins: string[]
+  /** Whether a secret is set; never its value. */
+  hasSecret?: (name: string) => boolean
+  /** Status of an OPTIONS request to a deployed function, or 0 when it did not answer. */
+  probe?: (name: string) => Promise<number>
+}
+
+/** The secrets each feature needs, by the name the functions read. */
+export const REQUIRED_SECRETS: readonly { feature: string; names: readonly string[] }[] = [
+  { feature: 'AI (iPad)', names: ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY'] },
+  { feature: 'App Store (iPad)', names: ['APPLE_APP_ID'] },
+  { feature: 'Apple 로그인 탈퇴 연동', names: ['APPLE_AUTH_TEAM_ID', 'APPLE_AUTH_KEY_ID', 'APPLE_AUTH_PRIVATE_KEY', 'APPLE_AUTH_TOKEN_ENCRYPTION_KEY'] }
+]
+/** The functions the apps call; a 404 means not deployed, 5xx or no answer means down. */
+export const PROBED_FUNCTIONS = ['ai-proxy', 'ipad-store', 'ipad-store-notifications', 'account-delete', 'referral', 'schools'] as const
+
+async function serverChecks(config: AdminConfig) {
+  const secrets = REQUIRED_SECRETS.map(({ feature, names }) => ({ feature, missing: names.filter(name => !(config.hasSecret?.(name) ?? false)) }))
+  const functions = config.probe
+    ? await Promise.all(PROBED_FUNCTIONS.map(async name => {
+        const started = Date.now()
+        const status = await config.probe!(name).catch(() => 0)
+        return { name, status, ok: status > 0 && status < 500 && status !== 404, ms: Date.now() - started }
+      }))
+    : []
+  return { secrets, functions }
+}
 
 const MAX_BODY = 4096
 const DAY = 86_400_000
@@ -53,7 +85,7 @@ export function createAdminService(db: SupabaseClient, config: AdminConfig) {
         if (!config.supabaseUrl || !config.supabaseAnonKey) throw new AdminError('not_configured', 503)
         return respond({ supabaseUrl: config.supabaseUrl, supabaseAnonKey: config.supabaseAnonKey })
       }
-      if (input.action !== 'me' && input.action !== 'overview') throw new AdminError('invalid_request')
+      if (input.action !== 'me' && input.action !== 'overview' && input.action !== 'lookup') throw new AdminError('invalid_request')
 
       const authorization = request.headers.get('authorization') ?? ''
       if (!authorization.startsWith('Bearer ') || authorization.length > 16384) throw new AdminError('sign_in_required', 401)
@@ -65,17 +97,36 @@ export function createAdminService(db: SupabaseClient, config: AdminConfig) {
       if (operator.data !== true) throw new AdminError('admin_required', 403)
 
       if (input.action === 'me') return respond({ operator: true, email: user.data.user.email ?? null })
-      const { from, to } = parseRange(input)
-      const overview = await db.rpc('bandal_admin_overview', { actor, from_input: from, to_input: to })
-      if (overview.error) {
-        if (overview.error.message === 'admin_required') throw new AdminError('admin_required', 403)
-        if (overview.error.message === 'admin_invalid_range') throw new AdminError('invalid_range')
-        throw new AdminError('admin_unavailable', 503)
+      const failed = (error: { message: string }) => {
+        if (error.message === 'admin_required') return new AdminError('admin_required', 403)
+        if (error.message === 'admin_invalid_range') return new AdminError('invalid_range')
+        if (error.message === 'admin_invalid_query') return new AdminError('invalid_query')
+        return new AdminError('admin_unavailable', 503)
       }
+      if (input.action === 'lookup') {
+        const query = typeof input.query === 'string' ? input.query.trim() : ''
+        if (query.length < 2 || query.length > 254) throw new AdminError('invalid_query')
+        const found = await db.rpc('bandal_admin_lookup', { actor, query })
+        if (found.error) throw failed(found.error)
+        const target = (found.data as { target?: string | null } | null)?.target ?? null
+        // The audit row is part of the read: no record, no data.
+        const audit = await db.from('admin_audit').insert({ actor, action: 'lookup', target })
+        if (audit.error) throw new AdminError('admin_unavailable', 503)
+        return respond(found.data)
+      }
+      const { from, to } = parseRange(input)
+      const [overview, insights, server] = await Promise.all([
+        db.rpc('bandal_admin_overview', { actor, from_input: from, to_input: to }),
+        db.rpc('bandal_admin_insights', { actor, from_input: from, to_input: to }),
+        serverChecks(config)
+      ])
+      if (overview.error) throw failed(overview.error)
       // The audit row is part of the read: no record, no data.
       const audit = await db.from('admin_audit').insert({ actor, action: 'overview', range_from: from, range_to: to })
       if (audit.error) throw new AdminError('admin_unavailable', 503)
-      return respond(overview.data)
+      // Older databases have no insights yet; the page then shows the first dashboard only.
+      const extra = insights.error ? { insightsError: true } : (({ range: _range, generatedAt: _generatedAt, ...rest }) => rest)(insights.data as Record<string, unknown>)
+      return respond({ ...(overview.data as Record<string, unknown>), ...extra, server })
     } catch (error) {
       const known = error instanceof AdminError ? error : new AdminError('admin_unavailable', 503)
       return respond({ error: known.code }, known.status)
